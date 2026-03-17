@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.tsbuildinfo
+bun.lockb
+test/__output__/
+test/analyzer/__fixtures__/mock-nextjs-app/
+/tmp/
+.env
+.env.local

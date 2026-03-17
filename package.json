@@ -1,0 +1,43 @@
+{
+  "name": "morphkit",
+  "version": "0.1.0",
+  "description": "Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps",
+  "type": "module",
+  "bin": {
+    "morphkit": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "analyze": "bun run src/index.ts analyze",
+    "generate": "bun run src/index.ts generate"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "ts-morph": "^24.0.0",
+    "commander": "^13.0.0",
+    "chalk": "^5.4.0",
+    "ora": "^8.0.0",
+    "simple-git": "^3.27.0",
+    "fast-glob": "^3.3.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "typescript",
+    "swift",
+    "swiftui",
+    "ios",
+    "react",
+    "nextjs",
+    "code-generation",
+    "ai"
+  ],
+  "license": "UNLICENSED",
+  "author": "AshlrAI"
+}

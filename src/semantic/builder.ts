@@ -1,0 +1,1384 @@
+/**
+ * Semantic Model Builder
+ *
+ * Takes raw output from all analyzers (repo scanner, component extractor,
+ * route extractor, state analyzer, API analyzer) and constructs a unified
+ * SemanticAppModel — the core intermediate representation that bridges
+ * web analysis and iOS code generation.
+ *
+ * Uses the Grok AI client for intent extraction when code purpose is ambiguous.
+ */
+
+import type { RepoScanResult } from '../analyzer/repo-scanner.js';
+import type { ExtractedComponent } from '../analyzer/component-extractor.js';
+import type { ExtractedRoute } from '../analyzer/route-extractor.js';
+import type { ExtractedState } from '../analyzer/state-extractor.js';
+import type { ExtractedApi } from '../analyzer/api-extractor.js';
+import type { ParsedFile, TypeProperty } from '../analyzer/ast-parser.js';
+import type {
+  SemanticAppModel,
+  Screen,
+  NavigationFlow,
+  StatePattern,
+  ApiEndpoint,
+  AuthPattern,
+  ThemeConfig,
+  Entity,
+  Route,
+  TabItem,
+  ConfidenceLevel,
+  LayoutType,
+  ComponentRef,
+  DataRequirement,
+  UserAction,
+  TypeDefinition,
+} from './model.js';
+import { GrokClient, getGrokClient as getClient } from '../ai/index.js';
+import type { IntentAnalysis } from '../ai/index.js';
+
+// Re-export the analyzer types so consumers can reference them
+export type { ExtractedComponent } from '../analyzer/component-extractor.js';
+export type { ExtractedRoute } from '../analyzer/route-extractor.js';
+export type { ExtractedState } from '../analyzer/state-extractor.js';
+export type { ExtractedApi } from '../analyzer/api-extractor.js';
+
+// ---------------------------------------------------------------------------
+// Analyzer Output Types (aggregated from all extractors)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregated result from all analyzers — input to the semantic builder.
+ * Matches the AnalysisResult from analyzer/index.ts.
+ */
+export interface AnalysisResult {
+  scanResult: RepoScanResult;
+  parsedFiles: ParsedFile[];
+  components: ExtractedComponent[];
+  routes: ExtractedRoute[];
+  statePatterns: ExtractedState[];
+  apiEndpoints: ExtractedApi[];
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Attempt to get a GrokClient instance. Returns null if the AI module
+ * is not configured (e.g., no API key). The builder degrades gracefully
+ * by falling back to heuristic-based extraction.
+ */
+function getGrokClientSafe(): GrokClient | null {
+  try {
+    const client = getClient();
+    console.log('[morphkit] AI client connected (grok-4-1-fast-reasoning)');
+    return client;
+  } catch (_err) {
+    // Missing API key or other config error — degrade gracefully
+    console.log('[morphkit] AI client not available, using heuristics');
+    return null;
+  }
+}
+
+/** Check whether a route path contains dynamic params like :id or [id]. */
+function routeHasDynamicParams(routePath: string): boolean {
+  return routePath.includes(':') || /\[(?!\.{3})/.test(routePath);
+}
+
+/**
+ * Infer a layout type from component structure, route path, and state bindings.
+ * Uses multiple signal sources to avoid defaulting everything to 'custom'.
+ */
+function inferLayout(
+  component: ExtractedComponent,
+  routePath?: string,
+  statePatterns?: ExtractedState[],
+): LayoutType {
+  const children = component.children.map((c) => c.name).join(' ').toLowerCase();
+  const name = component.name.toLowerCase();
+
+  // --- 1. Strong signals from component name ---
+  if (name.includes('form') || name.includes('addproduct') || name.includes('create') || name.includes('edit')) return 'form';
+  if (name.includes('grid') || children.includes('grid')) return 'grid';
+  if (name.includes('list')) return 'list';
+  if (name.includes('dashboard') || name.includes('overview') || name.includes('home')) return 'dashboard';
+  if (name.includes('detail') || name.includes('single')) return 'detail';
+  if (name.includes('setting') || name.includes('preference')) return 'settings';
+  if (name.includes('profile') || name.includes('account')) return 'profile';
+  if (name.includes('login') || name.includes('signup') || name.includes('register') || name.includes('auth')) return 'auth';
+  if (name.includes('onboard') || name.includes('welcome') || name.includes('intro')) return 'onboarding';
+
+  // --- 2. Route path signals ---
+  if (routePath) {
+    const hasDynamic = routeHasDynamicParams(routePath);
+    if (hasDynamic) return 'detail';
+
+    // Single-segment paths like /products, /cart, /orders → likely list
+    const staticSegments = routePath.split('/').filter(Boolean).filter((s) => !s.startsWith(':') && !s.startsWith('['));
+    if (staticSegments.length === 1) {
+      const seg = staticSegments[0]!.toLowerCase();
+      if (seg === 'home' || seg === 'dashboard') return 'dashboard';
+      // Most single-segment routes are collection pages
+      return 'list';
+    }
+  }
+
+  // --- 3. Child component name patterns ---
+  if (children.includes('card') || children.includes('tile') || children.includes('item')) return 'grid';
+  if (children.includes('row') || children.includes('listitem')) return 'list';
+  if (children.includes('input') || children.includes('field') || children.includes('textarea') || children.includes('select')) return 'form';
+
+  // --- 4. State binding signals — array state suggests list/grid ---
+  if (statePatterns) {
+    const componentState = statePatterns.filter((sp) => sp.ownerName === component.name);
+    for (const sp of componentState) {
+      if (sp.useState) {
+        const typeStr = (sp.useState.type || '').toLowerCase();
+        if (typeStr.endsWith('[]') || typeStr.startsWith('array<')) return 'list';
+      }
+    }
+    // Heavy filtering/sorting state → list
+    const filterSortHooks = componentState.filter((sp) => {
+      if (!sp.useState) return false;
+      const v = sp.useState.variableName.toLowerCase();
+      return v.includes('filter') || v.includes('sort') || v.includes('search') || v.includes('page') || v.includes('query');
+    });
+    if (filterSortHooks.length >= 2) return 'list';
+  }
+
+  // --- 5. Props clues ---
+  const propsStr = component.props.map((p) => p.name).join(' ').toLowerCase();
+  if (propsStr.includes('items') || propsStr.includes('data') || propsStr.includes('list')) return 'list';
+
+  // --- 6. Hook clues ---
+  const hookNames = component.hooks.map((h) => h.hookName).join(' ').toLowerCase();
+  if (hookNames.includes('useform')) return 'form';
+
+  return 'custom';
+}
+
+/** Build a TypeDefinition from a simple type string. */
+function typeFromString(typeStr: string): TypeDefinition {
+  const normalized = typeStr.trim().toLowerCase();
+  if (normalized === 'string') return { kind: 'string' };
+  if (normalized === 'number' || normalized === 'int' || normalized === 'float') return { kind: 'number' };
+  if (normalized === 'boolean' || normalized === 'bool') return { kind: 'boolean' };
+  if (normalized === 'date') return { kind: 'date' };
+  if (normalized.endsWith('[]') || normalized.startsWith('array<')) {
+    const elementStr = normalized.endsWith('[]')
+      ? normalized.slice(0, -2)
+      : normalized.slice(6, -1);
+    return { kind: 'array', elementType: typeFromString(elementStr) };
+  }
+  if (normalized === 'unknown' || normalized === 'any' || normalized === 'void' || normalized === '') {
+    return { kind: 'unknown' };
+  }
+  return { kind: 'object', typeName: typeStr, inferred: true };
+}
+
+/**
+ * Suggest an SF Symbol name for a given tab/screen label.
+ * This is a best-effort heuristic mapping.
+ */
+function suggestSFSymbol(label: string): string {
+  const lower = label.toLowerCase();
+
+  const symbolMap: Record<string, string> = {
+    home: 'house.fill',
+    dashboard: 'square.grid.2x2.fill',
+    search: 'magnifyingglass',
+    explore: 'safari.fill',
+    discover: 'sparkle.magnifyingglass',
+    profile: 'person.fill',
+    account: 'person.circle.fill',
+    settings: 'gearshape.fill',
+    preferences: 'slider.horizontal.3',
+    notifications: 'bell.fill',
+    messages: 'message.fill',
+    chat: 'bubble.left.and.bubble.right.fill',
+    favorites: 'heart.fill',
+    bookmarks: 'bookmark.fill',
+    cart: 'cart.fill',
+    orders: 'bag.fill',
+    products: 'square.grid.2x2.fill',
+    analytics: 'chart.bar.fill',
+    history: 'clock.fill',
+    feed: 'list.bullet',
+    calendar: 'calendar',
+    map: 'map.fill',
+    more: 'ellipsis',
+  };
+
+  for (const [key, symbol] of Object.entries(symbolMap)) {
+    if (lower.includes(key)) return symbol;
+  }
+
+  return 'circle.fill';
+}
+
+/** Determine the top-level navigation pattern based on route structure. */
+function inferNavigationPattern(routes: ExtractedRoute[]): 'tab' | 'stack' | 'mixed' {
+  // Top-level routes are those with no parent
+  const topLevelRoutes = routes.filter((r) => r.parentPath === undefined);
+  const hasNestedRoutes = routes.some((r) => r.childPaths.length > 0);
+
+  if (topLevelRoutes.length === 0) return 'stack';
+  if (topLevelRoutes.length < 5 && !hasNestedRoutes) return 'tab';
+  if (topLevelRoutes.length < 5 && hasNestedRoutes) return 'mixed';
+  if (topLevelRoutes.length <= 6) return 'tab';
+
+  return 'mixed';
+}
+
+/** Convert a route path to a human-readable screen name, disambiguating detail routes. */
+function routePathToScreenName(routePath: string): string {
+  const allSegments = routePath.split('/').filter(Boolean);
+  const staticSegments = allSegments.filter((s) => !s.startsWith(':') && !s.startsWith('['));
+  const hasDynamic = routeHasDynamicParams(routePath);
+
+  if (staticSegments.length === 0 && !hasDynamic) return 'Home';
+  if (staticSegments.length === 0 && hasDynamic) return 'Detail';
+
+  const baseName = staticSegments
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('');
+
+  // Append "Detail" for routes with dynamic params to avoid duplicates
+  // e.g. /products → "Products", /products/:id → "ProductsDetail"
+  if (hasDynamic) {
+    return baseName + 'Detail';
+  }
+
+  return baseName;
+}
+
+// ---------------------------------------------------------------------------
+// Mapping helpers: analyzer types -> builder-compatible shapes
+// ---------------------------------------------------------------------------
+
+/** Map an ExtractedState's kind to a StatePattern source value. */
+function mapStateSource(
+  kind: ExtractedState['kind'],
+): StatePattern['source'] {
+  switch (kind) {
+    case 'useState': return 'useState';
+    case 'useReducer': return 'useReducer';
+    case 'context': return 'context';
+    case 'zustand': return 'zustand';
+    case 'redux-slice': return 'redux';
+    case 'react-query': return 'tanstack-query';
+    case 'swr': return 'swr';
+    case 'other': return 'other';
+  }
+}
+
+/** Map an ExtractedState's scope to a StatePattern type value. */
+function mapStateType(scope: ExtractedState['scope']): StatePattern['type'] {
+  switch (scope) {
+    case 'local': return 'local';
+    case 'shared': return 'global';
+    case 'global': return 'global';
+  }
+}
+
+/**
+ * Extract shape fields from an ExtractedState.
+ * Different state kinds store shape info differently.
+ */
+function extractStateShape(sp: ExtractedState): { name: string; type: string }[] {
+  if (sp.zustand) {
+    return sp.zustand.stateProperties.map((name) => ({ name, type: 'unknown' }));
+  }
+  if (sp.redux) {
+    return sp.redux.stateProperties.map((name) => ({ name, type: 'unknown' }));
+  }
+  if (sp.useState) {
+    return [{ name: sp.useState.variableName, type: sp.useState.type || 'unknown' }];
+  }
+  if (sp.useReducer) {
+    return [{ name: sp.useReducer.stateName, type: 'unknown' }];
+  }
+  if (sp.context) {
+    return [{ name: sp.context.contextName, type: sp.context.valueShape || 'unknown' }];
+  }
+  return [];
+}
+
+/**
+ * Extract mutation names from an ExtractedState.
+ */
+function extractStateMutations(sp: ExtractedState): { name: string; payload?: string }[] {
+  if (sp.zustand) {
+    return sp.zustand.actions.map((name) => ({ name }));
+  }
+  if (sp.redux) {
+    return sp.redux.actions.map((name) => ({ name }));
+  }
+  if (sp.useReducer) {
+    return sp.useReducer.actionTypes.map((name) => ({ name }));
+  }
+  if (sp.useState) {
+    return [{ name: sp.useState.setterName }];
+  }
+  return [];
+}
+
+/** Get a display name for the state pattern. */
+function getStateName(sp: ExtractedState): string {
+  if (sp.zustand) return sp.zustand.storeName;
+  if (sp.redux) return sp.redux.sliceName;
+  if (sp.context) return sp.context.contextName;
+  if (sp.useState) return sp.useState.variableName;
+  if (sp.useReducer) return sp.useReducer.stateName;
+  return sp.ownerName;
+}
+
+/** Get consumer names from an ExtractedState. */
+function getStateConsumers(sp: ExtractedState): string[] {
+  // The analyzer's ExtractedState doesn't track consumers directly;
+  // we return the owner as a consumer by default
+  return [sp.ownerName];
+}
+
+/**
+ * Get the URL and method from an ExtractedApi.
+ */
+function getApiUrlAndMethod(api: ExtractedApi): { url: string; method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' } {
+  if (api.fetch) {
+    const method = normalizeHttpMethod(api.fetch.method);
+    return { url: api.fetch.url, method };
+  }
+  if (api.axios) {
+    const method = normalizeHttpMethod(api.axios.method);
+    return { url: api.axios.url, method };
+  }
+  if (api.nextApiRoute) {
+    const method = api.nextApiRoute.methods.length > 0
+      ? normalizeHttpMethod(api.nextApiRoute.methods[0])
+      : 'GET';
+    return { url: api.nextApiRoute.urlPath, method };
+  }
+  if (api.serverAction) {
+    return { url: `/actions/${api.serverAction.name}`, method: 'POST' };
+  }
+  // Fallback
+  return { url: '/unknown', method: 'GET' };
+}
+
+/** Normalize HTTP method from extended set to the model's supported set. */
+function normalizeHttpMethod(method: string): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' {
+  switch (method.toUpperCase()) {
+    case 'GET': return 'GET';
+    case 'POST': return 'POST';
+    case 'PUT': return 'PUT';
+    case 'PATCH': return 'PATCH';
+    case 'DELETE': return 'DELETE';
+    default: return 'GET';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Theme extraction helpers
+// ---------------------------------------------------------------------------
+
+/** Build a default theme config. Analyzers may enhance this later. */
+function buildDefaultTheme(): ThemeConfig {
+  return {
+    colors: {
+      primary: '#3B82F6',
+      secondary: '#6B7280',
+      accent: '#3B82F6',
+      background: '#FFFFFF',
+      surface: '#F9FAFB',
+      error: '#EF4444',
+      success: '#10B981',
+      warning: '#F59E0B',
+      text: {
+        primary: '#111827',
+        secondary: '#6B7280',
+        disabled: '#9CA3AF',
+        inverse: '#FFFFFF',
+      },
+      custom: {},
+    },
+    typography: {
+      fontFamily: { heading: 'System', body: 'System', mono: 'Menlo' },
+      sizes: { xs: 12, sm: 14, base: 16, lg: 18, xl: 20, '2xl': 24, '3xl': 30, '4xl': 36 },
+      weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
+    },
+    spacing: {
+      unit: 4,
+      values: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, '2xl': 48 },
+    },
+    borderRadius: { none: 0, sm: 4, md: 8, lg: 12, xl: 16, full: 9999 },
+    supportsDarkMode: false,
+  };
+}
+
+/**
+ * Attempt to extract theme information from the scan result.
+ * Looks for Tailwind config, CSS variables, or theme files.
+ */
+function extractThemeFromScan(scanResult: RepoScanResult): ThemeConfig {
+  const theme = buildDefaultTheme();
+
+  // Mark dark mode support if Tailwind is detected (it usually supports dark mode)
+  if (scanResult.hasTailwind) {
+    theme.supportsDarkMode = true;
+  }
+
+  return theme;
+}
+
+// ---------------------------------------------------------------------------
+// Auth detection
+// ---------------------------------------------------------------------------
+
+/** Detect authentication patterns from routes, APIs, and components. */
+function detectAuthPattern(
+  routes: ExtractedRoute[],
+  apis: ExtractedApi[],
+  components: ExtractedComponent[],
+): AuthPattern | null {
+  // Check for auth-related API calls
+  const authApis = apis.filter((a) => {
+    const { url } = getApiUrlAndMethod(a);
+    return url.toLowerCase().includes('auth') || url.toLowerCase().includes('login') || url.toLowerCase().includes('signin');
+  });
+
+  // Look for auth-related components
+  const authComponents = components.filter((c) => {
+    const name = c.name.toLowerCase();
+    return (
+      name.includes('login') ||
+      name.includes('signup') ||
+      name.includes('register') ||
+      name.includes('auth') ||
+      name.includes('forgot')
+    );
+  });
+
+  // If no auth signals found, return null
+  if (authApis.length === 0 && authComponents.length === 0) {
+    return null;
+  }
+
+  // Build auth flows from detected components
+  const flows: AuthPattern['flows'] = [];
+
+  const loginComponents = authComponents.filter((c) =>
+    c.name.toLowerCase().includes('login'),
+  );
+  if (loginComponents.length > 0) {
+    flows.push({
+      name: 'login',
+      screens: loginComponents.map((c) => c.name),
+      endpoints: authApis
+        .filter((a) => {
+          const { url } = getApiUrlAndMethod(a);
+          return url.toLowerCase().includes('login') || url.toLowerCase().includes('signin');
+        })
+        .map((a) => {
+          const { method, url } = getApiUrlAndMethod(a);
+          return `${method} ${url}`;
+        }),
+      description: 'User login flow',
+    });
+  }
+
+  const signupComponents = authComponents.filter((c) => {
+    const name = c.name.toLowerCase();
+    return name.includes('signup') || name.includes('register');
+  });
+  if (signupComponents.length > 0) {
+    flows.push({
+      name: 'signup',
+      screens: signupComponents.map((c) => c.name),
+      endpoints: authApis
+        .filter((a) => {
+          const { url } = getApiUrlAndMethod(a);
+          return url.toLowerCase().includes('signup') || url.toLowerCase().includes('register');
+        })
+        .map((a) => {
+          const { method, url } = getApiUrlAndMethod(a);
+          return `${method} ${url}`;
+        }),
+      description: 'User registration flow',
+    });
+  }
+
+  // Determine auth type heuristically
+  const allUrls = apis.map((a) => getApiUrlAndMethod(a).url.toLowerCase());
+  const hasOAuthHints = allUrls.some(
+    (u) => u.includes('oauth') || u.includes('callback'),
+  );
+
+  const authType: AuthPattern['type'] = hasOAuthHints ? 'oauth' : 'jwt';
+
+  return {
+    type: authType,
+    provider: null,
+    flows,
+    storageStrategy: 'localStorage',
+    confidence: authComponents.length > 0 ? 'medium' : 'low',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Screen building
+// ---------------------------------------------------------------------------
+
+/**
+ * Build Screen definitions by merging component data with route data.
+ * Routes with page files become screens, matched to components by file path.
+ */
+function buildScreens(
+  components: ExtractedComponent[],
+  routes: ExtractedRoute[],
+  statePatterns: ExtractedState[],
+  apis: ExtractedApi[],
+  _aiClient: GrokClient | null,
+): Screen[] {
+  const componentByFile = new Map<string, ExtractedComponent>();
+  for (const comp of components) {
+    componentByFile.set(comp.filePath, comp);
+  }
+
+  const screens: Screen[] = [];
+  const processedComponents = new Set<string>();
+
+  // First pass: create screens from routes that have a page file
+  for (const route of routes) {
+    if (!route.files.page) continue;
+
+    // Try to find the component for this route's page file
+    const component = componentByFile.get(route.files.page);
+    if (!component) continue;
+
+    processedComponents.add(component.name);
+
+    const screen = buildScreenFromRouteAndComponent(
+      route,
+      component,
+      statePatterns,
+      apis,
+    );
+    screens.push(screen);
+  }
+
+  // Second pass: create screens from page-level components that aren't in routes
+  for (const comp of components) {
+    if (processedComponents.has(comp.name)) continue;
+    if (comp.category !== 'page') continue;
+
+    const screen = buildScreenFromComponent(comp, statePatterns, apis);
+    screens.push(screen);
+  }
+
+  // Mark entry points
+  if (screens.length > 0) {
+    const homeScreen = screens.find(
+      (s) =>
+        s.name === 'Home' ||
+        s.name.toLowerCase().includes('home') ||
+        s.name.toLowerCase().includes('dashboard'),
+    );
+    if (homeScreen) {
+      homeScreen.isEntryPoint = true;
+    } else {
+      // Default: first screen is entry point
+      screens[0].isEntryPoint = true;
+    }
+  }
+
+  return screens;
+}
+
+/** Build a Screen from a matched route + component pair. */
+function buildScreenFromRouteAndComponent(
+  route: ExtractedRoute,
+  component: ExtractedComponent,
+  statePatterns: ExtractedState[],
+  apis: ExtractedApi[],
+): Screen {
+  const screenName = routePathToScreenName(route.urlPath);
+  const layout = inferLayout(component, route.urlPath, statePatterns);
+
+  // Find state patterns related to this component
+  const stateBindings = statePatterns
+    .filter((sp) => sp.ownerName === component.name)
+    .map((sp) => getStateName(sp));
+
+  // Find API calls made by this component
+  const componentApis = apis.filter((a) => a.ownerName === component.name);
+
+  // Build data requirements from direct API calls
+  const dataRequirements: DataRequirement[] = [];
+
+  for (const api of componentApis) {
+    const { method, url } = getApiUrlAndMethod(api);
+    dataRequirements.push({
+      source: `${method} ${url}`,
+      fetchStrategy: 'api',
+      cardinality: method === 'GET' ? 'many' : 'one',
+      blocking: method === 'GET',
+      params: {},
+    });
+  }
+
+  // Add data requirements from server-state hooks (react-query, swr, fetch in useEffect)
+  const componentState = statePatterns.filter((sp) => sp.ownerName === component.name);
+  for (const sp of componentState) {
+    if (sp.serverState) {
+      const source = sp.serverState.fetchFn || sp.serverState.queryKey || sp.serverState.hookName;
+      const alreadyAdded = dataRequirements.some((dr) => dr.source === source);
+      if (!alreadyAdded) {
+        dataRequirements.push({
+          source,
+          fetchStrategy: 'api',
+          cardinality: 'many',
+          blocking: true,
+          params: {},
+        });
+      }
+    }
+    // useState with array type → data requirement from local/derived state
+    if (sp.useState) {
+      const typeStr = (sp.useState.type || '').toLowerCase();
+      if (typeStr.endsWith('[]') || typeStr.startsWith('array<')) {
+        const entityName = sp.useState.type!.replace(/\[\]$/, '').replace(/^Array</, '').replace(/>$/, '');
+        if (entityName && /^[A-Z]/.test(entityName)) {
+          const alreadyAdded = dataRequirements.some((dr) => dr.source === entityName);
+          if (!alreadyAdded) {
+            dataRequirements.push({
+              source: entityName,
+              fetchStrategy: 'local',
+              cardinality: 'many',
+              blocking: false,
+              params: {},
+            });
+          }
+        }
+      }
+    }
+    // Zustand/Redux stores → context-based data requirements
+    if (sp.zustand || sp.redux) {
+      const storeName = sp.zustand ? sp.zustand.storeName : sp.redux!.sliceName;
+      const alreadyAdded = dataRequirements.some((dr) => dr.source === storeName);
+      if (!alreadyAdded) {
+        dataRequirements.push({
+          source: storeName,
+          fetchStrategy: 'context',
+          cardinality: 'many',
+          blocking: false,
+          params: {},
+        });
+      }
+    }
+  }
+
+  // Build child component references
+  const componentRefs: ComponentRef[] = component.children.map((child) => ({
+    name: child.name,
+    props: {},
+    count: child.count > 1 ? ('repeated' as const) : ('single' as const),
+  }));
+
+  // Build user actions from event handlers
+  const actions: UserAction[] = component.eventHandlers.map((handler) => {
+    const isSubmit = handler.name.toLowerCase().includes('submit');
+    const isDelete = handler.name.toLowerCase().includes('delete') || handler.name.toLowerCase().includes('remove');
+    const isNavigate = handler.name.toLowerCase().includes('navigate') || handler.name.toLowerCase().includes('goto');
+
+    return {
+      label: handler.name.replace(/^handle|^on/, '').replace(/([A-Z])/g, ' $1').trim(),
+      trigger: isSubmit ? ('submit' as const) : ('tap' as const),
+      effect: {
+        type: isNavigate
+          ? ('navigate' as const)
+          : isSubmit
+            ? ('apiCall' as const)
+            : isDelete
+              ? ('mutate' as const)
+              : ('other' as const),
+        target: handler.name,
+        payload: {},
+      },
+      destructive: isDelete,
+      requiresAuth: false,
+    };
+  });
+
+  return {
+    name: screenName,
+    description: `Screen for ${route.urlPath}`,
+    purpose: `Renders the ${screenName} view at route ${route.urlPath}`,
+    sourceFile: component.filePath,
+    sourceComponent: component.name,
+    layout,
+    components: componentRefs,
+    dataRequirements,
+    actions,
+    stateBindings,
+    isEntryPoint: false,
+    confidence: 'medium',
+  };
+}
+
+/** Build a Screen from a standalone page component (no matching route). */
+function buildScreenFromComponent(
+  component: ExtractedComponent,
+  statePatterns: ExtractedState[],
+  apis: ExtractedApi[],
+): Screen {
+  const layout = inferLayout(component, undefined, statePatterns);
+  const stateBindings = statePatterns
+    .filter((sp) => sp.ownerName === component.name)
+    .map((sp) => getStateName(sp));
+
+  const componentApis = apis.filter((a) => a.ownerName === component.name);
+
+  const dataRequirements: DataRequirement[] = componentApis.map((api) => {
+    const { method, url } = getApiUrlAndMethod(api);
+    return {
+      source: `${method} ${url}`,
+      fetchStrategy: 'api' as const,
+      cardinality: method === 'GET' ? ('many' as const) : ('one' as const),
+      blocking: method === 'GET',
+      params: {},
+    };
+  });
+
+  // Add data requirements from server-state hooks
+  const componentState = statePatterns.filter((sp) => sp.ownerName === component.name);
+  for (const sp of componentState) {
+    if (sp.serverState) {
+      const source = sp.serverState.fetchFn || sp.serverState.queryKey || sp.serverState.hookName;
+      const alreadyAdded = dataRequirements.some((dr) => dr.source === source);
+      if (!alreadyAdded) {
+        dataRequirements.push({
+          source,
+          fetchStrategy: 'api',
+          cardinality: 'many',
+          blocking: true,
+          params: {},
+        });
+      }
+    }
+    if (sp.zustand || sp.redux) {
+      const storeName = sp.zustand ? sp.zustand.storeName : sp.redux!.sliceName;
+      const alreadyAdded = dataRequirements.some((dr) => dr.source === storeName);
+      if (!alreadyAdded) {
+        dataRequirements.push({
+          source: storeName,
+          fetchStrategy: 'context',
+          cardinality: 'many',
+          blocking: false,
+          params: {},
+        });
+      }
+    }
+  }
+
+  return {
+    name: component.name,
+    description: `Screen derived from component ${component.name}`,
+    purpose: `Renders the ${component.name} view`,
+    sourceFile: component.filePath,
+    sourceComponent: component.name,
+    layout,
+    components: component.children.map((c) => ({
+      name: c.name,
+      props: {},
+      count: c.count > 1 ? ('repeated' as const) : ('single' as const),
+    })),
+    dataRequirements,
+    actions: [],
+    stateBindings,
+    isEntryPoint: false,
+    confidence: 'low',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Navigation building
+// ---------------------------------------------------------------------------
+
+/** Build NavigationFlow from extracted routes and inferred screens. */
+function buildNavigation(
+  routes: ExtractedRoute[],
+  screens: Screen[],
+): NavigationFlow {
+  const pattern = inferNavigationPattern(routes);
+
+  // Build route entries from the extracted routes
+  const routeEntries: Route[] = routes
+    .filter((r) => r.files.page !== undefined)
+    .map((r) => {
+      const params = r.segments
+        .filter((s) => s.kind === 'dynamic' || s.kind === 'catch-all')
+        .map((s) => s.paramName ?? s.name);
+
+      return {
+        path: r.urlPath,
+        screen: routePathToScreenName(r.urlPath),
+        params,
+        guards: [],
+      };
+    });
+
+  // Build tabs for tab-based navigation
+  const tabs: TabItem[] = [];
+  if (pattern === 'tab' || pattern === 'mixed') {
+    const topLevelRoutes = routes.filter((r) => r.parentPath === undefined && r.files.page !== undefined);
+    for (const route of topLevelRoutes) {
+      const screenName = routePathToScreenName(route.urlPath);
+      const label = screenName || 'Home';
+      tabs.push({
+        label,
+        icon: suggestSFSymbol(label),
+        screen: screenName,
+      });
+    }
+  }
+
+  // Determine initial screen
+  const entryScreen = screens.find((s) => s.isEntryPoint);
+  const initialScreen = entryScreen?.name ?? screens[0]?.name ?? 'Home';
+
+  return {
+    type: pattern === 'stack' ? 'stack' : pattern === 'tab' ? 'tab' : 'mixed',
+    routes: routeEntries,
+    tabs,
+    deepLinks: [],
+    initialScreen,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// State management building
+// ---------------------------------------------------------------------------
+
+/** Convert extracted state patterns to semantic StatePattern entries. */
+function buildStateManagement(
+  statePatterns: ExtractedState[],
+): StatePattern[] {
+  return statePatterns.map((sp) => {
+    const shape = extractStateShape(sp);
+    const mutations = extractStateMutations(sp);
+
+    return {
+      name: getStateName(sp),
+      type: mapStateType(sp.scope),
+      shape: {
+        kind: 'object' as const,
+        fields: shape.map((field) => ({
+          name: field.name,
+          type: typeFromString(field.type),
+          optional: false,
+          description: '',
+          isPrimaryKey: false,
+        })),
+        inferred: true,
+      },
+      mutations: mutations.map((m) => ({
+        name: m.name,
+        payload: m.payload ? typeFromString(m.payload) : null,
+        description: '',
+        optimistic: false,
+      })),
+      source: mapStateSource(sp.kind),
+      consumers: getStateConsumers(sp),
+      confidence: 'medium' as ConfidenceLevel,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// API endpoint building
+// ---------------------------------------------------------------------------
+
+/** Convert extracted API calls to semantic ApiEndpoint entries. */
+function buildApiEndpoints(apis: ExtractedApi[]): ApiEndpoint[] {
+  // Deduplicate by method + URL
+  const seen = new Set<string>();
+  const endpoints: ApiEndpoint[] = [];
+
+  for (const api of apis) {
+    const { method, url } = getApiUrlAndMethod(api);
+    const key = `${method} ${url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    endpoints.push({
+      url,
+      method,
+      headers: {},
+      requestBody: api.requestType ? typeFromString(api.requestType) : null,
+      responseType: api.responseType
+        ? typeFromString(api.responseType)
+        : { kind: 'unknown' as const },
+      auth: false, // Could be enhanced with auth detection
+      caching: (api.kind === 'react-query' || api.kind === 'swr')
+        ? { type: 'stale-while-revalidate' as const, ttlSeconds: null, invalidateOn: [] }
+        : null,
+      description: '',
+      sourceFile: api.filePath,
+      confidence: 'medium' as ConfidenceLevel,
+    });
+  }
+
+  return endpoints;
+}
+
+// ---------------------------------------------------------------------------
+// Entity extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a name looks like a state variable rather than a real data entity.
+ * State variables are things like isLoading, searchQuery, added, etc.
+ */
+function isStateVariableName(name: string): boolean {
+  // Starts with common state-variable prefixes (isLoading, hasError, showModal, etc.)
+  if (/^(is|has|show|should|can|did|will)[A-Z]/.test(name)) return true;
+
+  // Common state variable names (case-insensitive check)
+  const lower = name.toLowerCase();
+  const stateVarNames = [
+    'added', 'loading', 'error', 'selected', 'search', 'sort', 'filter',
+    'query', 'open', 'visible', 'active', 'disabled', 'checked', 'expanded',
+    'collapsed', 'searchquery', 'sortorder', 'selectedcategory', 'isloading',
+    'count', 'total', 'page', 'pagenumber', 'pagesize', 'currentpage',
+    'offset', 'limit', 'hasmore', 'hasnext', 'hasprevious',
+    'mounted', 'ready', 'initialized', 'value', 'text', 'input',
+    'message', 'status', 'result', 'show', 'hide', 'toggle',
+  ];
+  if (stateVarNames.includes(lower)) return true;
+
+  return false;
+}
+
+/** Deduplicate entity fields by name, keeping the first occurrence. */
+function deduplicateFields(
+  fields: { name: string; type: TypeDefinition; optional: boolean; description: string; isPrimaryKey: boolean }[],
+): typeof fields {
+  const seen = new Set<string>();
+  return fields.filter((f) => {
+    if (seen.has(f.name)) return false;
+    seen.add(f.name);
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TypeScript type definition → Entity conversion
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a raw TS type string (from the AST parser) into a semantic
+ * TypeDefinition used by the model. Handles primitives, arrays, unions
+ * with null/undefined (marking optionality), Date, and complex types.
+ *
+ * Returns `{ typeDef, isOptionalFromUnion }` so the caller can merge
+ * optionality from union types (e.g. `string | null`) with the property's
+ * own `?` token.
+ */
+function tsTypeStringToTypeDef(raw: string): { typeDef: TypeDefinition; isOptionalFromUnion: boolean } {
+  let typeStr = raw.trim();
+  let isOptionalFromUnion = false;
+
+  // Handle union types that include null / undefined → mark optional
+  if (typeStr.includes('|')) {
+    const parts = typeStr.split('|').map((p) => p.trim()).filter(Boolean);
+    const nonNullParts = parts.filter((p) => p !== 'null' && p !== 'undefined');
+    if (nonNullParts.length < parts.length) {
+      isOptionalFromUnion = true;
+    }
+    if (nonNullParts.length === 1) {
+      typeStr = nonNullParts[0]!;
+    } else if (nonNullParts.length > 1) {
+      // Genuine union type (not just T | null)
+      return {
+        typeDef: {
+          kind: 'union',
+          values: nonNullParts,
+          inferred: false,
+        },
+        isOptionalFromUnion,
+      };
+    } else {
+      // All parts were null/undefined — unlikely but handle gracefully
+      return { typeDef: { kind: 'unknown', inferred: true }, isOptionalFromUnion: true };
+    }
+  }
+
+  // Strip parentheses that ts-morph sometimes adds
+  typeStr = typeStr.replace(/^\((.+)\)$/, '$1').trim();
+
+  const lower = typeStr.toLowerCase();
+
+  // Primitives
+  if (lower === 'string') return { typeDef: { kind: 'string' }, isOptionalFromUnion };
+  if (lower === 'number') return { typeDef: { kind: 'number' }, isOptionalFromUnion };
+  if (lower === 'boolean') return { typeDef: { kind: 'boolean' }, isOptionalFromUnion };
+  if (lower === 'date') return { typeDef: { kind: 'date' }, isOptionalFromUnion };
+
+  // Array forms: T[] and Array<T>
+  if (typeStr.endsWith('[]')) {
+    const inner = typeStr.slice(0, -2).trim();
+    const { typeDef: elementType } = tsTypeStringToTypeDef(inner);
+    return { typeDef: { kind: 'array', elementType }, isOptionalFromUnion };
+  }
+  const arrayMatch = typeStr.match(/^Array<(.+)>$/i);
+  if (arrayMatch) {
+    const { typeDef: elementType } = tsTypeStringToTypeDef(arrayMatch[1]!);
+    return { typeDef: { kind: 'array', elementType }, isOptionalFromUnion };
+  }
+
+  // Everything else → object with typeName
+  return {
+    typeDef: { kind: 'object', typeName: typeStr, inferred: false },
+    isOptionalFromUnion,
+  };
+}
+
+/**
+ * Convert TypeScript interface / type-alias definitions from parsed files
+ * into Entity objects with fully-typed fields.
+ *
+ * Only exported interfaces/types with 2+ properties are considered — they
+ * represent real data models (Product, User, CartItem, etc.) rather than
+ * one-off utility types.
+ */
+function entitiesFromTypeDefinitions(parsedFiles: ParsedFile[]): Map<string, Entity> {
+  const entityMap = new Map<string, Entity>();
+
+  for (const pf of parsedFiles) {
+    for (const td of pf.types) {
+      // Only consider exported interfaces / type aliases with 2+ properties
+      if (!td.isExported) continue;
+      if (td.properties.length < 2) continue;
+
+      // Skip names that look like state variables or React utility types
+      if (isStateVariableName(td.name)) continue;
+      if (/Props$|State$|Context$|Ref$|Config$|Options$|Params$|Result$/.test(td.name)) continue;
+
+      const fields = td.properties.map((prop: TypeProperty) => {
+        const { typeDef, isOptionalFromUnion } = tsTypeStringToTypeDef(prop.type);
+        return {
+          name: prop.name,
+          type: typeDef,
+          optional: prop.isOptional || isOptionalFromUnion,
+          description: '',
+          isPrimaryKey: prop.name === 'id',
+        };
+      });
+
+      entityMap.set(td.name, {
+        name: td.name,
+        description: `Data entity from TypeScript ${td.kind} "${td.name}"`,
+        fields: deduplicateFields(fields),
+        sourceFile: pf.filePath,
+        relationships: [],
+        confidence: 'high',
+      });
+    }
+  }
+
+  return entityMap;
+}
+
+/**
+ * Infer entities from TypeScript type definitions, component props, API response
+ * types, and state shapes.  Entities represent the core data objects in the
+ * application.
+ *
+ * TypeScript interfaces/types take precedence because they carry explicit field
+ * types.  State-inferred or API-inferred entities are only added when there is
+ * no matching TS type definition.
+ *
+ * Filters out state variables (booleans, single-field primitives) and keeps
+ * only entities that look like real data models (multiple fields, noun-like names).
+ */
+function inferEntities(
+  components: ExtractedComponent[],
+  statePatterns: ExtractedState[],
+  apis: ExtractedApi[],
+  parsedFiles: ParsedFile[],
+): Entity[] {
+  // Start with entities derived from TypeScript type definitions — these have
+  // explicit field types and take precedence over inferred entities.
+  const entityMap = entitiesFromTypeDefinitions(parsedFiles);
+
+  // Extract entities from state pattern shapes (skip if already defined by TS types)
+  for (const sp of statePatterns) {
+    const shape = extractStateShape(sp);
+    if (shape.length > 0) {
+      const stateName = getStateName(sp);
+      const entityName = stateName.charAt(0).toUpperCase() + stateName.slice(1);
+
+      // Skip entities that look like simple state variables
+      if (isStateVariableName(entityName)) continue;
+
+      // Skip entities with 0-1 fields (likely a primitive state value, not a data model)
+      if (shape.length <= 1) continue;
+
+      if (!entityMap.has(entityName)) {
+        entityMap.set(entityName, {
+          name: entityName,
+          description: `Data entity derived from ${sp.kind} state "${stateName}"`,
+          fields: deduplicateFields(
+            shape.map((field) => ({
+              name: field.name,
+              type: typeFromString(field.type),
+              optional: false,
+              description: '',
+              isPrimaryKey: field.name === 'id',
+            })),
+          ),
+          sourceFile: sp.filePath,
+          relationships: [],
+          confidence: 'medium',
+        });
+      }
+    }
+  }
+
+  // Extract entities from useState with array types that reference PascalCase models
+  for (const sp of statePatterns) {
+    if (!sp.useState) continue;
+    const typeStr = sp.useState.type || '';
+    if (typeStr.endsWith('[]') || typeStr.startsWith('Array<')) {
+      const elementType = typeStr.endsWith('[]')
+        ? typeStr.slice(0, -2)
+        : typeStr.slice(6, -1);
+      if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType) && !entityMap.has(elementType)) {
+        entityMap.set(elementType, {
+          name: elementType,
+          description: `Data entity inferred from useState type "${typeStr}" in ${sp.ownerName}`,
+          fields: [],
+          sourceFile: sp.filePath,
+          relationships: [],
+          confidence: 'low',
+        });
+      }
+    }
+  }
+
+  // Extract entities from API response type hints (all API kinds, not just fetch)
+  for (const api of apis) {
+    if (api.responseType) {
+      const entityName = api.responseType.replace(/\[\]$/, '').replace(/^Array</, '').replace(/>$/, '');
+      if (entityName && !entityMap.has(entityName) && /^[A-Z]/.test(entityName) && !isStateVariableName(entityName)) {
+        entityMap.set(entityName, {
+          name: entityName,
+          description: `Data entity inferred from API response at ${getApiUrlAndMethod(api).url}`,
+          fields: [],
+          sourceFile: api.filePath,
+          relationships: [],
+          confidence: 'low',
+        });
+      }
+    }
+  }
+
+  // Extract entities from component prop types (PascalCase array/object props)
+  for (const comp of components) {
+    for (const prop of comp.props) {
+      const typeStr = prop.type || '';
+      if (typeStr.endsWith('[]') || typeStr.startsWith('Array<')) {
+        const elementType = typeStr.endsWith('[]')
+          ? typeStr.slice(0, -2)
+          : typeStr.slice(6, -1);
+        if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType) && !entityMap.has(elementType)) {
+          entityMap.set(elementType, {
+            name: elementType,
+            description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
+            fields: [],
+            sourceFile: comp.filePath,
+            relationships: [],
+            confidence: 'low',
+          });
+        }
+      } else if (/^[A-Z][a-zA-Z]+$/.test(typeStr) && !isStateVariableName(typeStr) && !entityMap.has(typeStr)) {
+        entityMap.set(typeStr, {
+          name: typeStr,
+          description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
+          fields: [],
+          sourceFile: comp.filePath,
+          relationships: [],
+          confidence: 'low',
+        });
+      }
+    }
+  }
+
+  // Filter out junk entities: generic type names, entities with angle brackets, empty-field entities
+  return Array.from(entityMap.values()).filter((e) => {
+    if (e.name.includes('<') || e.name.includes('>')) return false;
+    if (e.name === 'Promise' || e.name === 'Array' || e.name === 'Record') return false;
+    if (/^(any|unknown|void|never|undefined|null|object|string|number|boolean)$/i.test(e.name)) return false;
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a unified Semantic App Model from raw analyzer outputs.
+ *
+ * This is the core function that bridges analysis (input) and generation (output).
+ * It merges data from all extractors, infers navigation structure, correlates
+ * state with screens, matches API calls to components, detects auth patterns,
+ * and extracts theme information.
+ *
+ * @param analysisResult - Aggregated output from all analyzers
+ * @returns A complete SemanticAppModel ready for platform adaptation and code generation
+ *
+ * @example
+ * ```typescript
+ * const analysisResult = await analyzeRepo('/path/to/web-app');
+ * const model = await buildSemanticModel(analysisResult);
+ * const adapted = adaptForPlatform(model, 'ios');
+ * ```
+ */
+export async function buildSemanticModel(
+  analysisResult: AnalysisResult,
+): Promise<SemanticAppModel> {
+  const { scanResult: scan, parsedFiles, components, routes, statePatterns, apiEndpoints } = analysisResult;
+
+  // Optionally wire up AI client for intent extraction
+  const aiClient = getGrokClient();
+
+  // 1. Build screens by merging component + route data
+  const screens = buildScreens(components, routes, statePatterns, apiEndpoints, aiClient);
+
+  // 2. Build navigation structure from routes
+  const navigation = buildNavigation(routes, screens);
+
+  // 3. Build state management patterns
+  const stateManagement = buildStateManagement(statePatterns);
+
+  // 4. Build API endpoints (deduplicated)
+  const apiEndpointModels = buildApiEndpoints(apiEndpoints);
+
+  // 5. Detect authentication patterns
+  const auth = detectAuthPattern(routes, apiEndpoints, components);
+
+  // 6. Extract theme information
+  const theme = extractThemeFromScan(scan);
+
+  // 7. Infer data entities
+  const entities = inferEntities(components, statePatterns, apiEndpoints, parsedFiles);
+
+  // 8. Determine app name from scan result
+  const appName = inferAppName(scan);
+
+  // 9. Calculate overall confidence
+  const confidence = calculateOverallConfidence(screens, stateManagement, apiEndpointModels);
+
+  // 10. Collect warnings
+  const warnings = collectWarnings(screens, routes, statePatterns, apiEndpoints);
+
+  const model: SemanticAppModel = {
+    appName,
+    description: `iOS app generated from ${scan.framework} web application`,
+    version: '1.0',
+    entities,
+    screens,
+    navigation,
+    stateManagement,
+    apiEndpoints: apiEndpointModels,
+    auth,
+    theme,
+    confidence,
+    metadata: {
+      sourceFramework: mapFramework(scan.framework),
+      extractedAt: new Date().toISOString(),
+      morphkitVersion: '0.1.0',
+      analyzedFiles: scan.allFiles.map((f) => f.relativePath),
+      warnings,
+    },
+  };
+
+  return model;
+}
+
+/** Infer the app name from the repository scan result. */
+function inferAppName(scanResult: RepoScanResult): string {
+  const pathSegments = scanResult.repoPath.split('/').filter(Boolean);
+  const dirName = pathSegments[pathSegments.length - 1] ?? 'App';
+  return dirName.charAt(0).toUpperCase() + dirName.slice(1);
+}
+
+/** Map scanner framework kind to semantic model framework enum. */
+function mapFramework(
+  framework: RepoScanResult['framework'],
+): SemanticAppModel['metadata']['sourceFramework'] {
+  switch (framework) {
+    case 'nextjs-app-router':
+    case 'nextjs-pages-router':
+      return 'next';
+    case 'react':
+      return 'react';
+    default:
+      return 'other';
+  }
+}
+
+/** Calculate overall model confidence from constituent parts. */
+function calculateOverallConfidence(
+  screens: Screen[],
+  stateManagement: StatePattern[],
+  apiEndpoints: ApiEndpoint[],
+): ConfidenceLevel {
+  if (screens.length === 0) return 'low';
+
+  const allConfidences = [
+    ...screens.map((s) => s.confidence),
+    ...stateManagement.map((s) => s.confidence),
+    ...apiEndpoints.map((a) => a.confidence),
+  ];
+
+  if (allConfidences.length === 0) return 'low';
+
+  const scores = allConfidences.map((c) =>
+    c === 'high' ? 3 : c === 'medium' ? 2 : 1,
+  );
+  const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+
+  if (avg >= 2.5) return 'high';
+  if (avg >= 1.5) return 'medium';
+  return 'low';
+}
+
+/** Collect warnings about potential issues in the extracted model. */
+function collectWarnings(
+  screens: Screen[],
+  routes: ExtractedRoute[],
+  statePatterns: ExtractedState[],
+  apis: ExtractedApi[],
+): string[] {
+  const warnings: string[] = [];
+
+  if (screens.length === 0) {
+    warnings.push('No screens were extracted. The app may use an unsupported routing pattern.');
+  }
+
+  if (routes.length === 0) {
+    warnings.push('No routes detected. Navigation structure will be inferred from components.');
+  }
+
+  if (statePatterns.length === 0) {
+    warnings.push('No state management patterns detected. State architecture will use defaults.');
+  }
+
+  if (apis.length === 0) {
+    warnings.push('No API endpoints detected. The app may use server-side data fetching not visible to static analysis.');
+  }
+
+  return warnings;
+}

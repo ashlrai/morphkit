@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach } from 'bun:test';
 import { join } from 'path';
 import { existsSync, rmSync } from 'fs';
 import { analyzeRepo } from '../../src/analyzer/index';
@@ -15,6 +15,8 @@ describe('Full Pipeline E2E', () => {
     if (existsSync(OUTPUT_PATH)) {
       rmSync(OUTPUT_PATH, { recursive: true, force: true });
     }
+    // Disable AI client for tests to avoid timeouts
+    delete process.env.XAI_API_KEY;
   });
 
   test('analyzes sample Next.js app successfully', async () => {

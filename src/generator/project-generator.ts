@@ -215,44 +215,121 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
 // State layer generation
 // ---------------------------------------------------------------------------
 
-/** Check if an entity looks like a real data model (not a simple state variable) */
-function isRealDataModel(entity: { name: string; fields: { name: string }[] }): boolean {
-    // Must have more than 1 field to be a real model
-    if (entity.fields.length <= 1) return false;
+/**
+ * Clean a Zustand/Redux store name for Swift:
+ *   - Strip leading 'Use'/'use' prefix (React hook convention)
+ *   - Strip trailing 'Store'/'store' suffix (will be re-added)
+ *   - Return PascalCase base name
+ * e.g. 'useCartStore' → 'Cart', 'UseCartStore' → 'Cart', 'cartStore' → 'Cart'
+ */
+function cleanStoreName(raw: string): string {
+    let name = raw;
+    // Strip leading 'use' (case-insensitive)
+    name = name.replace(/^[Uu]se/, '');
+    // Strip trailing 'Store' (case-insensitive)
+    name = name.replace(/[Ss]tore$/, '');
+    // PascalCase the result
+    if (name.length === 0) name = 'App';
+    return pascalCase(name);
+}
 
-    // Filter out names that look like state variables
-    const stateVarPatterns = /^(is[A-Z]|has[A-Z]|show[A-Z]|added|loading|error|selected|search|sort|filter|query|open|visible|active|disabled|checked|expanded|collapsed)/i;
-    if (stateVarPatterns.test(entity.name)) return false;
+/**
+ * Determine which entity names have associated API endpoints.
+ * An entity is considered API-backed if any endpoint URL contains the
+ * entity name (lowercase, singular or plural) or the response type
+ * references it.
+ */
+function entitiesWithApiEndpoints(model: SemanticAppModel): Set<string> {
+    const result = new Set<string>();
+    const endpoints = model.apiEndpoints ?? [];
 
-    // Filter out single-word boolean/primitive-sounding names
-    const primitiveNames = ['added', 'isloading', 'searchquery', 'sortorder', 'selectedcategory', 'loading', 'error', 'visible', 'open', 'active'];
-    if (primitiveNames.includes(entity.name.toLowerCase())) return false;
+    for (const entity of model.entities ?? []) {
+        const nameLower = entity.name.toLowerCase();
+        for (const ep of endpoints) {
+            const urlLower = ep.url.toLowerCase();
+            // Check URL contains entity name (singular or plural)
+            if (urlLower.includes(nameLower) || urlLower.includes(nameLower + 's')) {
+                result.add(entity.name);
+                break;
+            }
+            // Check response type references entity
+            if (ep.responseType?.typeName?.toLowerCase() === nameLower) {
+                result.add(entity.name);
+                break;
+            }
+        }
+    }
 
-    return true;
+    return result;
+}
+
+/**
+ * Detect sub-type entities that are used as fields of other entities
+ * (e.g. CartItem is a sub-type of Cart because Cart has a CartItem[] field).
+ * These should not get their own store.
+ */
+function getSubTypeEntityNames(model: SemanticAppModel): Set<string> {
+    const subTypes = new Set<string>();
+    const entities = model.entities ?? [];
+    const entityNames = new Set(entities.map((e) => e.name));
+
+    for (const entity of entities) {
+        for (const field of entity.fields ?? []) {
+            // Check if a field references another entity by name (direct or array)
+            const referencedName =
+                field.type.typeName ??
+                field.type.elementType?.typeName;
+            if (referencedName && entityNames.has(referencedName) && referencedName !== entity.name) {
+                subTypes.add(referencedName);
+            }
+        }
+    }
+
+    return subTypes;
 }
 
 function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
     const files: GeneratedFile[] = [];
-    const entities = model.entities ?? [];
     const screens = model.screens ?? [];
+    const statePatterns = model.stateManagement ?? [];
 
-    // Only create stores for real data model entities (>1 field, not state vars)
-    const realEntities = entities.filter(isRealDataModel);
+    // Determine which entities have API endpoints and which are sub-types
+    const apiBackedEntities = entitiesWithApiEndpoints(model);
+    const subTypeEntities = getSubTypeEntityNames(model);
 
-    for (const entity of realEntities) {
-        const name = pascalCase(entity.name);
-        const varName = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
+    // --- Strategy 1: Zustand stores → consolidate into one store per web store ---
+    // Each Zustand state pattern maps to a single Swift @Observable store.
+    const zustandPatterns = statePatterns.filter((sp) => sp.source === 'zustand');
+    const generatedStoreNames = new Set<string>();
+
+    for (const sp of zustandPatterns) {
+        const storeName = cleanStoreName(sp.name);
+        // Skip if we already generated a store with this cleaned name
+        if (generatedStoreNames.has(storeName)) continue;
+        generatedStoreNames.add(storeName);
+
         const lines: string[] = [];
-
-        lines.push(`// Generated by Morphkit from: ${relativeSourcePath(entity.sourceFile ?? 'unknown')}`);
+        lines.push(`// Generated by Morphkit from Zustand store: ${sp.name}`);
         lines.push('');
         lines.push('import SwiftUI');
         lines.push('import Observation');
         lines.push('');
         lines.push('@Observable');
-        lines.push(`final class ${name}Store {`);
-        lines.push(`    var ${varName}s: [${name}] = []`);
-        lines.push(`    var selected${name}: ${name}?`);
+        lines.push(`final class ${storeName}Store {`);
+
+        // Add state properties from the Zustand shape
+        if (sp.shape?.fields) {
+            for (const field of sp.shape.fields) {
+                const propName = field.name.charAt(0).toLowerCase() + field.name.slice(1);
+                lines.push(`    var ${propName}: Any // TODO: replace with concrete type`);
+            }
+        } else {
+            // Fallback: use store name to infer a collection property
+            const varName = storeName.charAt(0).toLowerCase() + storeName.slice(1);
+            lines.push(`    var ${varName}s: [${storeName}] = []`);
+            lines.push(`    var selected${storeName}: ${storeName}?`);
+        }
+
         lines.push('    var isLoading = false');
         lines.push('    var error: NetworkError?');
         lines.push('');
@@ -261,33 +338,115 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
         lines.push('    init(apiClient: APIClient = .shared) {');
         lines.push('        self.apiClient = apiClient');
         lines.push('    }');
-        lines.push('');
-        lines.push(`    func fetch${name}s() async {`);
-        lines.push('        isLoading = true');
-        lines.push('        error = nil');
-        lines.push('');
-        lines.push('        do {');
-        lines.push(`            ${varName}s = try await apiClient.fetch${name}s()`);
-        lines.push('        } catch let networkError as NetworkError {');
-        lines.push('            error = networkError');
-        lines.push('        } catch {');
-        lines.push('            self.error = .unknown(error)');
-        lines.push('        }');
-        lines.push('');
-        lines.push('        isLoading = false');
-        lines.push('    }');
+
+        // Add mutation methods from Zustand actions
+        if (sp.mutations && sp.mutations.length > 0) {
+            lines.push('');
+            for (const mutation of sp.mutations) {
+                const methodName = mutation.name.charAt(0).toLowerCase() + mutation.name.slice(1);
+                lines.push(`    func ${methodName}() async {`);
+                lines.push('        // TODO: implement');
+                lines.push('    }');
+            }
+        } else {
+            lines.push('');
+            lines.push(`    func fetch${storeName}s() async {`);
+            lines.push('        isLoading = true');
+            lines.push('        error = nil');
+            lines.push('');
+            lines.push('        do {');
+            const varName = storeName.charAt(0).toLowerCase() + storeName.slice(1);
+            lines.push(`            ${varName}s = try await apiClient.fetch${storeName}s()`);
+            lines.push('        } catch let networkError as NetworkError {');
+            lines.push('            error = networkError');
+            lines.push('        } catch {');
+            lines.push('            self.error = .unknown(error)');
+            lines.push('        }');
+            lines.push('');
+            lines.push('        isLoading = false');
+            lines.push('    }');
+        }
+
         lines.push('}');
         lines.push('');
 
         files.push({
-            path: `State/${name}Store.swift`,
+            path: `State/${storeName}Store.swift`,
             content: lines.join('\n'),
-            sourceMapping: entity.sourceFile ?? 'unknown',
+            sourceMapping: sp.consumers?.[0] ?? 'unknown',
             confidence: 'medium',
             warnings: [
-                `${name}Store uses inferred API methods — verify method names match APIClient`,
+                `${storeName}Store generated from Zustand store "${sp.name}" — verify API methods`,
             ],
         });
+    }
+
+    // --- Strategy 2: Entity-based stores for non-Zustand apps ---
+    // Only generate stores for entities that have API endpoints and are not sub-types.
+    // Skip if Zustand stores already cover these entities.
+    if (zustandPatterns.length === 0) {
+        const entities = model.entities ?? [];
+
+        for (const entity of entities) {
+            // Skip enum entities (single __enum field)
+            if (entity.fields.length === 1 && entity.fields[0]?.name === '__enum') continue;
+            // Skip entities without API endpoints
+            if (!apiBackedEntities.has(entity.name)) continue;
+            // Skip sub-type entities (e.g. CartItem is part of Cart)
+            if (subTypeEntities.has(entity.name)) continue;
+            // Skip if a store with this name was already generated
+            const name = pascalCase(entity.name);
+            if (generatedStoreNames.has(name)) continue;
+            generatedStoreNames.add(name);
+
+            const varName = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
+            const lines: string[] = [];
+
+            lines.push(`// Generated by Morphkit from: ${relativeSourcePath(entity.sourceFile ?? 'unknown')}`);
+            lines.push('');
+            lines.push('import SwiftUI');
+            lines.push('import Observation');
+            lines.push('');
+            lines.push('@Observable');
+            lines.push(`final class ${name}Store {`);
+            lines.push(`    var ${varName}s: [${name}] = []`);
+            lines.push(`    var selected${name}: ${name}?`);
+            lines.push('    var isLoading = false');
+            lines.push('    var error: NetworkError?');
+            lines.push('');
+            lines.push('    private let apiClient: APIClient');
+            lines.push('');
+            lines.push('    init(apiClient: APIClient = .shared) {');
+            lines.push('        self.apiClient = apiClient');
+            lines.push('    }');
+            lines.push('');
+            lines.push(`    func fetch${name}s() async {`);
+            lines.push('        isLoading = true');
+            lines.push('        error = nil');
+            lines.push('');
+            lines.push('        do {');
+            lines.push(`            ${varName}s = try await apiClient.fetch${name}s()`);
+            lines.push('        } catch let networkError as NetworkError {');
+            lines.push('            error = networkError');
+            lines.push('        } catch {');
+            lines.push('            self.error = .unknown(error)');
+            lines.push('        }');
+            lines.push('');
+            lines.push('        isLoading = false');
+            lines.push('    }');
+            lines.push('}');
+            lines.push('');
+
+            files.push({
+                path: `State/${name}Store.swift`,
+                content: lines.join('\n'),
+                sourceMapping: entity.sourceFile ?? 'unknown',
+                confidence: 'medium',
+                warnings: [
+                    `${name}Store uses inferred API methods — verify method names match APIClient`,
+                ],
+            });
+        }
     }
 
     // Generate per-screen ViewModels that group local state bindings
@@ -380,7 +539,7 @@ function generateReadme(model: SemanticAppModel, stats: GeneratedProject['stats'
         path: '../README.md',
         content: `# ${appName}
 
-Generated by [Morphkit](https://github.com/AshlarAI/morphkit) from web source analysis.
+Generated by [Morphkit](https://github.com/ashlrai/morphkit) from web source analysis.
 
 ## Project Stats
 

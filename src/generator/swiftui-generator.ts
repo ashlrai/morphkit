@@ -85,17 +85,20 @@ function viewFileName(screenName: string): string {
  */
 function relativeSourcePath(fullPath: string): string {
     if (!fullPath || fullPath === 'unknown') return 'unknown';
-    // Try common app root markers
-    const markers = ['/app/', '/src/', '/pages/', '/components/'];
+    // Try common app root markers — order matters: prefer deeper matches first
+    const markers = ['/app/', '/src/', '/pages/', '/components/', '/types/', '/lib/', '/utils/', '/hooks/', '/services/', '/api/'];
     for (const marker of markers) {
         const idx = fullPath.lastIndexOf(marker);
         if (idx !== -1) {
             return fullPath.slice(idx + 1); // Skip the leading /
         }
     }
-    // Fallback: just the filename
-    const lastSlash = fullPath.lastIndexOf('/');
-    return lastSlash >= 0 ? fullPath.slice(lastSlash + 1) : fullPath;
+    // Fallback: return the last two path segments (dir/file) for context
+    const parts = fullPath.split('/');
+    if (parts.length >= 2) {
+        return parts.slice(-2).join('/');
+    }
+    return parts[parts.length - 1] ?? fullPath;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,13 +118,18 @@ function typeDefToSwift(td: TypeDefinition): string {
         case 'array':
             return td.elementType ? `[${typeDefToSwift(td.elementType)}]` : '[Any]';
         case 'object':
-            if (td.typeName) return td.typeName;
+            if (td.typeName) return pascalCase(td.typeName);
             return '[String: Any]';
         case 'enum':
-            if (td.typeName) return td.typeName;
+            if (td.typeName) return pascalCase(td.typeName);
             return 'String';
         case 'union':
-            if (td.typeName) return td.typeName;
+            // If all values are strings, this is a string-like union (e.g. 'asc' | 'desc')
+            // — represent as String rather than a custom type that may not exist
+            if (td.values && td.values.length > 0 && td.values.every((v) => typeof v === 'string')) {
+                return 'String';
+            }
+            if (td.typeName) return pascalCase(td.typeName);
             return 'Any';
         case 'literal':
             return 'String';
@@ -161,7 +169,7 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
         let defaultValue = '.init()';
 
         if (pattern) {
-            swiftType = resolveStatePatternType(pattern, bindingName);
+            swiftType = resolveStatePatternType(pattern, bindingName, model);
             defaultValue = defaultValueForType(swiftType);
         } else {
             // Infer type from the binding name heuristics
@@ -184,7 +192,7 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
  * Resolve a StatePattern to a concrete Swift type.
  * Inspects the shape to determine the most appropriate type.
  */
-function resolveStatePatternType(pattern: StatePattern, bindingName: string): string {
+function resolveStatePatternType(pattern: StatePattern, bindingName: string, model?: SemanticAppModel): string {
     const shape = pattern.shape;
     if (!shape) return inferTypeFromName(bindingName);
 
@@ -198,6 +206,15 @@ function resolveStatePatternType(pattern: StatePattern, bindingName: string): st
             const resolved = typeDefToSwift(matchingField.type);
             // If the field type resolved to a generic Any, try name-based inference
             if (resolved === 'Any') return inferTypeFromName(bindingName);
+            // If the resolved type is a custom name from an inferred object type,
+            // verify it actually exists as an entity in the model. Otherwise it's
+            // likely a TS type alias (e.g. SortOrder) that wasn't extracted as an entity.
+            if (matchingField.type.inferred && matchingField.type.kind === 'object' && matchingField.type.typeName) {
+                const entityNames = (model?.entities ?? []).map((e) => pascalCase(e.name));
+                if (!entityNames.includes(resolved)) {
+                    return inferTypeFromName(bindingName);
+                }
+            }
             return resolved;
         }
 
@@ -302,7 +319,42 @@ function resolveEntity(screen: Screen, model: SemanticAppModel): Entity | null {
     );
     if (screenEntity) return screenEntity;
 
-    // 3. Match by component names referencing entities
+    // 3. For detail screens (e.g. "ProductsDetail"), strip suffix and try
+    //    singular + plural forms against entity names and their array element types.
+    if (screen.name.endsWith('Detail')) {
+        const baseName = screen.name.slice(0, -'Detail'.length); // "Products"
+        const singular = baseName.endsWith('s') && baseName.length > 1
+            ? baseName.slice(0, -1)
+            : baseName; // "Product"
+
+        // 3a. Direct match on singular or base name
+        const singularMatch = entities.find(
+            (e) => pascalCase(e.name) === pascalCase(singular),
+        );
+        if (singularMatch) return singularMatch;
+
+        const baseMatch = entities.find(
+            (e) => pascalCase(e.name) === pascalCase(baseName),
+        );
+        if (baseMatch) return baseMatch;
+
+        // 3b. Match entities whose array fields reference the singular type
+        //     e.g., Products entity has field { type: { kind: 'array', elementType: { typeName: 'product' } } }
+        for (const entity of entities) {
+            for (const field of entity.fields ?? []) {
+                if (
+                    field.type.kind === 'array' &&
+                    field.type.elementType &&
+                    'typeName' in field.type.elementType &&
+                    pascalCase((field.type.elementType as any).typeName) === pascalCase(singular)
+                ) {
+                    return entity;
+                }
+            }
+        }
+    }
+
+    // 4. Match by component names referencing entities
     for (const comp of screen.components ?? []) {
         const compMatch = entities.find(
             (e) =>
@@ -310,6 +362,58 @@ function resolveEntity(screen: Screen, model: SemanticAppModel): Entity | null {
                 comp.name.toLowerCase().includes(e.name.toLowerCase()),
         );
         if (compMatch) return compMatch;
+    }
+
+    return null;
+}
+
+/**
+ * For detail screens, resolve the entity representing a single item (not a collection).
+ * Falls back to resolveEntity, but prefers singular entities over collection wrappers.
+ * When only a collection entity exists (e.g., "Products" with a products[] field),
+ * this looks for the element type entity or synthesizes one from screen components.
+ */
+function resolveDetailEntity(screen: Screen, model: SemanticAppModel): Entity | null {
+    const entities = model.entities ?? [];
+    if (entities.length === 0) return null;
+
+    // Derive the singular entity name from the screen
+    const singularName = inferEntityFromScreen(screen); // e.g., "Product"
+
+    // 1. Prefer a direct match on the singular name (from TS interface entities)
+    const singularMatch = entities.find(
+        (e) => pascalCase(e.name) === pascalCase(singularName),
+    );
+    if (singularMatch) return singularMatch;
+
+    // 2. Try resolveEntity — but verify the result is suitable for a detail view
+    const resolved = resolveEntity(screen, model);
+    if (resolved) {
+        const fields = deduplicateFields(resolved.fields ?? []);
+        // If the entity has meaningful fields (not just a single array field), use it
+        const nonArrayFields = fields.filter((f) => f.type.kind !== 'array');
+        if (nonArrayFields.length >= 2) {
+            return resolved;
+        }
+
+        // The entity is a collection wrapper (e.g., "Products" with only products[]).
+        // Check if the array element type references an entity we can find.
+        for (const field of fields) {
+            if (
+                field.type.kind === 'array' &&
+                field.type.elementType &&
+                'typeName' in field.type.elementType
+            ) {
+                const elementTypeName = (field.type.elementType as any).typeName as string;
+                const elementEntity = entities.find(
+                    (e) => pascalCase(e.name) === pascalCase(elementTypeName),
+                );
+                if (elementEntity) return elementEntity;
+            }
+        }
+
+        // No element entity found — the resolved entity is the best we have
+        return resolved;
     }
 
     return null;
@@ -324,6 +428,7 @@ interface EntityFieldRoles {
     imageField: Field | null;
     priceField: Field | null;
     descriptionField: Field | null;
+    quantityField: Field | null;
     booleanFields: Field[];
     otherFields: Field[];
     allFields: Field[];
@@ -337,6 +442,7 @@ function categorizeEntityFields(entity: Entity): EntityFieldRoles {
         imageField: null,
         priceField: null,
         descriptionField: null,
+        quantityField: null,
         booleanFields: [],
         otherFields: [],
         allFields: fields,
@@ -350,6 +456,8 @@ function categorizeEntityFields(entity: Entity): EntityFieldRoles {
             result.imageField = f;
         } else if (!result.priceField && (lower.includes('price') || lower.includes('cost') || lower.includes('amount'))) {
             result.priceField = f;
+        } else if (!result.quantityField && (lower.includes('quantity') || lower.includes('qty') || lower.includes('count'))) {
+            result.quantityField = f;
         } else if (!result.descriptionField && (lower.includes('description') || lower.includes('summary') || lower.includes('body') || lower.includes('content'))) {
             result.descriptionField = f;
         } else if (!result.subtitleField && (lower.includes('subtitle') || lower.includes('email') || lower.includes('category') || lower.includes('brand'))) {
@@ -478,6 +586,14 @@ function humanizeActionTarget(target: string): string {
 function generateLayoutBody(screen: Screen, model: SemanticAppModel, indentLevel: number): string {
     const layout = screen.layout ?? 'detail';
     const components = screen.components ?? [];
+
+    // For screens whose name ends in "Detail" (e.g. "ProductsDetail"),
+    // override the layout to 'detail' even if the model says 'custom'.
+    // The builder assigns "custom" when it can't determine layout, but
+    // the "Detail" suffix is a strong signal.
+    if (layout === 'custom' && isDetailScreen(screen, model)) {
+        return generateDetailLayout(screen, model, components, indentLevel);
+    }
 
     switch (layout) {
         case 'list':
@@ -686,8 +802,10 @@ function generateFormLayout(screen: Screen, model: SemanticAppModel, components:
 }
 
 function generateDetailLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
-    const entity = resolveEntity(screen, model);
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    // For detail screens, use resolveDetailEntity to get the singular item entity
+    // (not a collection wrapper) so we render individual fields like name, price, etc.
+    const entity = resolveDetailEntity(screen, model) ?? resolveEntity(screen, model);
+    const entityName = inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const lines: string[] = [];
 
@@ -802,7 +920,18 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
     lines.push('    .padding()');
     lines.push('}');
 
-    lines.push(`.navigationTitle("${screen.name}")`);
+    // For detail views, use the entity title field as dynamic nav title if available
+    if (entity) {
+        const roles = categorizeEntityFields(entity);
+        if (roles.titleField) {
+            lines.push(`.navigationTitle(${varName}.${camelCase(roles.titleField.name)})`);
+        } else {
+            lines.push(`.navigationTitle("${inferEntityFromScreen(screen)} Detail")`);
+        }
+    } else {
+        const cleanName = screen.name.replace(/Detail$/, '');
+        lines.push(`.navigationTitle("${cleanName}")`);
+    }
 
     return indent(lines.join('\n'), indentLevel);
 }
@@ -811,85 +940,233 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     const entity = resolveEntity(screen, model);
     const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
+    const dataReqs = screen.dataRequirements ?? [];
+    const actions = screen.actions ?? [];
+    const otherScreens = (model.screens ?? []).filter((s) => s.name !== screen.name);
     const lines: string[] = [];
 
     lines.push('ScrollView {');
-    lines.push('    VStack(spacing: 20) {');
+    lines.push('    VStack(spacing: 24) {');
 
-    // Summary cards section
-    lines.push('        // Summary cards');
-    lines.push('        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {');
-
-    // Generate meaningful summary cards from data requirements / state
-    const dataReqs = screen.dataRequirements ?? [];
-    if (dataReqs.length > 0) {
-        for (const req of dataReqs) {
-            const reqSource = req.source ?? (req as any).entity ?? 'Item';
-            const cardName = pascalCase(reqSource);
-            lines.push(`            SummaryCard(title: "${cardName}", value: "\\(${camelCase(reqSource)}Count)")`);
-        }
+    // Hero / welcome section
+    lines.push('        // Hero section');
+    lines.push('        VStack(spacing: 8) {');
+    lines.push('            Text("Welcome")');
+    lines.push('                .font(.largeTitle)');
+    lines.push('                .fontWeight(.bold)');
+    if (screen.description && screen.description !== `Screen for ${screen.name}`) {
+        lines.push(`            Text("${screen.description}")`);
+    } else if (entity) {
+        lines.push('            Text("Discover our curated collection")');
     } else {
-        // Generic summary cards based on screen purpose
-        lines.push('            SummaryCard(title: "Total", value: "\\(totalCount)")');
-        lines.push('            SummaryCard(title: "Active", value: "\\(activeCount)")');
+        lines.push('            Text("Here\\u{2019}s what\\u{2019}s happening today")');
+    }
+    lines.push('                .font(.subheadline)');
+    lines.push('                .foregroundStyle(.secondary)');
+    lines.push('        }');
+    lines.push('        .frame(maxWidth: .infinity)');
+    lines.push('        .padding(.top)');
+
+    // Featured items horizontal scroll (when there's a collection data requirement)
+    const collectionReq = dataReqs.find((r) => r.cardinality === 'many');
+    if (collectionReq || entity) {
+        const featuredVar = collectionReq
+            ? camelCase(collectionReq.source ?? (collectionReq as any).entity ?? entityName)
+            : varName;
+        const featuredArrayVar = featuredVar.endsWith('s') ? featuredVar : `${featuredVar}s`;
+
+        lines.push('');
+        lines.push(`        // Featured ${entityName.toLowerCase()}s`);
+        lines.push(`        if !${featuredArrayVar}.isEmpty {`);
+        lines.push('            VStack(alignment: .leading, spacing: 12) {');
+        lines.push('                Text("Featured")');
+        lines.push('                    .font(.title2)');
+        lines.push('                    .fontWeight(.bold)');
+        lines.push('');
+        lines.push('                ScrollView(.horizontal, showsIndicators: false) {');
+        lines.push('                    LazyHStack(spacing: 16) {');
+        lines.push(`                        ForEach(${featuredArrayVar}) { ${varName} in`);
+
+        if (entity) {
+            const roles = categorizeEntityFields(entity);
+            lines.push('                            VStack(alignment: .leading, spacing: 8) {');
+            if (roles.imageField) {
+                lines.push(`                                AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+                lines.push('                                    image.resizable().aspectRatio(contentMode: .fill)');
+                lines.push('                                } placeholder: {');
+                lines.push('                                    RoundedRectangle(cornerRadius: 12)');
+                lines.push('                                        .fill(Color.gray.opacity(0.2))');
+                lines.push('                                }');
+                lines.push('                                .frame(width: 200, height: 140)');
+                lines.push('                                .clipShape(RoundedRectangle(cornerRadius: 12))');
+            } else {
+                lines.push('                                RoundedRectangle(cornerRadius: 12)');
+                lines.push('                                    .fill(Color.accentColor.opacity(0.15))');
+                lines.push('                                    .frame(width: 200, height: 140)');
+                lines.push('                                    .overlay {');
+                lines.push('                                        Image(systemName: "star.fill")');
+                lines.push('                                            .font(.largeTitle)');
+                lines.push('                                            .foregroundStyle(.accent)');
+                lines.push('                                    }');
+            }
+            if (roles.titleField) {
+                lines.push(`                                Text(${varName}.${camelCase(roles.titleField.name)})`);
+                lines.push('                                    .font(.headline)');
+                lines.push('                                    .lineLimit(1)');
+            }
+            if (roles.priceField) {
+                lines.push(`                                Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+                lines.push('                                    .font(.subheadline)');
+                lines.push('                                    .fontWeight(.semibold)');
+                lines.push('                                    .foregroundStyle(.accent)');
+            } else if (roles.subtitleField) {
+                lines.push(`                                Text(${varName}.${camelCase(roles.subtitleField.name)})`);
+                lines.push('                                    .font(.subheadline)');
+                lines.push('                                    .foregroundStyle(.secondary)');
+            }
+            lines.push('                            }');
+            lines.push('                            .frame(width: 200)');
+        } else {
+            lines.push('                            VStack(alignment: .leading) {');
+            lines.push('                                RoundedRectangle(cornerRadius: 12)');
+            lines.push('                                    .fill(Color.accentColor.opacity(0.15))');
+            lines.push('                                    .frame(width: 200, height: 140)');
+            lines.push(`                                Text(${varName}.name)`);
+            lines.push('                                    .font(.headline)');
+            lines.push('                            }');
+            lines.push('                            .frame(width: 200)');
+        }
+
+        lines.push('                        }');
+        lines.push('                    }');
+        lines.push('                    .padding(.horizontal, 1)');
+        lines.push('                }');
+        lines.push('            }');
+        lines.push('        }');
     }
 
-    lines.push('        }');
+    // Quick action buttons
+    const meaningfulActions = actions.filter(
+        (a) => (a.label ?? '') !== 'inline' || (a.effect?.target ?? '') !== 'inline',
+    );
+    if (meaningfulActions.length > 0) {
+        lines.push('');
+        lines.push('        // Quick actions');
+        lines.push('        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {');
+        for (const action of meaningfulActions) {
+            const label = action.label && action.label !== 'inline'
+                ? capitalise(action.label)
+                : humanizeActionTarget(action.effect?.target ?? action.label ?? 'action');
+            const effectType = action.effect?.type;
+            const effectTarget = action.effect?.target ?? action.label ?? 'action';
 
-    // Recent items section
+            if (effectType === 'navigate') {
+                lines.push('            NavigationLink {');
+                lines.push(`                ${pascalCase(effectTarget)}View()`);
+                lines.push('            } label: {');
+                lines.push(`                Label("${label}", systemImage: "arrow.right.circle.fill")`);
+                lines.push('                    .frame(maxWidth: .infinity, minHeight: 60)');
+                lines.push('                    .background(Color.accentColor.opacity(0.1))');
+                lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 12))');
+                lines.push('            }');
+            } else {
+                lines.push('            Button {');
+                lines.push(`                ${camelCase(effectTarget)}()`);
+                lines.push('            } label: {');
+                lines.push(`                Label("${label}", systemImage: "bolt.fill")`);
+                lines.push('                    .frame(maxWidth: .infinity, minHeight: 60)');
+                lines.push('                    .background(Color.accentColor.opacity(0.1))');
+                lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 12))');
+                lines.push('            }');
+            }
+        }
+        lines.push('        }');
+    }
+
+    // Recent items section (when entity is available)
     if (entity) {
         const roles = categorizeEntityFields(entity);
+        const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
         lines.push('');
         lines.push(`        // Recent ${entityName.toLowerCase()}s`);
-        lines.push('        VStack(alignment: .leading, spacing: 12) {');
-        lines.push(`            Text("Recent ${entityName}s")`);
-        lines.push('                .font(.headline)');
-        lines.push('');
-        lines.push(`            ForEach(${varName}s.prefix(5)) { ${varName} in`);
+        lines.push(`        if !${arrayVar}.isEmpty {`);
+        lines.push('            VStack(alignment: .leading, spacing: 12) {');
         lines.push('                HStack {');
+        lines.push('                    Text("Recent")');
+        lines.push('                        .font(.title2)');
+        lines.push('                        .fontWeight(.bold)');
+        lines.push('                    Spacer()');
+        lines.push('                    Button("See All") { }');
+        lines.push('                        .font(.subheadline)');
+        lines.push('                }');
+        lines.push('');
+        lines.push(`                ForEach(${arrayVar}.prefix(5)) { ${varName} in`);
+        lines.push('                    HStack(spacing: 12) {');
+        if (roles.imageField) {
+            lines.push(`                        AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push('                            image.resizable().aspectRatio(contentMode: .fill)');
+            lines.push('                        } placeholder: {');
+            lines.push('                            Image(systemName: "photo.circle.fill")');
+            lines.push('                                .foregroundStyle(.secondary)');
+            lines.push('                        }');
+            lines.push('                        .frame(width: 44, height: 44)');
+            lines.push('                        .clipShape(RoundedRectangle(cornerRadius: 8))');
+        }
+        lines.push('                        VStack(alignment: .leading, spacing: 2) {');
         if (roles.titleField) {
-            lines.push(`                    Text(${varName}.${camelCase(roles.titleField.name)})`);
-            lines.push('                        .font(.body)');
+            lines.push(`                            Text(${varName}.${camelCase(roles.titleField.name)})`);
+            lines.push('                                .font(.body)');
         } else {
-            lines.push(`                    Text(String(describing: ${varName}.id))`);
-            lines.push('                        .font(.body)');
+            lines.push(`                            Text(String(describing: ${varName}.id))`);
+            lines.push('                                .font(.body)');
         }
-        lines.push('                    Spacer()');
         if (roles.subtitleField) {
-            lines.push(`                    Text(${varName}.${camelCase(roles.subtitleField.name)})`);
-            lines.push('                        .font(.caption)');
-            lines.push('                        .foregroundStyle(.secondary)');
+            lines.push(`                            Text(${varName}.${camelCase(roles.subtitleField.name)})`);
+            lines.push('                                .font(.caption)');
+            lines.push('                                .foregroundStyle(.secondary)');
         }
+        lines.push('                        }');
+        lines.push('                        Spacer()');
+        if (roles.priceField) {
+            lines.push(`                        Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push('                            .font(.subheadline)');
+            lines.push('                            .fontWeight(.semibold)');
+        }
+        lines.push('                    }');
+        lines.push('                    Divider()');
         lines.push('                }');
-        lines.push('                Divider()');
-        lines.push('            }');
-        lines.push('        }');
-    } else {
-        lines.push('');
-        lines.push('        // Recent activity');
-        lines.push('        VStack(alignment: .leading, spacing: 12) {');
-        lines.push('            Text("Recent Activity")');
-        lines.push('                .font(.headline)');
-        lines.push('');
-        lines.push('            ForEach(recentItems) { item in');
-        lines.push('                HStack {');
-        lines.push('                    Text(item.title)');
-        lines.push('                    Spacer()');
-        lines.push('                    Text(item.subtitle)');
-        lines.push('                        .foregroundStyle(.secondary)');
-        lines.push('                }');
-        lines.push('                Divider()');
         lines.push('            }');
         lines.push('        }');
     }
 
-    // Action buttons at the bottom
-    const actionLines = generateActionButtons(screen, 2);
-    if (actionLines.length > 0) {
+    // Navigation links to other screens (when no entity or actions available)
+    if (!entity && meaningfulActions.length === 0 && otherScreens.length > 0) {
         lines.push('');
-        for (const line of actionLines) {
-            lines.push(line);
+        lines.push('        // Browse');
+        lines.push('        VStack(alignment: .leading, spacing: 12) {');
+        lines.push('            Text("Explore")');
+        lines.push('                .font(.title2)');
+        lines.push('                .fontWeight(.bold)');
+        lines.push('');
+        for (const other of otherScreens.slice(0, 6)) {
+            const screenLabel = humanizeFieldName(other.name);
+            const sfSymbol = inferSfSymbol(other);
+            lines.push('            NavigationLink {');
+            lines.push(`                ${pascalCase(other.name)}View()`);
+            lines.push('            } label: {');
+            lines.push('                HStack {');
+            lines.push(`                    Image(systemName: "${sfSymbol}")`);
+            lines.push('                        .frame(width: 28)');
+            lines.push(`                    Text("${screenLabel}")`);
+            lines.push('                    Spacer()');
+            lines.push('                    Image(systemName: "chevron.right")');
+            lines.push('                        .font(.caption)');
+            lines.push('                        .foregroundStyle(.tertiary)');
+            lines.push('                }');
+            lines.push('                .padding(.vertical, 4)');
+            lines.push('            }');
         }
+        lines.push('        }');
     }
 
     lines.push('    }');
@@ -899,6 +1176,27 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     lines.push(`.navigationTitle("${screen.name}")`);
 
     return indent(lines.join('\n'), indentLevel);
+}
+
+/**
+ * Infer an SF Symbol name for a screen based on its name/layout.
+ */
+function inferSfSymbol(screen: Screen): string {
+    const lower = screen.name.toLowerCase();
+    if (lower.includes('cart') || lower.includes('basket')) return 'cart.fill';
+    if (lower.includes('product') || lower.includes('shop') || lower.includes('store')) return 'bag.fill';
+    if (lower.includes('profile') || lower.includes('account') || lower.includes('user')) return 'person.fill';
+    if (lower.includes('setting')) return 'gearshape.fill';
+    if (lower.includes('search') || lower.includes('explore') || lower.includes('discover')) return 'magnifyingglass';
+    if (lower.includes('order') || lower.includes('history')) return 'clock.fill';
+    if (lower.includes('home') || lower.includes('dashboard')) return 'house.fill';
+    if (lower.includes('favorite') || lower.includes('wishlist')) return 'heart.fill';
+    if (lower.includes('notification') || lower.includes('alert')) return 'bell.fill';
+    if (lower.includes('message') || lower.includes('chat')) return 'bubble.left.fill';
+    if (screen.layout === 'list') return 'list.bullet';
+    if (screen.layout === 'form') return 'square.and.pencil';
+    if (screen.layout === 'detail') return 'doc.text.fill';
+    return 'square.grid.2x2.fill';
 }
 
 function generateSettingsLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
@@ -1389,11 +1687,34 @@ function humanizeFieldName(name: string): string {
 function inferEntityFromScreen(screen: Screen): string {
     // Try to derive an entity name from the screen name
     // e.g., "Products" -> "Product", "Cart" -> "Cart", "Home" -> "Item"
-    const name = screen.name;
+    // For detail screens: "ProductsDetail" -> "Product", "UserDetail" -> "User"
+    let name = screen.name;
+
+    // Strip "Detail" suffix first (builder appends it for /products/:id routes)
+    if (name.endsWith('Detail')) {
+        name = name.slice(0, -'Detail'.length);
+    }
+
+    // Singularize: "Products" -> "Product"
     if (name.endsWith('s') && name.length > 1) {
         return pascalCase(name.slice(0, -1));
     }
     return pascalCase(name);
+}
+
+/**
+ * Check if a screen is a detail view (single-entity display).
+ * Detail screens are those with names ending in "Detail" or routes with dynamic params.
+ */
+function isDetailScreen(screen: Screen, model: SemanticAppModel): boolean {
+    if (screen.layout === 'detail') return true;
+    if (screen.name.endsWith('Detail')) return true;
+    // Check if the screen's route has dynamic params
+    const routes = model.navigation?.routes ?? [];
+    const matchingRoute = routes.find(
+        (r) => r.screen === screen.name && r.params.length > 0,
+    );
+    return !!matchingRoute;
 }
 
 // ---------------------------------------------------------------------------
@@ -1468,8 +1789,25 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
+    // Entity-based property for detail layouts — the body references entity fields via varName
+    // Track let properties separately so the #Preview can pass sample data
+    const letProperties: { name: string; type: string }[] = [];
+    if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
+        const detailEntity = resolveDetailEntity(screen, model) ?? resolveEntity(screen, model);
+        if (detailEntity) {
+            const eName = pascalCase(inferEntityFromScreen(screen));
+            const eVar = camelCase(inferEntityFromScreen(screen));
+            if (!declaredNames.has(eVar)) {
+                lines.push(`    let ${eVar}: ${eName}`);
+                declaredNames.add(eVar);
+                letProperties.push({ name: eVar, type: eName });
+            }
+        }
+    }
+
     // For custom layouts with repeated components, generate array state
-    if (screen.layout === 'custom' || !screen.layout) {
+    // Skip if this screen is being treated as a detail view
+    if ((screen.layout === 'custom' || !screen.layout) && !isDetailScreen(screen, model)) {
         const entity = resolveEntity(screen, model);
         if (entity) {
             const eName = pascalCase(entity.name);
@@ -1599,7 +1937,13 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push(`    @Previewable @State var preview = true`);
     }
     lines.push(`    NavigationStack {`);
-    lines.push(`        ${viewName}(${hasBindings ? '/* pass bindings */' : ''})`);
+    // If the view has required let properties, pass .preview() sample data
+    if (letProperties.length > 0) {
+        const args = letProperties.map((p) => `${p.name}: .preview()`).join(', ');
+        lines.push(`        ${viewName}(${args})`);
+    } else {
+        lines.push(`        ${viewName}(${hasBindings ? '/* pass bindings */' : ''})`);
+    }
     lines.push(`    }`);
     lines.push('}');
     lines.push('');

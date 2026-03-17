@@ -9,6 +9,8 @@
  * Uses the Grok AI client for intent extraction when code purpose is ambiguous.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import type { RepoScanResult } from '../analyzer/repo-scanner.js';
 import type { ExtractedComponent } from '../analyzer/component-extractor.js';
 import type { ExtractedRoute } from '../analyzer/route-extractor.js';
@@ -34,7 +36,6 @@ import type {
   TypeDefinition,
 } from './model.js';
 import { GrokClient, getGrokClient as getClient } from '../ai/index.js';
-import type { IntentAnalysis } from '../ai/index.js';
 
 // Re-export the analyzer types so consumers can reference them
 export type { ExtractedComponent } from '../analyzer/component-extractor.js';
@@ -69,14 +70,48 @@ export interface AnalysisResult {
  * by falling back to heuristic-based extraction.
  */
 function getGrokClientSafe(): GrokClient | null {
+  // Allow explicit opt-out via environment variable
+  if (process.env.MORPHKIT_NO_AI === '1' || process.env.MORPHKIT_NO_AI === 'true') {
+    console.log('[morphkit] AI client disabled via MORPHKIT_NO_AI, using heuristics');
+    return null;
+  }
+
+  // Only attempt AI if the API key is configured
+  if (!process.env.XAI_API_KEY) {
+    console.log('[morphkit] No XAI_API_KEY set — using heuristics (set XAI_API_KEY for AI-enhanced analysis)');
+    return null;
+  }
+
   try {
     const client = getClient();
     console.log('[morphkit] AI client connected (grok-4-1-fast-reasoning)');
     return client;
   } catch (_err) {
-    // Missing API key or other config error — degrade gracefully
+    // Unexpected error during client creation — degrade gracefully
     console.log('[morphkit] AI client not available, using heuristics');
     return null;
+  }
+}
+
+/** Default timeout for AI calls (ms). Prevents the pipeline from hanging. */
+const AI_CALL_TIMEOUT_MS = 15_000;
+
+/**
+ * Run an async AI call with a timeout. Returns null if the call exceeds the limit.
+ */
+async function withAITimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = AI_CALL_TIMEOUT_MS,
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    const result = await Promise.race([promise, timeout]);
+    return result;
+  } finally {
+    clearTimeout(timer!);
   }
 }
 
@@ -88,12 +123,15 @@ function routeHasDynamicParams(routePath: string): boolean {
 /**
  * Infer a layout type from component structure, route path, and state bindings.
  * Uses multiple signal sources to avoid defaulting everything to 'custom'.
+ * When AI is available and heuristics return 'custom', tries Grok for a better answer.
  */
-function inferLayout(
+async function inferLayout(
   component: ExtractedComponent,
   routePath?: string,
   statePatterns?: ExtractedState[],
-): LayoutType {
+  aiClient?: GrokClient | null,
+  appName?: string,
+): Promise<LayoutType> {
   const children = component.children.map((c) => c.name).join(' ').toLowerCase();
   const name = component.name.toLowerCase();
 
@@ -154,6 +192,48 @@ function inferLayout(
   const hookNames = component.hooks.map((h) => h.hookName).join(' ').toLowerCase();
   if (hookNames.includes('useform')) return 'form';
 
+  // --- 7. AI fallback for ambiguous components ---
+  if (aiClient) {
+    try {
+      const intent = await withAITimeout(aiClient.analyzeIntent({
+        code: `// Component: ${component.name}\n// Props: ${component.props.map((p) => p.name).join(', ')}\n// Children: ${component.children.map((c) => c.name).join(', ')}`,
+        appContext: {
+          appName: appName ?? 'App',
+          domain: 'unknown',
+          additionalContext: `Route: ${routePath ?? 'none'}. Determine the most appropriate iOS layout type for this component.`,
+        },
+      }));
+      if (intent) {
+        const aiLayout = mapSuggestedPatternToLayout(intent.suggestedIOSPattern);
+        if (aiLayout !== 'custom') {
+          return aiLayout;
+        }
+      }
+    } catch (err) {
+      console.warn('[morphkit] AI layout inference failed, using heuristic fallback:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return 'custom';
+}
+
+/**
+ * Map an AI-suggested iOS pattern string to a LayoutType.
+ * The AI returns freeform pattern descriptions like "List with searchable modifier".
+ * We extract the dominant layout signal from that.
+ */
+function mapSuggestedPatternToLayout(pattern: string): LayoutType {
+  const lower = pattern.toLowerCase();
+  if (lower.includes('list') || lower.includes('foreach')) return 'list';
+  if (lower.includes('form')) return 'form';
+  if (lower.includes('grid') || lower.includes('lazyvgrid') || lower.includes('lazyhgrid')) return 'grid';
+  if (lower.includes('detail') || lower.includes('scrollview')) return 'detail';
+  if (lower.includes('dashboard') || lower.includes('widget')) return 'dashboard';
+  if (lower.includes('tab')) return 'dashboard';
+  if (lower.includes('setting') || lower.includes('preference')) return 'settings';
+  if (lower.includes('profile') || lower.includes('account')) return 'profile';
+  if (lower.includes('login') || lower.includes('auth') || lower.includes('sign')) return 'auth';
+  if (lower.includes('onboard') || lower.includes('welcome')) return 'onboarding';
   return 'custom';
 }
 
@@ -418,6 +498,11 @@ function buildDefaultTheme(): ThemeConfig {
 /**
  * Attempt to extract theme information from the scan result.
  * Looks for Tailwind config, CSS variables, or theme files.
+ *
+ * When a Tailwind config is present, reads its raw text and regex-extracts
+ * color definitions from `theme.extend.colors` (or `theme.colors`).
+ * Recognized color names: brand, primary, accent — the first match found
+ * is used as the primary color in the generated theme.
  */
 function extractThemeFromScan(scanResult: RepoScanResult): ThemeConfig {
   const theme = buildDefaultTheme();
@@ -427,7 +512,57 @@ function extractThemeFromScan(scanResult: RepoScanResult): ThemeConfig {
     theme.supportsDarkMode = true;
   }
 
+  // Try to extract colors from the Tailwind config file
+  if (scanResult.hasTailwind) {
+    const tailwindConfig = scanResult.configs.find((f) =>
+      path.basename(f.relativePath).startsWith('tailwind.config'),
+    );
+
+    if (tailwindConfig) {
+      try {
+        const configText = fs.readFileSync(tailwindConfig.absolutePath, 'utf-8');
+        const extractedColor = extractTailwindPrimaryColor(configText);
+        if (extractedColor) {
+          theme.colors.primary = extractedColor;
+          theme.colors.accent = extractedColor;
+        }
+      } catch {
+        // If we can't read the config, fall through to defaults
+      }
+    }
+  }
+
   return theme;
+}
+
+/**
+ * Regex-extract a primary/brand/accent color hex value from raw Tailwind
+ * config text. Works with both JS and TS config files.
+ *
+ * Searches for common color key names in order of priority:
+ *   1. `primary`
+ *   2. `brand`
+ *   3. `accent`
+ *
+ * Returns the first hex color found, or `null` if none match.
+ */
+function extractTailwindPrimaryColor(configText: string): string | null {
+  // Order matters — primary takes precedence over brand over accent
+  const colorNames = ['primary', 'brand', 'accent'];
+
+  for (const name of colorNames) {
+    // Match patterns like:  brand: '#6366f1'  or  brand: "#6366f1"  or  "brand": "#6366f1"
+    // Also handles optional quotes around the key and flexible whitespace
+    const pattern = new RegExp(
+      `['"]?${name}['"]?\\s*:\\s*['"]?(#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?)`,
+    );
+    const match = configText.match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,13 +667,14 @@ function detectAuthPattern(
  * Build Screen definitions by merging component data with route data.
  * Routes with page files become screens, matched to components by file path.
  */
-function buildScreens(
+async function buildScreens(
   components: ExtractedComponent[],
   routes: ExtractedRoute[],
   statePatterns: ExtractedState[],
   apis: ExtractedApi[],
-  _aiClient: GrokClient | null,
-): Screen[] {
+  aiClient: GrokClient | null,
+  appName?: string,
+): Promise<Screen[]> {
   const componentByFile = new Map<string, ExtractedComponent>();
   for (const comp of components) {
     componentByFile.set(comp.filePath, comp);
@@ -557,11 +693,13 @@ function buildScreens(
 
     processedComponents.add(component.name);
 
-    const screen = buildScreenFromRouteAndComponent(
+    const screen = await buildScreenFromRouteAndComponent(
       route,
       component,
       statePatterns,
       apis,
+      aiClient,
+      appName,
     );
     screens.push(screen);
   }
@@ -571,7 +709,7 @@ function buildScreens(
     if (processedComponents.has(comp.name)) continue;
     if (comp.category !== 'page') continue;
 
-    const screen = buildScreenFromComponent(comp, statePatterns, apis);
+    const screen = await buildScreenFromComponent(comp, statePatterns, apis, aiClient, appName);
     screens.push(screen);
   }
 
@@ -595,14 +733,16 @@ function buildScreens(
 }
 
 /** Build a Screen from a matched route + component pair. */
-function buildScreenFromRouteAndComponent(
+async function buildScreenFromRouteAndComponent(
   route: ExtractedRoute,
   component: ExtractedComponent,
   statePatterns: ExtractedState[],
   apis: ExtractedApi[],
-): Screen {
+  aiClient?: GrokClient | null,
+  appName?: string,
+): Promise<Screen> {
   const screenName = routePathToScreenName(route.urlPath);
-  const layout = inferLayout(component, route.urlPath, statePatterns);
+  const layout = await inferLayout(component, route.urlPath, statePatterns, aiClient, appName);
 
   // Find state patterns related to this component
   const stateBindings = statePatterns
@@ -709,7 +849,8 @@ function buildScreenFromRouteAndComponent(
     };
   });
 
-  return {
+  // Build base screen with heuristic defaults
+  const screen: Screen = {
     name: screenName,
     description: `Screen for ${route.urlPath}`,
     purpose: `Renders the ${screenName} view at route ${route.urlPath}`,
@@ -723,15 +864,62 @@ function buildScreenFromRouteAndComponent(
     isEntryPoint: false,
     confidence: 'medium',
   };
+
+  // Enhance with AI intent analysis when available
+  if (aiClient) {
+    try {
+      const componentCode = await readComponentSource(component.filePath);
+      const intent = await withAITimeout(aiClient.analyzeIntent({
+        code: componentCode,
+        appContext: {
+          appName: appName ?? 'App',
+          domain: 'unknown',
+          knownRoutes: [route.urlPath],
+        },
+      }));
+      if (intent) {
+        screen.purpose = intent.purpose;
+        screen.description = intent.purpose;
+        // Use AI's suggested iOS pattern to refine layout if it was 'custom'
+        if (screen.layout === 'custom') {
+          const aiLayout = mapSuggestedPatternToLayout(intent.suggestedIOSPattern);
+          if (aiLayout !== 'custom') {
+            screen.layout = aiLayout;
+          }
+        }
+        screen.confidence = 'high';
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI intent analysis failed for ${screenName}, using heuristics:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return screen;
+}
+
+/**
+ * Read a component's source file for AI analysis.
+ * Returns a truncated version to stay within token limits.
+ */
+async function readComponentSource(filePath: string): Promise<string> {
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    // Truncate to ~4000 chars to stay within reasonable token limits
+    return content.length > 4000 ? content.slice(0, 4000) + '\n// ... (truncated)' : content;
+  } catch {
+    return `// Source file not readable: ${filePath}`;
+  }
 }
 
 /** Build a Screen from a standalone page component (no matching route). */
-function buildScreenFromComponent(
+async function buildScreenFromComponent(
   component: ExtractedComponent,
   statePatterns: ExtractedState[],
   apis: ExtractedApi[],
-): Screen {
-  const layout = inferLayout(component, undefined, statePatterns);
+  aiClient?: GrokClient | null,
+  appName?: string,
+): Promise<Screen> {
+  const layout = await inferLayout(component, undefined, statePatterns, aiClient, appName);
   const stateBindings = statePatterns
     .filter((sp) => sp.ownerName === component.name)
     .map((sp) => getStateName(sp));
@@ -780,7 +968,7 @@ function buildScreenFromComponent(
     }
   }
 
-  return {
+  const screen: Screen = {
     name: component.name,
     description: `Screen derived from component ${component.name}`,
     purpose: `Renders the ${component.name} view`,
@@ -798,6 +986,35 @@ function buildScreenFromComponent(
     isEntryPoint: false,
     confidence: 'low',
   };
+
+  // Enhance with AI intent analysis when available
+  if (aiClient) {
+    try {
+      const componentCode = await readComponentSource(component.filePath);
+      const intent = await withAITimeout(aiClient.analyzeIntent({
+        code: componentCode,
+        appContext: {
+          appName: appName ?? 'App',
+          domain: 'unknown',
+        },
+      }));
+      if (intent) {
+        screen.purpose = intent.purpose;
+        screen.description = intent.purpose;
+        if (screen.layout === 'custom') {
+          const aiLayout = mapSuggestedPatternToLayout(intent.suggestedIOSPattern);
+          if (aiLayout !== 'custom') {
+            screen.layout = aiLayout;
+          }
+        }
+        screen.confidence = 'medium'; // Upgrade from 'low' since AI provided insight
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI intent analysis failed for ${component.name}, using heuristics:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return screen;
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,17 +1264,48 @@ function tsTypeStringToTypeDef(raw: string): { typeDef: TypeDefinition; isOption
  * Convert TypeScript interface / type-alias definitions from parsed files
  * into Entity objects with fully-typed fields.
  *
- * Only exported interfaces/types with 2+ properties are considered — they
- * represent real data models (Product, User, CartItem, etc.) rather than
- * one-off utility types.
+ * Exported interfaces/types with 2+ properties become struct entities.
+ * Exported type aliases that are string literal unions (e.g.
+ * `type SortOrder = 'price-asc' | 'price-desc' | 'name'`) become enum
+ * entities — a single field named `__enum` with kind 'enum' and the values.
  */
 function entitiesFromTypeDefinitions(parsedFiles: ParsedFile[]): Map<string, Entity> {
   const entityMap = new Map<string, Entity>();
 
   for (const pf of parsedFiles) {
     for (const td of pf.types) {
-      // Only consider exported interfaces / type aliases with 2+ properties
       if (!td.isExported) continue;
+
+      // --- String literal union type aliases → enum entities ---
+      // e.g. type SortOrder = 'price-asc' | 'price-desc' | 'name' | 'rating'
+      // These have kind 'type-alias', 0 properties, and text containing only
+      // string literals separated by |.
+      if (td.kind === 'type-alias' && td.properties.length === 0) {
+        const stringUnionMatch = td.text.match(/=\s*((?:'[^']*'(?:\s*\|\s*)?)+)\s*;?\s*$/);
+        if (stringUnionMatch) {
+          const valuesRaw = stringUnionMatch[1];
+          const values = valuesRaw.split('|').map((v) => v.trim().replace(/^'|'$/g, '')).filter(Boolean);
+          if (values.length >= 2) {
+            entityMap.set(td.name, {
+              name: td.name,
+              description: `Enum from TypeScript string union type "${td.name}"`,
+              fields: [{
+                name: '__enum',
+                type: { kind: 'enum', values, typeName: td.name },
+                optional: false,
+                description: '',
+                isPrimaryKey: false,
+              }],
+              sourceFile: pf.filePath,
+              relationships: [],
+              confidence: 'high',
+            });
+            continue;
+          }
+        }
+      }
+
+      // --- Struct entities: interfaces / type aliases with 2+ properties ---
       if (td.properties.length < 2) continue;
 
       // Skip names that look like state variables or React utility types
@@ -1251,10 +1499,13 @@ export async function buildSemanticModel(
   const { scanResult: scan, parsedFiles, components, routes, statePatterns, apiEndpoints } = analysisResult;
 
   // Optionally wire up AI client for intent extraction
-  const aiClient = getGrokClient();
+  const aiClient = getGrokClientSafe();
+
+  // 8. Determine app name from scan result (needed early for AI context)
+  const appName = inferAppName(scan);
 
   // 1. Build screens by merging component + route data
-  const screens = buildScreens(components, routes, statePatterns, apiEndpoints, aiClient);
+  const screens = await buildScreens(components, routes, statePatterns, apiEndpoints, aiClient, appName);
 
   // 2. Build navigation structure from routes
   const navigation = buildNavigation(routes, screens);
@@ -1273,9 +1524,6 @@ export async function buildSemanticModel(
 
   // 7. Infer data entities
   const entities = inferEntities(components, statePatterns, apiEndpoints, parsedFiles);
-
-  // 8. Determine app name from scan result
-  const appName = inferAppName(scan);
 
   // 9. Calculate overall confidence
   const confidence = calculateOverallConfidence(screens, stateManagement, apiEndpointModels);
@@ -1307,11 +1555,19 @@ export async function buildSemanticModel(
   return model;
 }
 
-/** Infer the app name from the repository scan result. */
+/** Infer the app name from the repository scan result.
+ *  Converts hyphenated/underscore directory names to PascalCase
+ *  so the name is a valid Swift identifier (e.g. "sample-nextjs-app" → "SampleNextjsApp").
+ */
 function inferAppName(scanResult: RepoScanResult): string {
   const pathSegments = scanResult.repoPath.split('/').filter(Boolean);
   const dirName = pathSegments[pathSegments.length - 1] ?? 'App';
-  return dirName.charAt(0).toUpperCase() + dirName.slice(1);
+  // PascalCase: split on hyphens/underscores/spaces, capitalize each segment
+  return dirName
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((seg) => seg.charAt(0).toUpperCase() + seg.slice(1))
+    .join('');
 }
 
 /** Map scanner framework kind to semantic model framework enum. */

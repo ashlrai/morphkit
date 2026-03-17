@@ -15,7 +15,8 @@ describe('Full Pipeline E2E', () => {
     if (existsSync(OUTPUT_PATH)) {
       rmSync(OUTPUT_PATH, { recursive: true, force: true });
     }
-    // Disable AI client for tests to avoid timeouts
+    // Disable AI client for tests to avoid real API call timeouts
+    process.env.MORPHKIT_NO_AI = '1';
     delete process.env.XAI_API_KEY;
   });
 

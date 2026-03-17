@@ -412,7 +412,13 @@ function resolveDetailEntity(screen: Screen, model: SemanticAppModel): Entity | 
             }
         }
 
-        // No element entity found — the resolved entity is the best we have
+        // No element entity found. If the resolved entity is a collection wrapper
+        // (only array fields), return null so the generator can use component-based fallback.
+        // Returning a collection wrapper for a detail screen produces poor output
+        // (e.g., showing "products" array instead of individual product fields).
+        const allArray = fields.every((f) => f.type.kind === 'array');
+        if (allArray) return null;
+
         return resolved;
     }
 
@@ -593,6 +599,12 @@ function generateLayoutBody(screen: Screen, model: SemanticAppModel, indentLevel
     // the "Detail" suffix is a strong signal.
     if (layout === 'custom' && isDetailScreen(screen, model)) {
         return generateDetailLayout(screen, model, components, indentLevel);
+    }
+
+    // Cart screens should use the specialised cart layout regardless of
+    // what layout type the builder assigned (often 'list' or 'custom').
+    if (isCartScreen(screen) && layout !== 'dashboard' && layout !== 'form') {
+        return generateCartLayout(screen, model, components, indentLevel);
     }
 
     switch (layout) {
@@ -804,7 +816,9 @@ function generateFormLayout(screen: Screen, model: SemanticAppModel, components:
 function generateDetailLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
     // For detail screens, use resolveDetailEntity to get the singular item entity
     // (not a collection wrapper) so we render individual fields like name, price, etc.
-    const entity = resolveDetailEntity(screen, model) ?? resolveEntity(screen, model);
+    // Do NOT fall back to resolveEntity — it may return a collection wrapper
+    // (e.g., "Products" entity with only a products[] field).
+    const entity = resolveDetailEntity(screen, model);
     const entityName = inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const lines: string[] = [];
@@ -1390,11 +1404,198 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
 }
 
 /**
+ * Detect if a screen represents a shopping cart / basket view.
+ */
+function isCartScreen(screen: Screen): boolean {
+    const lower = screen.name.toLowerCase();
+    if (lower.includes('cart') || lower.includes('basket') || lower.includes('bag')) return true;
+    const bindings = screen.stateBindings ?? [];
+    return bindings.some((b) => b.toLowerCase().includes('cart'));
+}
+
+/**
+ * Generate a cart/basket view with empty state, item list with quantity controls,
+ * order total, and checkout button.
+ */
+function generateCartLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
+    const entity = resolveEntity(screen, model);
+    const entityName = deriveEntityName(screen) ?? 'CartItem';
+    const varName = camelCase(entityName);
+    const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
+    const actions = screen.actions ?? [];
+    const lines: string[] = [];
+
+    // Determine field accessors from the entity if available
+    let nameAccessor = `${varName}.name`;
+    let priceAccessor = `${varName}.price`;
+    let quantityAccessor = `${varName}.quantity`;
+    let imageAccessor: string | null = null;
+
+    if (entity) {
+        const roles = categorizeEntityFields(entity);
+        if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
+        if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
+        if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
+        if (roles.imageField) imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
+    }
+
+    // Empty state
+    lines.push(`if ${arrayVar}.isEmpty {`);
+    lines.push('    // Empty cart state');
+    lines.push('    VStack(spacing: 20) {');
+    lines.push('        Spacer()');
+    lines.push('        Image(systemName: "cart")');
+    lines.push('            .font(.system(size: 64))');
+    lines.push('            .foregroundStyle(.secondary)');
+    lines.push('        Text("Your cart is empty")');
+    lines.push('            .font(.title2)');
+    lines.push('            .fontWeight(.semibold)');
+    lines.push('        Text("Browse our collection and add items to get started.")');
+    lines.push('            .font(.subheadline)');
+    lines.push('            .foregroundStyle(.secondary)');
+    lines.push('            .multilineTextAlignment(.center)');
+
+    // Find a browse/products navigation action, or generate a generic one
+    const browseAction = actions.find(
+        (a) => a.effect?.type === 'navigate' && (a.effect?.target ?? '').toLowerCase().match(/product|shop|browse|home/),
+    );
+    if (browseAction) {
+        const target = browseAction.effect?.target ?? 'Products';
+        lines.push(`        NavigationLink("Browse Products") {`);
+        lines.push(`            ${pascalCase(target)}View()`);
+        lines.push('        }');
+        lines.push('        .buttonStyle(.borderedProminent)');
+    } else {
+        lines.push('        NavigationLink("Start Shopping") {');
+        lines.push('            // Navigate to product listing');
+        lines.push('        }');
+        lines.push('        .buttonStyle(.borderedProminent)');
+    }
+    lines.push('        Spacer()');
+    lines.push('    }');
+    lines.push('    .frame(maxWidth: .infinity)');
+    lines.push('    .padding()');
+
+    // Cart with items
+    lines.push('} else {');
+    lines.push('    VStack(spacing: 0) {');
+    lines.push('        // Cart items');
+    lines.push('        List {');
+    lines.push(`            ForEach(${arrayVar}) { ${varName} in`);
+    lines.push('                HStack(spacing: 12) {');
+
+    // Item image
+    if (imageAccessor) {
+        lines.push(`                    AsyncImage(url: URL(string: ${imageAccessor} ?? "")) { image in`);
+        lines.push('                        image.resizable().aspectRatio(contentMode: .fill)');
+        lines.push('                    } placeholder: {');
+        lines.push('                        Color.gray.opacity(0.2)');
+        lines.push('                    }');
+        lines.push('                    .frame(width: 60, height: 60)');
+        lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 8))');
+    }
+
+    // Item details
+    lines.push('                    VStack(alignment: .leading, spacing: 4) {');
+    lines.push(`                        Text(${nameAccessor})`);
+    lines.push('                            .font(.body)');
+    lines.push('                            .lineLimit(2)');
+    lines.push(`                        Text(${priceAccessor}, format: .currency(code: "USD"))`);
+    lines.push('                            .font(.subheadline)');
+    lines.push('                            .foregroundStyle(.secondary)');
+    lines.push('                    }');
+
+    // Quantity controls
+    lines.push('                    Spacer()');
+    lines.push('                    HStack(spacing: 12) {');
+    lines.push('                        Button {');
+    lines.push(`                            decrementQuantity(for: ${varName})`);
+    lines.push('                        } label: {');
+    lines.push('                            Image(systemName: "minus.circle")');
+    lines.push('                                .font(.title3)');
+    lines.push('                        }');
+    lines.push(`                        Text("\\(${quantityAccessor})")`);
+    lines.push('                            .font(.body)');
+    lines.push('                            .monospacedDigit()');
+    lines.push('                            .frame(minWidth: 24)');
+    lines.push('                        Button {');
+    lines.push(`                            incrementQuantity(for: ${varName})`);
+    lines.push('                        } label: {');
+    lines.push('                            Image(systemName: "plus.circle.fill")');
+    lines.push('                                .font(.title3)');
+    lines.push('                        }');
+    lines.push('                    }');
+    lines.push('                    .buttonStyle(.plain)');
+    lines.push('                    .foregroundStyle(.accent)');
+    lines.push('                }');
+    lines.push('                .padding(.vertical, 4)');
+    lines.push('            }');
+    lines.push(`            .onDelete { indexSet in removeItems(at: indexSet) }`);
+    lines.push('        }');
+    lines.push('        .listStyle(.plain)');
+    lines.push('');
+
+    // Order summary / checkout footer
+    lines.push('        // Order summary');
+    lines.push('        VStack(spacing: 16) {');
+    lines.push('            Divider()');
+    lines.push('            HStack {');
+    lines.push('                Text("Total")');
+    lines.push('                    .font(.headline)');
+    lines.push('                Spacer()');
+    lines.push('                Text(cartTotal, format: .currency(code: "USD"))');
+    lines.push('                    .font(.title3)');
+    lines.push('                    .fontWeight(.bold)');
+    lines.push('            }');
+    lines.push('');
+
+    // Checkout button
+    const checkoutAction = actions.find(
+        (a) => (a.label ?? '').toLowerCase().includes('checkout') || (a.effect?.target ?? '').toLowerCase().includes('checkout'),
+    );
+    const checkoutTarget = checkoutAction?.effect?.target ?? 'checkout';
+    lines.push(`            Button {`);
+    lines.push(`                ${camelCase(checkoutTarget)}()`);
+    lines.push('            } label: {');
+    lines.push('                Text("Proceed to Checkout")');
+    lines.push('                    .font(.headline)');
+    lines.push('                    .frame(maxWidth: .infinity)');
+    lines.push('            }');
+    lines.push('            .buttonStyle(.borderedProminent)');
+    lines.push('            .controlSize(.large)');
+    lines.push('');
+
+    // Clear cart button
+    const clearAction = actions.find(
+        (a) => a.destructive || (a.label ?? '').toLowerCase().includes('clear') || (a.effect?.target ?? '').toLowerCase().includes('clear'),
+    );
+    const clearTarget = clearAction?.effect?.target ?? 'clearCart';
+    lines.push(`            Button("Clear Cart", role: .destructive) {`);
+    lines.push(`                ${camelCase(clearTarget)}()`);
+    lines.push('            }');
+    lines.push('            .font(.subheadline)');
+
+    lines.push('        }');
+    lines.push('        .padding()');
+    lines.push('    }');
+    lines.push('}');
+
+    lines.push(`.navigationTitle("${screen.name}")`);
+
+    return indent(lines.join('\n'), indentLevel);
+}
+
+/**
  * Generate a layout for screens with layout type 'custom'.
  * This is the fallback that needs to be smart enough to produce meaningful views
  * from data requirements, actions, components, and screen metadata.
  */
 function generateCustomLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
+    // Detect cart screens and generate specialised cart UI
+    if (isCartScreen(screen)) {
+        return generateCartLayout(screen, model, components, indentLevel);
+    }
+
     const dataReqs = screen.dataRequirements ?? [];
     const actions = screen.actions ?? [];
     const entity = resolveEntity(screen, model);
@@ -1793,8 +1994,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // Track let properties separately so the #Preview can pass sample data
     const letProperties: { name: string; type: string }[] = [];
     if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
-        const detailEntity = resolveDetailEntity(screen, model) ?? resolveEntity(screen, model);
-        if (detailEntity) {
+        const detailEntity = resolveDetailEntity(screen, model);
+        // Always declare the entity property for detail screens, even when no
+        // entity is found in the model. The model-generator will create the type,
+        // and the detail layout references it via varName.
+        {
             const eName = pascalCase(inferEntityFromScreen(screen));
             const eVar = camelCase(inferEntityFromScreen(screen));
             if (!declaredNames.has(eVar)) {
@@ -1848,7 +2052,38 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         declaredNames.add('searchQuery');
     }
 
+    // Cart-specific: ensure cart items array state exists and add computed total
+    const isCart = isCartScreen(screen);
+    if (isCart) {
+        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartVarName = camelCase(cartEntityName);
+        const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
+        if (!declaredNames.has(cartArrayVar)) {
+            lines.push(`    @State private var ${cartArrayVar}: [${cartEntityName}] = []`);
+            declaredNames.add(cartArrayVar);
+        }
+    }
+
     if (declaredNames.size > 0) {
+        lines.push('');
+    }
+
+    // Cart-specific: computed total property
+    if (isCart) {
+        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartVarName = camelCase(cartEntityName);
+        const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
+        const cartEntity = resolveEntity(screen, model);
+        let priceField = 'price';
+        let qtyField = 'quantity';
+        if (cartEntity) {
+            const roles = categorizeEntityFields(cartEntity);
+            if (roles.priceField) priceField = camelCase(roles.priceField.name);
+            if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
+        }
+        lines.push(`    private var cartTotal: Double {`);
+        lines.push(`        ${cartArrayVar}.reduce(0) { $0 + $1.${priceField} * Double($1.${qtyField}) }`);
+        lines.push('    }');
         lines.push('');
     }
 
@@ -1926,6 +2161,40 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
+    // Cart-specific helper functions
+    if (isCart) {
+        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartVarName = camelCase(cartEntityName);
+        const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
+        let qtyField = 'quantity';
+        const cartEntity = resolveEntity(screen, model);
+        if (cartEntity) {
+            const roles = categorizeEntityFields(cartEntity);
+            if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
+        }
+
+        lines.push('');
+        lines.push('    // MARK: - Cart Helpers');
+        lines.push('');
+        lines.push(`    private func incrementQuantity(for item: ${cartEntityName}) {`);
+        lines.push(`        guard let index = ${cartArrayVar}.firstIndex(where: { $0.id == item.id }) else { return }`);
+        lines.push(`        ${cartArrayVar}[index].${qtyField} += 1`);
+        lines.push('    }');
+        lines.push('');
+        lines.push(`    private func decrementQuantity(for item: ${cartEntityName}) {`);
+        lines.push(`        guard let index = ${cartArrayVar}.firstIndex(where: { $0.id == item.id }) else { return }`);
+        lines.push(`        if ${cartArrayVar}[index].${qtyField} > 1 {`);
+        lines.push(`            ${cartArrayVar}[index].${qtyField} -= 1`);
+        lines.push('        } else {');
+        lines.push(`            ${cartArrayVar}.remove(at: index)`);
+        lines.push('        }');
+        lines.push('    }');
+        lines.push('');
+        lines.push(`    private func removeItems(at offsets: IndexSet) {`);
+        lines.push(`        ${cartArrayVar}.remove(atOffsets: offsets)`);
+        lines.push('    }');
+    }
+
     // Close struct
     lines.push('}');
     lines.push('');
@@ -1956,7 +2225,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
     if (screen.layout === 'dashboard') {
         confidence = 'medium';
-        warnings.push('Dashboard layouts require manual refinement');
+        warnings.push('Dashboard layout generated — review hero section copy and featured item selection');
     }
     if (screen.layout === 'custom') {
         confidence = 'medium';

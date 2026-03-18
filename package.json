@@ -6,13 +6,20 @@
   "bin": {
     "morphkit": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "analyze": "bun run src/index.ts analyze",
-    "generate": "bun run src/index.ts generate"
+    "generate": "bun run src/index.ts generate",
+    "prepublishOnly": "bun build src/index.ts --outdir dist --target node --minify"
   },
   "dependencies": {
     "openai": "^4.0.0",
@@ -36,8 +43,18 @@
     "react",
     "nextjs",
     "code-generation",
-    "ai"
+    "ai",
+    "mobile"
   ],
-  "license": "UNLICENSED",
-  "author": "AshlrAI"
+  "license": "MIT",
+  "author": "AshlrAI <hello@ashlr.ai>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ashlrai/morphkit.git"
+  },
+  "homepage": "https://morphkit.dev",
+  "bugs": "https://github.com/ashlrai/morphkit/issues",
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

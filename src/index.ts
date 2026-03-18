@@ -1,15 +1,46 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { resolve } from 'path';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { resolve, join } from 'path';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { analyzeRepo } from './analyzer/index.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import { adaptForPlatform } from './semantic/adapter.js';
 import { generateProject } from './generator/index.js';
 import type { SemanticAppModel } from './semantic/model.js';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const VERSION = '0.1.0';
+
+const BANNER = `
+  ${chalk.cyan('╔═══════════════════════════════════════╗')}
+  ${chalk.cyan('║')}  ${chalk.bold.white('Morphkit')} v${VERSION}                      ${chalk.cyan('║')}
+  ${chalk.cyan('║')}  React → Native iOS in seconds        ${chalk.cyan('║')}
+  ${chalk.cyan('╚═══════════════════════════════════════╝')}
+`;
+
+// ---------------------------------------------------------------------------
+// Runtime checks
+// ---------------------------------------------------------------------------
+
+/** Check if running under Bun; warn if using Node. */
+function checkRuntime(): void {
+  const isBun = typeof globalThis.Bun !== 'undefined';
+  if (!isBun) {
+    console.warn(
+      chalk.yellow(
+        '\n⚠  Morphkit is designed for Bun. You appear to be running under Node.js.\n' +
+          '   Some features may not work correctly.\n' +
+          '   Install Bun: curl -fsSL https://bun.sh/install | bash\n',
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -19,6 +50,17 @@ import type { SemanticAppModel } from './semantic/model.js';
 function validateDirectoryExists(dirPath: string): void {
   if (!existsSync(dirPath)) {
     throw new Error(`Directory not found: ${dirPath}`);
+  }
+}
+
+/** Validate that the path looks like a project root (has package.json). */
+function validateProjectRoot(dirPath: string): void {
+  if (!existsSync(join(dirPath, 'package.json'))) {
+    console.warn(
+      chalk.yellow(
+        '\nWarning: No package.json found. Are you pointing at a project root?\n',
+      ),
+    );
   }
 }
 
@@ -61,16 +103,43 @@ function warnIfEmptyModel(model: SemanticAppModel): void {
   }
 }
 
+/** Format elapsed time in a human-friendly way. */
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+// ---------------------------------------------------------------------------
+// CLI setup
+// ---------------------------------------------------------------------------
+
+checkRuntime();
+
 const program = new Command();
 
 program
   .name('morphkit')
-  .description('Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps')
-  .version('0.1.0');
+  .description(
+    'Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps.\n\n' +
+    'Morphkit analyzes your web app\'s components, routes, state, and API calls,\n' +
+    'builds a semantic model, and generates a complete SwiftUI Xcode project.\n\n' +
+    'Examples:\n' +
+    '  $ morphkit generate ./my-nextjs-app\n' +
+    '  $ morphkit generate ./app -o ./ios -n ShopKit\n' +
+    '  $ morphkit analyze ./app -o model.json\n' +
+    '  $ morphkit preview ./app --screen Dashboard',
+  )
+  .version(VERSION, '-V, --version', 'Output the current version');
 
 program
   .command('analyze')
-  .description('Analyze a web app and output the semantic model')
+  .description(
+    'Analyze a web app and output the semantic model as JSON.\n\n' +
+    'Examples:\n' +
+    '  $ morphkit analyze ./my-app\n' +
+    '  $ morphkit analyze ./my-app -o model.json\n' +
+    '  $ morphkit analyze ./my-app -v',
+  )
   .argument('<path>', 'Path to the web app repository')
   .option('-o, --output <file>', 'Output file for the semantic model JSON')
   .option('-v, --verbose', 'Show detailed analysis output', false)
@@ -79,7 +148,9 @@ program
 
     // Validate directory exists before starting spinner
     validateDirectoryExists(absolutePath);
+    validateProjectRoot(absolutePath);
 
+    const startTime = performance.now();
     const spinner = ora('Analyzing repository...').start();
 
     try {
@@ -102,12 +173,13 @@ program
       spinner.text = 'Building semantic model...';
       const model = await buildSemanticModel(analysisResult);
 
-      spinner.succeed('Analysis complete!');
+      const elapsed = formatElapsed(Math.round(performance.now() - startTime));
+      spinner.succeed(`Analysis complete in ${elapsed}`);
 
       // Output
       const json = JSON.stringify(model, null, 2);
       if (options.output) {
-        await Bun.write(resolve(options.output), json);
+        writeFileSync(resolve(options.output), json, 'utf-8');
         console.log(chalk.green(`\nSemantic model written to ${options.output}`));
       } else {
         console.log('\n' + json);
@@ -123,7 +195,13 @@ program
 
 program
   .command('generate')
-  .description('Generate a SwiftUI Xcode project from a web app')
+  .description(
+    'Generate a SwiftUI Xcode project from a web app.\n\n' +
+    'Examples:\n' +
+    '  $ morphkit generate ./my-nextjs-app\n' +
+    '  $ morphkit generate ./app -o ./ios -n ShopKit\n' +
+    '  $ morphkit generate ./app --model model.json',
+  )
   .argument('<path>', 'Path to the web app repository')
   .option('-o, --output <dir>', 'Output directory for the iOS project', './ios-app')
   .option('-n, --name <name>', 'App name (defaults to package.json name)')
@@ -135,10 +213,15 @@ program
 
     // Validate inputs before starting
     validateDirectoryExists(absolutePath);
+    validateProjectRoot(absolutePath);
     if (options.name) {
       validateAppName(options.name);
     }
 
+    // Show banner for generate command
+    console.log(BANNER);
+
+    const startTime = performance.now();
     const spinner = ora('Starting generation pipeline...').start();
 
     try {
@@ -147,10 +230,14 @@ program
       if (options.model) {
         // Use pre-built model
         spinner.text = 'Loading semantic model...';
-        const modelFile = await Bun.file(resolve(options.model)).text();
+        const modelPath = resolve(options.model);
+        if (!existsSync(modelPath)) {
+          throw new Error(`Model file not found: ${modelPath}`);
+        }
+        const modelFile = readFileSync(modelPath, 'utf-8');
         model = JSON.parse(modelFile) as SemanticAppModel;
       } else {
-        // Full pipeline: analyze → build model
+        // Full pipeline: analyze -> build model
         spinner.text = 'Analyzing repository...';
         const analysisResult = await analyzeRepo(absolutePath);
         validateAnalysisResult(analysisResult);
@@ -175,6 +262,7 @@ program
       spinner.text = 'Generating SwiftUI project...';
       const project = await generateProject(adapted, outputPath);
 
+      const elapsed = formatElapsed(Math.round(performance.now() - startTime));
       spinner.succeed('Generation complete!');
 
       // Print summary
@@ -197,6 +285,10 @@ program
       }
 
       console.log('');
+      console.log(
+        chalk.dim(`Generated ${project.stats.totalFiles} files in ${elapsed}`),
+      );
+      console.log('');
       console.log(chalk.green(`Open in Xcode: open ${outputPath}/Package.swift`));
     } catch (error) {
       spinner.fail('Generation failed');
@@ -207,14 +299,21 @@ program
 
 program
   .command('preview')
-  .description('Preview what would be generated without writing files')
+  .description(
+    'Preview what would be generated without writing files.\n\n' +
+    'Examples:\n' +
+    '  $ morphkit preview ./my-app\n' +
+    '  $ morphkit preview ./my-app --screen Dashboard',
+  )
   .argument('<path>', 'Path to the web app repository')
   .option('-s, --screen <name>', 'Preview a specific screen')
   .action(async (repoPath: string, options: { screen?: string }) => {
     const absolutePath = resolve(repoPath);
 
     validateDirectoryExists(absolutePath);
+    validateProjectRoot(absolutePath);
 
+    const startTime = performance.now();
     const spinner = ora('Analyzing for preview...').start();
 
     try {
@@ -245,6 +344,10 @@ program
           console.log('');
           console.log(file.content);
         }
+
+        const elapsed = formatElapsed(Math.round(performance.now() - startTime));
+        console.log('');
+        console.log(chalk.dim(`Previewed ${filesToShow.length} files in ${elapsed}`));
       } finally {
         // Clean up temp directory
         rmSync(tempDir, { recursive: true, force: true });

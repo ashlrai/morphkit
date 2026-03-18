@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Morphkit — Your React app → Native iOS. In seconds.</title>
+  <meta name="description" content="Morphkit is a semantic AI agent that converts TypeScript/React web apps to production-quality native SwiftUI iOS apps.">
+  <meta name="keywords" content="TypeScript, React, SwiftUI, iOS, native app, code generation, AI, Morphkit">
+  <meta property="og:title" content="Morphkit — React to Native iOS in Seconds">
+  <meta property="og:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://morphkit.dev">
+  <meta property="og:image" content="https://morphkit.dev/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Morphkit — React to Native iOS in Seconds">
+  <meta name="twitter:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%236366f1'/><text x='16' y='22' font-family='system-ui' font-size='20' font-weight='700' fill='white' text-anchor='middle'>M</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #09090b;
+      --bg-elevated: #111114;
+      --bg-card: #16161a;
+      --border: #23232a;
+      --text: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.15);
+      --accent-glow-strong: rgba(99, 102, 241, 0.3);
+      --green: #34d399;
+      --orange: #fb923c;
+      --pink: #f472b6;
+      --cyan: #22d3ee;
+      --yellow: #fbbf24;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Dot pattern background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Global glow */
+    .hero-glow {
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse, var(--accent-glow-strong) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, header, footer { position: relative; z-index: 1; }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(9,9,11,0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #fff;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      background: var(--accent) !important;
+      color: #fff !important;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      transition: opacity 0.2s !important;
+    }
+    .nav-cta:hover { opacity: 0.9; }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      padding: 160px 0 100px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      background: var(--bg-elevated);
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .hero h1 {
+      font-size: clamp(40px, 6vw, 72px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent-light), var(--pink));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 19px);
+      color: var(--text-secondary);
+      max-width: 620px;
+      margin: 0 auto 40px;
+      line-height: 1.65;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 64px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 20px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .btn-primary:hover {
+      background: var(--accent-light);
+      box-shadow: 0 0 30px var(--accent-glow-strong), inset 0 1px 0 rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--bg-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-card);
+      transform: translateY(-1px);
+    }
+
+    /* Terminal */
+    .terminal {
+      max-width: 680px;
+      margin: 0 auto;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      text-align: left;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.4), 0 0 40px var(--accent-glow);
+    }
+    .terminal-bar {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+    }
+    .terminal-dot:nth-child(1) { background: #ef4444; }
+    .terminal-dot:nth-child(2) { background: #eab308; }
+    .terminal-dot:nth-child(3) { background: #22c55e; }
+    .terminal-title {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .terminal-body {
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.7;
+      min-height: 180px;
+    }
+    .terminal-line {
+      opacity: 0;
+      animation: term-appear 0.3s ease forwards;
+    }
+    .terminal-line:nth-child(1) { animation-delay: 0.5s; }
+    .terminal-line:nth-child(2) { animation-delay: 1.2s; }
+    .terminal-line:nth-child(3) { animation-delay: 1.8s; }
+    .terminal-line:nth-child(4) { animation-delay: 2.4s; }
+    .terminal-line:nth-child(5) { animation-delay: 3.0s; }
+    .terminal-line:nth-child(6) { animation-delay: 3.5s; }
+    @keyframes term-appear {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .term-prompt { color: var(--accent-light); }
+    .term-cmd { color: var(--text); }
+    .term-flag { color: var(--orange); }
+    .term-path { color: var(--green); }
+    .term-info { color: var(--text-muted); }
+    .term-success { color: var(--green); }
+    .term-file { color: var(--cyan); }
+
+    /* ---- SECTION STYLES ---- */
+    .section {
+      padding: 100px 0;
+    }
+    .section-label {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-light);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      line-height: 1.65;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+    .section-header .section-desc {
+      margin: 0 auto;
+    }
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* ---- HOW IT WORKS ---- */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+    .step {
+      padding: 32px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .step:hover {
+      border-color: rgba(99,102,241,0.3);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--accent-glow);
+      color: var(--accent-light);
+      font-weight: 700;
+      font-size: 16px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(99,102,241,0.2);
+    }
+    .step-icon {
+      font-size: 28px;
+      margin-bottom: 20px;
+      display: block;
+    }
+    .step h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .step p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    @media (max-width: 768px) {
+      .steps { grid-template-columns: 1fr; }
+    }
+
+    /* ---- FEATURES ---- */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature {
+      padding: 28px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
+    }
+    .feature:hover {
+      border-color: rgba(99,102,241,0.25);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 16px;
+      background: var(--accent-glow);
+      border: 1px solid rgba(99,102,241,0.15);
+    }
+    .feature h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .feature code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: rgba(99,102,241,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent-light);
+    }
+
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ---- CODE EXAMPLE ---- */
+    .code-comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .code-panel {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      overflow: hidden;
+    }
+    .code-panel-header {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    .code-panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .code-panel-tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .tag-ts {
+      background: rgba(49,120,198,0.15);
+      color: #60a5fa;
+    }
+    .tag-swift {
+      background: rgba(249,115,22,0.15);
+      color: #fb923c;
+    }
+    .code-body {
+      padding: 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .code-arrow {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--accent-light);
+    }
+
+    /* Syntax tokens */
+    .tok-kw { color: #c084fc; }
+    .tok-fn { color: #60a5fa; }
+    .tok-str { color: #34d399; }
+    .tok-type { color: #fbbf24; }
+    .tok-cm { color: #52525b; }
+    .tok-num { color: #fb923c; }
+    .tok-op { color: #a1a1aa; }
+    .tok-prop { color: #f472b6; }
+    .tok-tag { color: #f87171; }
+    .tok-attr { color: #818cf8; }
+    .tok-punc { color: #71717a; }
+    .tok-param { color: #e2e8f0; }
+    .tok-self { color: #f472b6; }
+
+    @media (max-width: 768px) {
+      .code-comparison {
+        grid-template-columns: 1fr;
+      }
+      .code-arrow {
+        display: flex;
+        padding: 8px;
+      }
+    }
+
+    /* ---- INSTALL ---- */
+    .install-card {
+      max-width: 680px;
+      margin: 0 auto;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      overflow: hidden;
+    }
+    .install-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+    .install-tab {
+      flex: 1;
+      padding: 14px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-family: var(--font-body);
+      transition: color 0.2s, background 0.2s;
+    }
+    .install-tab.active {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+    .install-tab:hover:not(.active) { color: var(--text-secondary); }
+    .install-content {
+      padding: 28px;
+    }
+    .install-block {
+      display: none;
+    }
+    .install-block.active {
+      display: block;
+    }
+    .install-cmd {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      color: var(--text);
+      margin-bottom: 12px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .install-cmd:last-child { margin-bottom: 0; }
+    .install-cmd code { flex: 1; }
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-weight: 500;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--text-muted); }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-sub {
+      width: 100%;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 24px;
+    }
+
+    /* Fade-in on scroll */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <div class="logo-mark">M</div>
+      Morphkit
+    </a>
+    <div class="nav-links">
+      <a href="#how-it-works">How It Works</a>
+      <a href="#features">Features</a>
+      <a href="#example">Example</a>
+      <a href="#install" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="container">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Now in public beta
+    </div>
+    <h1>Your React app <span class="gradient">&rarr; Native iOS.</span><br>In seconds.</h1>
+    <p class="hero-sub">Morphkit is a semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.</p>
+    <div class="hero-buttons">
+      <a href="#install" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Get Started
+      </a>
+      <a href="https://github.com/ashlrai/morphkit" target="_blank" rel="noopener" class="btn btn-secondary">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-dot"></span>
+        <span class="terminal-title">Terminal</span>
+        <span style="width:36px"></span>
+      </div>
+      <div class="terminal-body">
+        <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-cmd">npx morphkit generate</span> <span class="term-path">./my-nextjs-app</span> <span class="term-flag">--output</span> <span class="term-path">./ios-app</span></div>
+        <div class="terminal-line"><span class="term-info"></span></div>
+        <div class="terminal-line"><span class="term-info">  Analyzing TypeScript codebase...</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Found 12 components, 4 routes, 3 API endpoints</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Mapped navigation: TabView + NavigationStack</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Generated Xcode project &rarr;</span> <span class="term-file">./ios-app/MyApp.xcodeproj</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- How It Works -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">How It Works</span>
+      <h2 class="section-title">Three steps to native</h2>
+      <p class="section-desc">Morphkit reads your codebase like a senior developer would, then writes the Swift code you'd want to write yourself.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-number">1</div>
+        <h3>Analyze</h3>
+        <p>Morphkit scans your TypeScript codebase, extracting components, routes, state management, and API calls using deep AST analysis. It understands your app's architecture, not just its syntax.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-number">2</div>
+        <h3>Transform</h3>
+        <p>AI-powered semantic understanding maps web patterns to their native iOS equivalents &mdash; <code>TabView</code>, <code>NavigationStack</code>, <code>@Observable</code> &mdash; preserving intent and user experience.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-number">3</div>
+        <h3>Generate</h3>
+        <p>Output a complete SwiftUI Xcode project with typed Codable models, an async networking layer, native navigation, and an organized project structure ready for the App Store.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Features</span>
+      <h2 class="section-title">Everything maps cleanly</h2>
+      <p class="section-desc">Web patterns have native equivalents. Morphkit knows them all.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature reveal">
+        <div class="feature-icon">&#9672;</div>
+        <h4>TypeScript &rarr; Swift Types</h4>
+        <p>Your <code>Product</code> interface becomes a <code>Codable</code> struct. Generics, optionals, and enums all map correctly.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">&#9781;</div>
+        <h4>Tab + Stack Navigation</h4>
+        <p>File-based routes and nested layouts become <code>TabView</code> and <code>NavigationStack</code> with type-safe paths.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">&#8644;</div>
+        <h4>Async API Client</h4>
+        <p>Fetch calls and Axios requests become a typed Swift API client using <code>async/await</code> and <code>URLSession</code>.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">&#8635;</div>
+        <h4>State &rarr; @Observable</h4>
+        <p>Zustand stores and Redux slices become clean <code>@Observable</code> classes with SwiftUI's native reactivity.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">&#9670;</div>
+        <h4>Tailwind &rarr; Asset Catalog</h4>
+        <p>Your Tailwind color palette is extracted and generated as a native Xcode asset catalog with semantic names.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">&#10022;</div>
+        <h4>AI Intent Extraction</h4>
+        <p>Optionally use xAI Grok to understand ambiguous patterns and infer the best native implementation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- Code Example -->
+<section class="section" id="example">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">See It In Action</span>
+      <h2 class="section-title">React in, SwiftUI out</h2>
+      <p class="section-desc">A real component transformation. Your logic, rewritten natively.</p>
+    </div>
+    <div class="code-comparison reveal">
+      <div class="code-panel">
+        <div class="code-panel-header">
+          <span class="code-panel-title">ProductList.tsx</span>
+          <span class="code-panel-tag tag-ts">TypeScript</span>
+        </div>
+        <div class="code-body"><span class="tok-kw">interface</span> <span class="tok-type">Product</span> <span class="tok-punc">{</span>
+  <span class="tok-prop">id</span><span class="tok-op">:</span> <span class="tok-type">string</span><span class="tok-punc">;</span>
+  <span class="tok-prop">name</span><span class="tok-op">:</span> <span class="tok-type">string</span><span class="tok-punc">;</span>
+  <span class="tok-prop">price</span><span class="tok-op">:</span> <span class="tok-type">number</span><span class="tok-punc">;</span>
+<span class="tok-punc">}</span>
+
+<span class="tok-kw">export default function</span> <span class="tok-fn">ProductList</span><span class="tok-punc">()</span> <span class="tok-punc">{</span>
+  <span class="tok-kw">const</span> <span class="tok-punc">[</span><span class="tok-param">products</span><span class="tok-punc">,</span> <span class="tok-param">setProducts</span><span class="tok-punc">]</span> <span class="tok-op">=</span>
+    <span class="tok-fn">useState</span><span class="tok-op">&lt;</span><span class="tok-type">Product</span><span class="tok-punc">[]</span><span class="tok-op">&gt;</span><span class="tok-punc">([])</span><span class="tok-punc">;</span>
+
+  <span class="tok-fn">useEffect</span><span class="tok-punc">(()</span> <span class="tok-op">=&gt;</span> <span class="tok-punc">{</span>
+    <span class="tok-fn">fetch</span><span class="tok-punc">(</span><span class="tok-str">"/api/products"</span><span class="tok-punc">)</span>
+      <span class="tok-punc">.</span><span class="tok-fn">then</span><span class="tok-punc">(</span><span class="tok-param">r</span> <span class="tok-op">=&gt;</span> <span class="tok-param">r</span><span class="tok-punc">.</span><span class="tok-fn">json</span><span class="tok-punc">())</span>
+      <span class="tok-punc">.</span><span class="tok-fn">then</span><span class="tok-punc">(</span><span class="tok-param">setProducts</span><span class="tok-punc">)</span>
+  <span class="tok-punc">},</span> <span class="tok-punc">[])</span><span class="tok-punc">;</span>
+
+  <span class="tok-kw">return</span> <span class="tok-punc">(</span>
+    <span class="tok-op">&lt;</span><span class="tok-tag">ul</span><span class="tok-op">&gt;</span>
+      <span class="tok-punc">{</span><span class="tok-param">products</span><span class="tok-punc">.</span><span class="tok-fn">map</span><span class="tok-punc">(</span><span class="tok-param">p</span> <span class="tok-op">=&gt;</span> <span class="tok-punc">(</span>
+        <span class="tok-op">&lt;</span><span class="tok-tag">li</span> <span class="tok-attr">key</span><span class="tok-op">=</span><span class="tok-punc">{</span><span class="tok-param">p</span><span class="tok-punc">.</span><span class="tok-prop">id</span><span class="tok-punc">}</span><span class="tok-op">&gt;</span>
+          <span class="tok-punc">{</span><span class="tok-param">p</span><span class="tok-punc">.</span><span class="tok-prop">name</span><span class="tok-punc">}</span> <span class="tok-op">-</span> <span class="tok-punc">${</span><span class="tok-param">p</span><span class="tok-punc">.</span><span class="tok-prop">price</span><span class="tok-punc">}</span>
+        <span class="tok-op">&lt;/</span><span class="tok-tag">li</span><span class="tok-op">&gt;</span>
+      <span class="tok-punc">))}</span>
+    <span class="tok-op">&lt;/</span><span class="tok-tag">ul</span><span class="tok-op">&gt;</span>
+  <span class="tok-punc">)</span><span class="tok-punc">;</span>
+<span class="tok-punc">}</span></div>
+      </div>
+
+      <div class="code-arrow">&rarr;</div>
+
+      <div class="code-panel">
+        <div class="code-panel-header">
+          <span class="code-panel-title">ProductListView.swift</span>
+          <span class="code-panel-tag tag-swift">SwiftUI</span>
+        </div>
+        <div class="code-body"><span class="tok-kw">struct</span> <span class="tok-type">Product</span><span class="tok-op">:</span> <span class="tok-type">Codable</span><span class="tok-punc">,</span> <span class="tok-type">Identifiable</span> <span class="tok-punc">{</span>
+  <span class="tok-kw">let</span> <span class="tok-prop">id</span><span class="tok-op">:</span> <span class="tok-type">String</span>
+  <span class="tok-kw">let</span> <span class="tok-prop">name</span><span class="tok-op">:</span> <span class="tok-type">String</span>
+  <span class="tok-kw">let</span> <span class="tok-prop">price</span><span class="tok-op">:</span> <span class="tok-type">Double</span>
+<span class="tok-punc">}</span>
+
+<span class="tok-kw">struct</span> <span class="tok-type">ProductListView</span><span class="tok-op">:</span> <span class="tok-type">View</span> <span class="tok-punc">{</span>
+  <span class="tok-attr">@State</span> <span class="tok-kw">private var</span> <span class="tok-prop">products</span><span class="tok-op">:</span>
+    <span class="tok-punc">[</span><span class="tok-type">Product</span><span class="tok-punc">]</span> <span class="tok-op">=</span> <span class="tok-punc">[]</span>
+
+  <span class="tok-kw">var</span> <span class="tok-prop">body</span><span class="tok-op">:</span> <span class="tok-kw">some</span> <span class="tok-type">View</span> <span class="tok-punc">{</span>
+    <span class="tok-type">List</span><span class="tok-punc">(</span><span class="tok-prop">products</span><span class="tok-punc">)</span> <span class="tok-punc">{</span> <span class="tok-param">p</span> <span class="tok-kw">in</span>
+      <span class="tok-type">HStack</span> <span class="tok-punc">{</span>
+        <span class="tok-type">Text</span><span class="tok-punc">(</span><span class="tok-param">p</span><span class="tok-punc">.</span><span class="tok-prop">name</span><span class="tok-punc">)</span>
+        <span class="tok-type">Spacer</span><span class="tok-punc">()</span>
+        <span class="tok-type">Text</span><span class="tok-punc">(</span><span class="tok-str">"$\(p.price, specifier: "%.2f")"</span><span class="tok-punc">)</span>
+          <span class="tok-punc">.</span><span class="tok-fn">foregroundStyle</span><span class="tok-punc">(.</span><span class="tok-prop">secondary</span><span class="tok-punc">)</span>
+      <span class="tok-punc">}</span>
+    <span class="tok-punc">}</span>
+    <span class="tok-punc">.</span><span class="tok-fn">task</span> <span class="tok-punc">{</span>
+      <span class="tok-prop">products</span> <span class="tok-op">=</span> <span class="tok-kw">await</span>
+        <span class="tok-type">APIClient</span><span class="tok-punc">.</span><span class="tok-fn">fetch</span><span class="tok-punc">(</span><span class="tok-str">"/products"</span><span class="tok-punc">)</span>
+    <span class="tok-punc">}</span>
+  <span class="tok-punc">}</span>
+<span class="tok-punc">}</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- Install -->
+<section class="section" id="install">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Get Started</span>
+      <h2 class="section-title">Up and running in one command</h2>
+      <p class="section-desc">Point Morphkit at any Next.js, React, or TypeScript project and get a native iOS app.</p>
+    </div>
+    <div class="install-card reveal">
+      <div class="install-tabs">
+        <button class="install-tab active" data-tab="npx">npx</button>
+        <button class="install-tab" data-tab="bun">bun</button>
+      </div>
+      <div class="install-content">
+        <div class="install-block active" id="tab-npx">
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
+            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+          </div>
+        </div>
+        <div class="install-block" id="tab-bun">
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> bun install -g morphkit</code>
+            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+          </div>
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> morphkit generate ./my-nextjs-app --output ./ios-app</code>
+            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="logo-mark" style="width:28px;height:28px;font-size:14px;border-radius:6px;">M</div>
+        Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://morphkit.dev">morphkit.dev</a>
+        <a href="https://github.com/ashlrai/morphkit" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a>
+      </div>
+    </div>
+    <p class="footer-sub">Made with &#9829; and Claude</p>
+  </div>
+</footer>
+
+<script>
+  // Reveal on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Install tabs
+  document.querySelectorAll('.install-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.install-block').forEach(b => b.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Copy command
+  function copyCmd(btn) {
+    const code = btn.parentElement.querySelector('code').textContent.replace(/^\$ /, '');
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+</script>
+</body>
+</html>

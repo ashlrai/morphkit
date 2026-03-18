@@ -1,0 +1,10 @@
+src/
+test/
+site/
+templates/
+*.ts
+tsconfig.json
+bunfig.toml
+.gitignore
+CLAUDE.md
+bun.lockb

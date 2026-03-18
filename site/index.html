@@ -11,6 +11,8 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://morphkit.dev">
   <meta property="og:image" content="https://morphkit.dev/og.png">
+  <meta property="og:site_name" content="Morphkit">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Morphkit — React to Native iOS in Seconds">
   <meta name="twitter:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
@@ -20,6 +22,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#6366f1">
+  <link rel="canonical" href="https://morphkit.dev">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -657,15 +660,65 @@
       opacity: 1;
       transform: translateY(0);
     }
+
+    /* Accessibility */
+    .skip-link {
+      position: absolute;
+      top: -100px;
+      left: 16px;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 0 0 8px 8px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 200;
+      text-decoration: none;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 0;
+    }
+    :focus-visible {
+      outline: 2px solid var(--accent-light);
+      outline-offset: 2px;
+    }
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid var(--accent-light);
+      outline-offset: 2px;
+    }
   </style>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Morphkit",
+    "url": "https://morphkit.dev",
+    "description": "A semantic AI agent that converts TypeScript/React web apps to production-quality native SwiftUI iOS apps.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux, Windows",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "AshlrAI",
+      "url": "https://ashlr.ai"
+    }
+  }
+  </script>
 </head>
 <body>
+
+<a href="#main" class="skip-link">Skip to content</a>
 
 <!-- Nav -->
 <nav>
   <div class="container">
     <a href="/" class="logo">
-      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
         <rect width="120" height="120" rx="26" fill="#09090b"/>
         <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
@@ -684,6 +737,8 @@
     </div>
   </div>
 </nav>
+
+<main id="main">
 
 <!-- Hero -->
 <section class="hero">
@@ -894,25 +949,25 @@
       <p class="section-desc">Point Morphkit at any Next.js, React, or TypeScript project and get a native iOS app.</p>
     </div>
     <div class="install-card reveal">
-      <div class="install-tabs">
-        <button class="install-tab active" data-tab="npx">npx</button>
-        <button class="install-tab" data-tab="bun">bun</button>
+      <div class="install-tabs" role="tablist" aria-label="Package manager">
+        <button class="install-tab active" data-tab="npx" role="tab" aria-selected="true" aria-controls="tab-npx">npx</button>
+        <button class="install-tab" data-tab="bun" role="tab" aria-selected="false" aria-controls="tab-bun">bun</button>
       </div>
       <div class="install-content">
-        <div class="install-block active" id="tab-npx">
+        <div class="install-block active" id="tab-npx" role="tabpanel" aria-labelledby="tab-npx">
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
-            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
         </div>
-        <div class="install-block" id="tab-bun">
+        <div class="install-block" id="tab-bun" role="tabpanel" aria-labelledby="tab-bun">
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> bun install -g morphkit</code>
-            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> morphkit generate ./my-nextjs-app --output ./ios-app</code>
-            <button class="copy-btn" onclick="copyCmd(this)">Copy</button>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
         </div>
       </div>
@@ -920,12 +975,14 @@
   </div>
 </section>
 
+</main>
+
 <!-- Footer -->
 <footer>
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
           <rect width="120" height="120" rx="26" fill="#09090b"/>
           <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#ft-grad)" stroke-opacity="0.25" stroke-width="2"/>
@@ -961,9 +1018,13 @@
   // Install tabs
   document.querySelectorAll('.install-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.install-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
       document.querySelectorAll('.install-block').forEach(b => b.classList.remove('active'));
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     });
   });
@@ -971,10 +1032,24 @@
   // Copy command
   function copyCmd(btn) {
     const code = btn.parentElement.querySelector('code').textContent.replace(/^\$ /, '');
-    navigator.clipboard.writeText(code).then(() => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    } else {
+      // Fallback for non-HTTPS or older browsers
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
       btn.textContent = 'Copied!';
       setTimeout(() => btn.textContent = 'Copy', 1500);
-    });
+    }
   }
 </script>
 </body>

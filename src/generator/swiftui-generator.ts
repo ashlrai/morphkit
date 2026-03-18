@@ -211,7 +211,7 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
         }
 
         bindings.push({
-            wrapper: pattern?.type === 'global' ? '@State' : '@State',
+            wrapper: '@State',
             type: swiftType,
             name: camelCase(bindingName),
             defaultValue,
@@ -607,31 +607,6 @@ function getDetailRouteCaseName(screen: Screen, model: SemanticAppModel): string
 // ---------------------------------------------------------------------------
 // Action button generation
 // ---------------------------------------------------------------------------
-
-function generateActionButton(action: UserAction, indentLevel: number): string {
-    const effectTarget = action.effect?.target ?? action.label ?? 'action';
-    const label = action.label && action.label !== 'inline'
-        ? capitalise(action.label)
-        : capitalise(camelCase(effectTarget));
-    const isDestructive = action.destructive;
-    const lines: string[] = [];
-
-    if (action.effect?.type === 'navigate') {
-        lines.push(`NavigationLink("${label}") {`);
-        lines.push(`    ${pascalCase(effectTarget)}View()`);
-        lines.push('}');
-    } else {
-        if (isDestructive) {
-            lines.push(`Button("${label}", role: .destructive) {`);
-        } else {
-            lines.push(`Button("${label}") {`);
-        }
-        lines.push(`    ${camelCase(effectTarget)}()`);
-        lines.push('}');
-    }
-
-    return indent(lines.join('\n'), indentLevel);
-}
 
 /**
  * Generate meaningful action buttons from the screen's actions array.

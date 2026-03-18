@@ -830,17 +830,22 @@ async function buildScreenFromRouteAndComponent(
     const isDelete = handler.name.toLowerCase().includes('delete') || handler.name.toLowerCase().includes('remove');
     const isNavigate = handler.name.toLowerCase().includes('navigate') || handler.name.toLowerCase().includes('goto');
 
+    let effectType: 'navigate' | 'apiCall' | 'mutate' | 'other';
+    if (isNavigate) {
+      effectType = 'navigate';
+    } else if (isSubmit) {
+      effectType = 'apiCall';
+    } else if (isDelete) {
+      effectType = 'mutate';
+    } else {
+      effectType = 'other';
+    }
+
     return {
       label: handler.name.replace(/^handle|^on/, '').replace(/([A-Z])/g, ' $1').trim(),
       trigger: isSubmit ? ('submit' as const) : ('tap' as const),
       effect: {
-        type: isNavigate
-          ? ('navigate' as const)
-          : isSubmit
-            ? ('apiCall' as const)
-            : isDelete
-              ? ('mutate' as const)
-              : ('other' as const),
+        type: effectType,
         target: handler.name,
         payload: {},
       },

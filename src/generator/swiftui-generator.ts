@@ -1144,6 +1144,13 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         }
     }
 
+    // Ensure entityName aligns with the resolved entity. For dashboard/home screens,
+    // entityName may still be "Home" from inferEntityFromScreen while entity was resolved
+    // to a real data entity (e.g. Product) via component name matching.
+    if (entity && pascalCase(entity.name) !== entityName) {
+        entityName = pascalCase(entity.name);
+    }
+
     const varName = camelCase(entityName);
     const dataReqs = screen.dataRequirements ?? [];
     const actions = screen.actions ?? [];
@@ -1630,12 +1637,30 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     let imageField: Field | null = null;
 
     if (entity) {
-        // Check if the entity has a reference to another entity (object field whose
-        // typeName matches a known entity). If so, categorize that referenced entity's
-        // fields and access them through the relationship field.
+        // Determine the "item" entity for the cart — the entity may be a wrapper
+        // (e.g. Cart with `items: [CartItem]`), in which case we need the element entity.
         const allEntities = model.entities ?? [];
         const entityNames = new Set(allEntities.map((e) => pascalCase(e.name)));
-        const refField = (entity.fields ?? []).find(
+        let itemEntity: Entity = entity;
+
+        // If the resolved entity has an array field referencing another entity
+        // (e.g. Cart.items: [CartItem]), use that element entity as the item entity.
+        const arrayField = (entity.fields ?? []).find(
+            (f) => f.type.kind === 'array' && f.type.elementType && 'typeName' in f.type.elementType &&
+                entityNames.has(pascalCase((f.type.elementType as any).typeName)),
+        );
+        if (arrayField && arrayField.type.elementType && 'typeName' in arrayField.type.elementType) {
+            const elementTypeName = (arrayField.type.elementType as any).typeName as string;
+            const elementEntity = allEntities.find((e) => pascalCase(e.name) === pascalCase(elementTypeName));
+            if (elementEntity) {
+                itemEntity = elementEntity;
+            }
+        }
+
+        // Check if the item entity has a reference to another entity (object field whose
+        // typeName matches a known entity). If so, categorize that referenced entity's
+        // fields and access them through the relationship field.
+        const refField = (itemEntity.fields ?? []).find(
             (f) => f.type.kind === 'object' && f.type.typeName && entityNames.has(pascalCase(f.type.typeName)),
         );
 
@@ -1655,12 +1680,12 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
                 nameAccessor = `${refPrefix}.name`;
                 priceAccessor = `${refPrefix}.price`;
             }
-            // Quantity stays on the cart item itself
-            const roles = categorizeEntityFields(entity);
+            // Quantity stays on the cart item itself (use itemEntity, not referenced entity)
+            const roles = categorizeEntityFields(itemEntity);
             if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
         } else {
-            // No reference field — access fields directly on the entity
-            const roles = categorizeEntityFields(entity);
+            // No reference field — access fields directly on the item entity
+            const roles = categorizeEntityFields(itemEntity);
             if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
             if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
             if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
@@ -2344,7 +2369,20 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             // Check for reference field (e.g. product: Product) — access price through it
             const allEntities = model.entities ?? [];
             const entityNamesSet = new Set(allEntities.map((e) => pascalCase(e.name)));
-            const refField = (cartEntity.fields ?? []).find(
+
+            // Drill through array wrapper (e.g. Cart → CartItem via items: [CartItem])
+            let itemEntity: Entity = cartEntity;
+            const arrayField = (cartEntity.fields ?? []).find(
+                (f) => f.type.kind === 'array' && f.type.elementType && 'typeName' in f.type.elementType &&
+                    entityNamesSet.has(pascalCase((f.type.elementType as any).typeName)),
+            );
+            if (arrayField && arrayField.type.elementType && 'typeName' in arrayField.type.elementType) {
+                const elementTypeName = (arrayField.type.elementType as any).typeName as string;
+                const elementEntity = allEntities.find((e) => pascalCase(e.name) === pascalCase(elementTypeName));
+                if (elementEntity) itemEntity = elementEntity;
+            }
+
+            const refField = (itemEntity.fields ?? []).find(
                 (f) => f.type.kind === 'object' && f.type.typeName && entityNamesSet.has(pascalCase(f.type.typeName)),
             );
             if (refField && refField.type.typeName) {
@@ -2353,10 +2391,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     const refRoles = categorizeEntityFields(refEntity);
                     if (refRoles.priceField) priceExpr = `${camelCase(refField.name)}.${camelCase(refRoles.priceField.name)}`;
                 }
-                const roles = categorizeEntityFields(cartEntity);
+                const roles = categorizeEntityFields(itemEntity);
                 if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
             } else {
-                const roles = categorizeEntityFields(cartEntity);
+                const roles = categorizeEntityFields(itemEntity);
                 if (roles.priceField) priceExpr = camelCase(roles.priceField.name);
                 if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
             }
@@ -2490,7 +2528,19 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         let qtyField = 'quantity';
         const cartEntity = resolveEntity(screen, model);
         if (cartEntity) {
-            const roles = categorizeEntityFields(cartEntity);
+            // Drill through array wrapper (e.g. Cart → CartItem)
+            const allEntities = model.entities ?? [];
+            const entityNamesSet = new Set(allEntities.map((e) => pascalCase(e.name)));
+            let itemEntity: Entity = cartEntity;
+            const arrayField = (cartEntity.fields ?? []).find(
+                (f) => f.type.kind === 'array' && f.type.elementType && 'typeName' in f.type.elementType &&
+                    entityNamesSet.has(pascalCase((f.type.elementType as any).typeName)),
+            );
+            if (arrayField && arrayField.type.elementType && 'typeName' in arrayField.type.elementType) {
+                const elementEntity = allEntities.find((e) => pascalCase(e.name) === pascalCase((arrayField.type.elementType as any).typeName));
+                if (elementEntity) itemEntity = elementEntity;
+            }
+            const roles = categorizeEntityFields(itemEntity);
             if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
         }
 

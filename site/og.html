@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+  body {
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, sans-serif;
+  }
+  .og {
+    width: 1200px;
+    height: 630px;
+    background: #09090b;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 80px;
+  }
+  /* Dot pattern */
+  .og::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+  /* Glow */
+  .og::after {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(ellipse, rgba(99,102,241,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .content { position: relative; z-index: 1; }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 40px;
+  }
+  .logo-mark {
+    width: 56px;
+    height: 56px;
+  }
+  .logo-text {
+    font-size: 32px;
+    font-weight: 700;
+    color: #fafafa;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    font-size: 56px;
+    font-weight: 800;
+    color: #fafafa;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 24px;
+    max-width: 900px;
+  }
+  .tagline .gradient {
+    background: linear-gradient(135deg, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .sub {
+    font-size: 22px;
+    color: #a1a1aa;
+    line-height: 1.5;
+    max-width: 700px;
+  }
+  /* Terminal preview */
+  .terminal {
+    position: absolute;
+    bottom: 60px;
+    right: 80px;
+    width: 420px;
+    background: #111114;
+    border: 1px solid #23232a;
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 2;
+  }
+  .terminal-bar {
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid #23232a;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot:nth-child(1) { background: #ef4444; }
+  .dot:nth-child(2) { background: #eab308; }
+  .dot:nth-child(3) { background: #22c55e; }
+  .terminal-body {
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #fafafa;
+  }
+  .t-prompt { color: #818cf8; }
+  .t-green { color: #34d399; }
+  .t-orange { color: #fb923c; }
+  .t-muted { color: #71717a; }
+  .t-cyan { color: #22d3ee; }
+  /* URL bar */
+  .url {
+    position: absolute;
+    bottom: 30px;
+    left: 80px;
+    font-size: 16px;
+    color: #71717a;
+    font-family: 'JetBrains Mono', monospace;
+    z-index: 2;
+  }
+</style>
+</head>
+<body>
+<div class="og">
+  <div class="content">
+    <div class="logo-row">
+      <svg class="logo-mark" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#818cf8"/>
+            <stop offset="100%" stop-color="#f472b6"/>
+          </linearGradient>
+        </defs>
+        <rect width="120" height="120" rx="26" fill="#16161a"/>
+        <path d="M30 90V42l24 28" stroke="url(#g)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M90 90V42L66 70" stroke="url(#g)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M54 70L60 38L66 70" stroke="url(#g)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="logo-text">Morphkit</span>
+    </div>
+    <div class="tagline">Your React app <span class="gradient">&rarr; Native iOS.</span><br>In seconds.</div>
+    <p class="sub">A semantic AI agent that converts TypeScript/React web apps to production-quality native SwiftUI.</p>
+  </div>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+    <div class="terminal-body">
+      <div><span class="t-prompt">$</span> npx morphkit generate <span class="t-green">./app</span></div>
+      <div class="t-muted">&nbsp;</div>
+      <div><span class="t-green">&#10003;</span> 12 components, 4 routes</div>
+      <div><span class="t-green">&#10003;</span> TabView + NavigationStack</div>
+      <div><span class="t-green">&#10003;</span> Generated <span class="t-cyan">MyApp.xcodeproj</span></div>
+    </div>
+  </div>
+  <div class="url">morphkit.dev</div>
+</div>
+</body>
+</html>

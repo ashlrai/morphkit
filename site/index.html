@@ -14,7 +14,10 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Morphkit — React to Native iOS in Seconds">
   <meta name="twitter:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%236366f1'/><text x='16' y='22' font-family='system-ui' font-size='20' font-weight='700' fill='white' text-anchor='middle'>M</text></svg>">
+  <meta name="twitter:image" content="https://morphkit.dev/og.png">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -114,15 +117,9 @@
       color: var(--text);
     }
     .logo-mark {
-      width: 32px; height: 32px;
-      background: var(--accent);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 16px;
-      color: #fff;
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
     }
     .nav-links { display: flex; gap: 32px; align-items: center; }
     .nav-links a {
@@ -666,7 +663,15 @@
 <nav>
   <div class="container">
     <a href="/" class="logo">
-      <div class="logo-mark">M</div>
+      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
+        <rect width="120" height="120" rx="26" fill="#09090b"/>
+        <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
+        <path d="M30 90V42l24 28" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M90 90V42L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M54 70L60 38L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M78 32l8-1-1 8" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+      </svg>
       Morphkit
     </a>
     <div class="nav-links">
@@ -918,7 +923,13 @@
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <div class="logo-mark" style="width:28px;height:28px;font-size:14px;border-radius:6px;">M</div>
+        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
+          <rect width="120" height="120" rx="26" fill="#09090b"/>
+          <path d="M30 90V42l24 28" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M90 90V42L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M54 70L60 38L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
         Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
       </div>
       <div class="footer-links">

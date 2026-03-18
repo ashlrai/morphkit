@@ -14,7 +14,7 @@ export const Scene6CTA: React.FC = () => {
 
   // CTA text fade in
   const ctaProgress = spring({
-    frame: frame - 5,
+    frame: Math.max(0, frame - 5),
     fps,
     config: { damping: 14 },
   });

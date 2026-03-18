@@ -4,10 +4,6 @@
       <stop offset="0%" stop-color="#818cf8"/>
       <stop offset="100%" stop-color="#f472b6"/>
     </linearGradient>
-    <linearGradient id="mk-grad-subtle" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#f472b6" stop-opacity="0.2"/>
-    </linearGradient>
   </defs>
   <!-- Rounded square background -->
   <rect width="120" height="120" rx="26" fill="#09090b"/>

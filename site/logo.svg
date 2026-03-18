@@ -1,20 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
   <defs>
     <linearGradient id="mk-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#f472b6"/>
+      <stop offset="0%" stop-color="#3ECF8E"/>
+      <stop offset="100%" stop-color="#F0B429"/>
     </linearGradient>
   </defs>
-  <!-- Rounded square background -->
-  <rect width="120" height="120" rx="26" fill="#09090b"/>
-  <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#mk-grad)" stroke-opacity="0.25" stroke-width="2"/>
-  <!-- Geometric M formed by three angular strokes suggesting transformation -->
-  <!-- Left leg -->
+  <rect width="120" height="120" rx="26" fill="#0A0A0C"/>
+  <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#mk-grad)" stroke-opacity="0.2" stroke-width="2"/>
   <path d="M30 90V42l24 28" stroke="url(#mk-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <!-- Right leg -->
   <path d="M90 90V42L66 70" stroke="url(#mk-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <!-- Center peak / arrow pointing right suggesting transformation -->
   <path d="M54 70L60 38L66 70" stroke="url(#mk-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <!-- Small arrow accent at top-right suggesting "output" -->
-  <path d="M78 32l8-1-1 8" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+  <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
 </svg>

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Morphkit — Your React app → Native iOS. In seconds.</title>
-  <meta name="description" content="Morphkit converts your React &amp; TypeScript web app to a native SwiftUI iOS app automatically. One CLI command, production-ready Xcode project. Free &amp; open-source.">
+  <meta name="description" content="Morphkit converts your React &amp; TypeScript web app to a native SwiftUI iOS app automatically. One CLI command, production-ready Xcode project. Free to start.">
   <meta name="keywords" content="react to ios, typescript to swiftui, convert react to native ios, code generation, react native alternative, swiftui generator, morphkit, cli tool">
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
   <meta name="author" content="AshlrAI">
@@ -20,12 +20,12 @@
   <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Morphkit — React → Native iOS in Seconds">
-  <meta name="twitter:description" content="CLI tool that converts React/TypeScript to production-ready SwiftUI. No Swift expertise needed. Free &amp; open-source.">
+  <meta name="twitter:description" content="CLI tool that converts React/TypeScript to production-ready SwiftUI. No Swift expertise needed. Free to start.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <meta name="theme-color" content="#6366f1">
+  <meta name="theme-color" content="#3ECF8E">
   <link rel="canonical" href="https://morphkit.dev">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,22 +34,22 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg: #09090b;
-      --bg-elevated: #111114;
-      --bg-card: #16161a;
-      --border: #23232a;
-      --text: #fafafa;
-      --text-secondary: #a1a1aa;
-      --text-muted: #78788a;
-      --accent: #6366f1;
-      --accent-light: #818cf8;
-      --accent-glow: rgba(99, 102, 241, 0.15);
-      --accent-glow-strong: rgba(99, 102, 241, 0.3);
-      --green: #34d399;
-      --orange: #fb923c;
-      --pink: #f472b6;
-      --cyan: #22d3ee;
-      --yellow: #fbbf24;
+      --bg: #0A0A0C;
+      --bg-elevated: #141417;
+      --bg-card: #1A1A1F;
+      --border: #26262E;
+      --text: #F4F4F5;
+      --text-secondary: #A0A0AB;
+      --text-muted: #72727E;
+      --accent: #3ECF8E;
+      --accent-light: #5DDBA3;
+      --accent-glow: rgba(62, 207, 142, 0.12);
+      --accent-glow-strong: rgba(62, 207, 142, 0.22);
+      --green: #3ECF8E;
+      --orange: #F0B429;
+      --pink: #F0B429;
+      --cyan: #5DDBA3;
+      --yellow: #F0B429;
       --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
       --radius: 12px;
@@ -79,15 +79,15 @@
       z-index: 0;
     }
 
-    /* Global glow */
+    /* Subtle top gradient */
     .hero-glow {
       position: absolute;
-      top: -200px;
+      top: -300px;
       left: 50%;
       transform: translateX(-50%);
-      width: 800px;
-      height: 600px;
-      background: radial-gradient(ellipse, var(--accent-glow-strong) 0%, transparent 70%);
+      width: 1000px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(62,207,142,0.06) 0%, transparent 70%);
       pointer-events: none;
       z-index: 0;
     }
@@ -106,9 +106,9 @@
       top: 0; left: 0; right: 0;
       z-index: 100;
       padding: 16px 0;
-      background: rgba(9,9,11,0.7);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: rgba(10,10,12,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
     nav .container {
@@ -141,7 +141,7 @@
     .nav-links a:hover { color: var(--text); }
     .nav-links a.nav-cta {
       background: var(--accent);
-      color: #fff;
+      color: #0A0A0C;
       padding: 8px 16px;
       border-radius: 8px;
       font-size: 13px;
@@ -194,7 +194,7 @@
       margin-right: auto;
     }
     .hero h1 .gradient {
-      background: linear-gradient(135deg, var(--accent-light), var(--pink));
+      background: linear-gradient(135deg, var(--accent), var(--orange));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -231,12 +231,11 @@
     }
     .btn-primary {
       background: var(--accent);
-      color: #fff;
-      box-shadow: 0 0 20px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.1);
+      color: #0A0A0C;
+      font-weight: 700;
     }
     .btn-primary:hover {
       background: var(--accent-light);
-      box-shadow: 0 0 30px var(--accent-glow-strong), inset 0 1px 0 rgba(255,255,255,0.15);
       transform: translateY(-1px);
     }
     .btn-secondary {
@@ -259,7 +258,7 @@
       border-radius: var(--radius-lg);
       overflow: hidden;
       text-align: left;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.4), 0 0 40px var(--accent-glow);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
     }
     .terminal-bar {
       padding: 12px 16px;
@@ -365,7 +364,7 @@
       transition: border-color 0.3s, box-shadow 0.3s;
     }
     .step:hover {
-      border-color: rgba(99,102,241,0.3);
+      border-color: var(--accent-glow-strong);
       box-shadow: 0 0 30px var(--accent-glow);
     }
     .step-number {
@@ -379,7 +378,7 @@
       font-weight: 700;
       font-size: 16px;
       margin-bottom: 20px;
-      border: 1px solid rgba(99,102,241,0.2);
+      border: 1px solid rgba(62,207,142,0.15);
     }
     .step-icon {
       font-size: 28px;
@@ -415,7 +414,7 @@
       transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
     }
     .feature:hover {
-      border-color: rgba(99,102,241,0.25);
+      border-color: rgba(62,207,142,0.2);
       box-shadow: 0 8px 40px rgba(0,0,0,0.3);
       transform: translateY(-2px);
     }
@@ -428,7 +427,7 @@
       font-size: 20px;
       margin-bottom: 16px;
       background: var(--accent-glow);
-      border: 1px solid rgba(99,102,241,0.15);
+      border: 1px solid rgba(62,207,142,0.1);
     }
     .feature h4 {
       font-size: 15px;
@@ -444,7 +443,7 @@
     .faq-a-inner code {
       font-family: var(--font-mono);
       font-size: 12px;
-      background: rgba(99,102,241,0.1);
+      background: rgba(62,207,142,0.08);
       padding: 2px 6px;
       border-radius: 4px;
       color: var(--accent-light);
@@ -518,19 +517,19 @@
     }
 
     /* Syntax tokens */
-    .tok-kw { color: #c084fc; }
+    .tok-kw { color: #F0B429; }
     .tok-fn { color: #60a5fa; }
     .tok-str { color: #34d399; }
     .tok-type { color: #fbbf24; }
     .tok-cm { color: #52525b; }
     .tok-num { color: #fb923c; }
     .tok-op { color: #a1a1aa; }
-    .tok-prop { color: #f472b6; }
+    .tok-prop { color: #F0B429; }
     .tok-tag { color: #f87171; }
-    .tok-attr { color: #818cf8; }
+    .tok-attr { color: #5DDBA3; }
     .tok-punc { color: var(--text-muted); }
     .tok-param { color: #e2e8f0; }
-    .tok-self { color: #f472b6; }
+    .tok-self { color: #F0B429; }
 
     @media (max-width: 768px) {
       .code-comparison {
@@ -689,6 +688,115 @@
       outline-offset: 2px;
     }
 
+    /* ---- PRICING ---- */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .pricing-card {
+      padding: 32px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      display: flex;
+      flex-direction: column;
+    }
+    .pricing-card.featured {
+      border-color: var(--accent);
+      position: relative;
+    }
+    .pricing-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: #0A0A0C;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 100px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .pricing-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .pricing-price {
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 4px;
+    }
+    .pricing-price span {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .pricing-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .pricing-features {
+      list-style: none;
+      margin-bottom: 32px;
+      flex: 1;
+    }
+    .pricing-features li {
+      font-size: 14px;
+      color: var(--text-secondary);
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pricing-features li::before {
+      content: '\2713';
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .pricing-features li:last-child {
+      border-bottom: none;
+    }
+    .pricing-cta {
+      display: block;
+      text-align: center;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .pricing-cta-primary {
+      background: var(--accent);
+      color: #0A0A0C;
+    }
+    .pricing-cta-primary:hover {
+      background: var(--accent-light);
+    }
+    .pricing-cta-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .pricing-cta-secondary:hover {
+      border-color: var(--text-muted);
+    }
+    @media (max-width: 768px) {
+      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
+    }
+
     /* ---- FAQ ---- */
     .faq-list {
       max-width: 720px;
@@ -703,7 +811,7 @@
       transition: border-color 0.3s;
     }
     .faq-item:hover {
-      border-color: rgba(99,102,241,0.25);
+      border-color: rgba(62,207,142,0.2);
     }
     .faq-q {
       width: 100%;
@@ -770,13 +878,23 @@
     "installUrl": "https://morphkit.dev/#install",
     "softwareVersion": "0.1.0-beta",
     "isAccessibleForFree": true,
-    "license": "https://opensource.org/licenses/MIT",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD",
-      "availability": "https://schema.org/InStock"
-    },
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Free",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "20 conversions per month"
+      },
+      {
+        "@type": "Offer",
+        "name": "Pro",
+        "price": "19",
+        "priceCurrency": "USD",
+        "description": "Unlimited conversions, team features, priority support",
+        "billingIncrement": "P1M"
+      }
+    ],
     "author": {
       "@type": "Organization",
       "name": "AshlrAI",
@@ -856,10 +974,10 @@
       },
       {
         "@type": "Question",
-        "name": "Is Morphkit free and open-source?",
+        "name": "Is Morphkit free?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. Morphkit is free to use and open-source under the MIT license. You can install it with npx morphkit generate or bun install -g morphkit. The source code is available on GitHub."
+          "text": "Morphkit has a generous free tier — convert up to 20 projects per month at no cost. The Pro plan ($19/month) unlocks unlimited conversions, team features, and priority support. Enterprise plans are available for larger teams."
         }
       },
       {
@@ -883,13 +1001,13 @@
   <div class="container">
     <a href="/" class="logo">
       <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
+        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
         <rect width="120" height="120" rx="26" fill="#09090b"/>
         <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
         <path d="M30 90V42l24 28" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <path d="M90 90V42L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <path d="M54 70L60 38L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        <path d="M78 32l8-1-1 8" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+        <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
       </svg>
       Morphkit
     </a>
@@ -897,7 +1015,7 @@
       <a href="#how-it-works">How It Works</a>
       <a href="#features">Features</a>
       <a href="#example">Example</a>
-      <a href="#faq">FAQ</a>
+      <a href="#pricing">Pricing</a>
       <a href="#install" class="nav-cta">Get Started</a>
     </div>
   </div>
@@ -1105,6 +1223,60 @@
 
 <div class="section-divider"></div>
 
+<!-- Pricing -->
+<section class="section" id="pricing">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Pricing</span>
+      <h2 class="section-title">Start free, scale when ready</h2>
+      <p class="section-desc">No credit card required. Convert your first app in under two minutes.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card reveal">
+        <div class="pricing-name">Free</div>
+        <div class="pricing-price">$0</div>
+        <p class="pricing-desc">For trying Morphkit on personal projects</p>
+        <ul class="pricing-features">
+          <li>20 conversions / month</li>
+          <li>Full SwiftUI output</li>
+          <li>All React patterns</li>
+          <li>Community support</li>
+        </ul>
+        <a href="#install" class="pricing-cta pricing-cta-secondary">Get Started</a>
+      </div>
+      <div class="pricing-card featured reveal">
+        <div class="pricing-badge">Most Popular</div>
+        <div class="pricing-name">Pro</div>
+        <div class="pricing-price">$19 <span>/ mo</span></div>
+        <p class="pricing-desc">For developers shipping to the App Store</p>
+        <ul class="pricing-features">
+          <li>Unlimited conversions</li>
+          <li>Continuous sync (watch mode)</li>
+          <li>5 team members</li>
+          <li>Priority support</li>
+          <li>Usage analytics</li>
+        </ul>
+        <a href="#install" class="pricing-cta pricing-cta-primary">Start Free Trial</a>
+      </div>
+      <div class="pricing-card reveal">
+        <div class="pricing-name">Enterprise</div>
+        <div class="pricing-price">Custom</div>
+        <p class="pricing-desc">For teams with security and compliance needs</p>
+        <ul class="pricing-features">
+          <li>Everything in Pro</li>
+          <li>Unlimited team members</li>
+          <li>SSO / SAML</li>
+          <li>Self-hosted option</li>
+          <li>Dedicated support + SLA</li>
+        </ul>
+        <a href="mailto:hello@ashlr.ai" class="pricing-cta pricing-cta-secondary">Contact Sales</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
 <!-- Install -->
 <section class="section" id="install">
   <div class="container">
@@ -1176,9 +1348,9 @@
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-5">Is Morphkit free and open-source?</button>
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-5">Is Morphkit free?</button>
         <div class="faq-a" id="faq-a-5" role="region">
-          <div class="faq-a-inner">Yes. Morphkit is free to use and open-source under the MIT license. Install it with <code>npx morphkit generate</code> or <code>bun install -g morphkit</code>. The full source code is available on GitHub.</div>
+          <div class="faq-a-inner">Morphkit has a generous free tier &mdash; convert up to 20 projects per month at no cost. The Pro plan ($19/month) unlocks unlimited conversions, team features, and priority support. Enterprise plans are available for larger teams.</div>
         </div>
       </div>
       <div class="faq-item reveal">
@@ -1199,13 +1371,13 @@
     <div class="footer-inner">
       <div class="footer-brand">
         <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#f472b6"/></linearGradient></defs>
+          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
           <rect width="120" height="120" rx="26" fill="#09090b"/>
           <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#ft-grad)" stroke-opacity="0.25" stroke-width="2"/>
           <path d="M30 90V42l24 28" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           <path d="M90 90V42L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           <path d="M54 70L60 38L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          <path d="M78 32l8-1-1 8" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+          <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
         </svg>
         Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
       </div>
@@ -1215,7 +1387,7 @@
         <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a>
       </div>
     </div>
-    <p class="footer-sub">Made with &#9829; and Claude</p>
+    <p class="footer-sub">&copy; 2026 AshlrAI. All rights reserved.</p>
   </div>
 </footer>
 

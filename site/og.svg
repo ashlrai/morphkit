@@ -1,31 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
   <defs>
     <linearGradient id="og-grad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#f472b6"/>
+      <stop offset="0%" stop-color="#3ECF8E"/>
+      <stop offset="100%" stop-color="#F0B429"/>
     </linearGradient>
     <linearGradient id="og-logo-grad" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#f472b6"/>
+      <stop offset="0%" stop-color="#3ECF8E"/>
+      <stop offset="100%" stop-color="#F0B429"/>
     </linearGradient>
     <radialGradient id="og-glow" cx="0.85" cy="0.15" r="0.6">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#3ECF8E" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#3ECF8E" stop-opacity="0"/>
     </radialGradient>
     <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="12" cy="12" r="0.8" fill="rgba(255,255,255,0.04)"/>
+      <circle cx="12" cy="12" r="0.8" fill="rgba(255,255,255,0.03)"/>
     </pattern>
   </defs>
 
-  <!-- Background -->
-  <rect width="1200" height="630" fill="#09090b"/>
+  <rect width="1200" height="630" fill="#0A0A0C"/>
   <rect width="1200" height="630" fill="url(#dots)"/>
   <rect width="1200" height="630" fill="url(#og-glow)"/>
 
   <!-- Logo mark -->
   <g transform="translate(80, 80)">
-    <rect width="56" height="56" rx="12" fill="#16161a"/>
-    <rect x="0.5" y="0.5" width="55" height="55" rx="11.5" fill="none" stroke="url(#og-logo-grad)" stroke-opacity="0.3" stroke-width="1"/>
+    <rect width="56" height="56" rx="12" fill="#141417"/>
+    <rect x="0.5" y="0.5" width="55" height="55" rx="11.5" fill="none" stroke="url(#og-logo-grad)" stroke-opacity="0.2" stroke-width="1"/>
     <g transform="scale(0.467)">
       <path d="M30 90V42l24 28" stroke="url(#og-logo-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       <path d="M90 90V42L66 70" stroke="url(#og-logo-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -33,53 +32,45 @@
     </g>
   </g>
 
-  <!-- Brand name -->
-  <text x="152" y="120" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#fafafa" letter-spacing="-0.5">Morphkit</text>
+  <text x="152" y="120" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#F4F4F5" letter-spacing="-0.5">Morphkit</text>
 
-  <!-- Headline -->
-  <text x="80" y="230" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="#fafafa" letter-spacing="-2">Your React app</text>
-  <text x="80" y="300" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="url(#og-grad)" letter-spacing="-2">→ Native iOS.</text>
-  <text x="80" y="370" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="#fafafa" letter-spacing="-2">In seconds.</text>
+  <text x="80" y="230" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="#F4F4F5" letter-spacing="-2">Your React app</text>
+  <text x="80" y="300" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="url(#og-grad)" letter-spacing="-2">&#x2192; Native iOS.</text>
+  <text x="80" y="370" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="800" fill="#F4F4F5" letter-spacing="-2">In seconds.</text>
 
-  <!-- Subtitle -->
-  <text x="80" y="420" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" fill="#a1a1aa">A semantic AI agent that converts TypeScript/React to native SwiftUI.</text>
+  <text x="80" y="420" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" fill="#A0A0AB">A semantic AI agent that converts TypeScript/React to native SwiftUI.</text>
 
   <!-- Terminal card -->
   <g transform="translate(720, 170)">
-    <rect width="400" height="280" rx="12" fill="#111114" stroke="#23232a" stroke-width="1"/>
-    <!-- Title bar — single rect with clipPath to get rounded top, square bottom -->
+    <rect width="400" height="280" rx="12" fill="#141417" stroke="#26262E" stroke-width="1"/>
     <clipPath id="tb-clip"><rect width="400" height="40"/></clipPath>
     <rect width="400" height="52" rx="12" fill="rgba(255,255,255,0.02)" clip-path="url(#tb-clip)"/>
-    <line x1="0" y1="40" x2="400" y2="40" stroke="#23232a" stroke-width="1"/>
+    <line x1="0" y1="40" x2="400" y2="40" stroke="#26262E" stroke-width="1"/>
     <circle cx="18" cy="20" r="5" fill="#ef4444"/>
     <circle cx="36" cy="20" r="5" fill="#eab308"/>
     <circle cx="54" cy="20" r="5" fill="#22c55e"/>
 
-    <!-- Terminal content -->
     <text x="20" y="72" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13">
-      <tspan fill="#818cf8">$</tspan>
-      <tspan fill="#fafafa"> npx morphkit generate </tspan>
-      <tspan fill="#34d399">./app</tspan>
+      <tspan fill="#5DDBA3">$</tspan>
+      <tspan fill="#F4F4F5"> npx morphkit generate </tspan>
+      <tspan fill="#3ECF8E">./app</tspan>
     </text>
-    <text x="20" y="112" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13" fill="#71717a">  Analyzing TypeScript codebase...</text>
+    <text x="20" y="112" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13" fill="#72727E">  Analyzing TypeScript codebase...</text>
     <text x="20" y="148" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13">
-      <tspan fill="#34d399">  ✓</tspan>
-      <tspan fill="#fafafa"> 12 components, 4 routes</tspan>
+      <tspan fill="#3ECF8E">  &#x2713;</tspan>
+      <tspan fill="#F4F4F5"> 12 components, 4 routes</tspan>
     </text>
     <text x="20" y="178" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13">
-      <tspan fill="#34d399">  ✓</tspan>
-      <tspan fill="#fafafa"> TabView + NavigationStack</tspan>
+      <tspan fill="#3ECF8E">  &#x2713;</tspan>
+      <tspan fill="#F4F4F5"> TabView + NavigationStack</tspan>
     </text>
     <text x="20" y="208" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13">
-      <tspan fill="#34d399">  ✓</tspan>
-      <tspan fill="#fafafa"> Generated → </tspan>
-      <tspan fill="#22d3ee">MyApp.xcodeproj</tspan>
+      <tspan fill="#3ECF8E">  &#x2713;</tspan>
+      <tspan fill="#F4F4F5"> Generated &#x2192; </tspan>
+      <tspan fill="#F0B429">MyApp.xcodeproj</tspan>
     </text>
   </g>
 
-  <!-- URL -->
-  <text x="80" y="580" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="16" fill="#71717a">morphkit.dev</text>
-
-  <!-- Bottom gradient line -->
-  <rect x="80" y="596" width="200" height="2" rx="1" fill="url(#og-grad)" opacity="0.4"/>
+  <text x="80" y="580" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="16" fill="#72727E">morphkit.dev</text>
+  <rect x="80" y="596" width="200" height="2" rx="1" fill="url(#og-grad)" opacity="0.3"/>
 </svg>

@@ -272,6 +272,120 @@ function formatDefaultValue(value: any, swiftType: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Preview data factory generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a sensible preview default value for a Swift field based on its
+ * name and type.  Used to build `static func preview()` factory methods.
+ */
+function previewValue(field: SwiftField, entityName: string): string {
+    const nameLower = field.name.toLowerCase();
+
+    // Optional fields → nil
+    if (field.isOptional) return 'nil';
+
+    // Array fields → empty array
+    if (field.isArray) return '[]';
+
+    // ID fields
+    if (field.isId) {
+        if (field.type === 'UUID' || field.type === 'UUID?') return 'UUID()';
+        return '"preview-1"';
+    }
+
+    // Name-based heuristics (checked before pure-type heuristics)
+    if (nameLower === 'name' || nameLower === 'title') return `"Sample ${entityName}"`;
+    if (nameLower === 'description' || nameLower === 'desc' || nameLower === 'summary') {
+        return `"A sample ${entityName.charAt(0).toLowerCase() + entityName.slice(1)} for previewing"`;
+    }
+    if (nameLower === 'price' || nameLower === 'cost' || nameLower === 'amount') return '29.99';
+    if (nameLower === 'imageurl' || nameLower === 'image' || nameLower === 'imageurl' || nameLower === 'thumbnailurl' || nameLower === 'thumbnail' || nameLower === 'avatar' || nameLower === 'avatarurl' || nameLower === 'photo' || nameLower === 'photourl') {
+        return '"https://picsum.photos/200"';
+    }
+    if (nameLower === 'email') return '"preview@example.com"';
+    if (nameLower === 'url' || nameLower === 'link' || nameLower === 'href' || nameLower === 'website') return '"https://example.com"';
+    if (nameLower === 'phone' || nameLower === 'phonenumber') return '"+1 555-0100"';
+    if (nameLower === 'category' || nameLower === 'type' || nameLower === 'kind' || nameLower === 'group') return '"Sample"';
+    if (nameLower === 'rating' || nameLower === 'score') return '4.5';
+    if (nameLower === 'quantity' || nameLower === 'count') return '1';
+
+    // Type-based fallbacks
+    const baseSwiftType = field.type.replace('?', '');
+    if (baseSwiftType === 'Bool') return 'true';
+    if (baseSwiftType === 'Date') return '.now';
+    if (baseSwiftType === 'Int') return '1';
+    if (baseSwiftType === 'Double') return '0.0';
+    if (baseSwiftType === 'String') return '"Sample"';
+    if (baseSwiftType === 'UUID') return 'UUID()';
+
+    // Nested entity → .preview()
+    // Detect by PascalCase type name that isn't a Swift stdlib type
+    if (/^[A-Z][a-zA-Z0-9]+$/.test(baseSwiftType) && !['String', 'Int', 'Double', 'Bool', 'Date', 'UUID', 'URL', 'Data', 'Any'].includes(baseSwiftType)) {
+        return `.preview()`;
+    }
+
+    // Array of entities
+    if (baseSwiftType.startsWith('[') && baseSwiftType.endsWith(']')) {
+        return '[]';
+    }
+
+    // Dictionary
+    if (baseSwiftType.startsWith('[') && baseSwiftType.includes(':')) {
+        return '[:]';
+    }
+
+    return '""';
+}
+
+/**
+ * Generate a `#if DEBUG` extension with a static `preview()` factory method
+ * for a struct entity.
+ */
+function generatePreviewExtension(entity: Entity, model: SemanticAppModel): string {
+    const structName = pascalCase(entity.name);
+    const fields = (entity.fields ?? []).map(analyseField);
+    const hasId = fields.some((f) => f.isId);
+
+    const lines: string[] = [];
+    lines.push('#if DEBUG');
+    lines.push(`extension ${structName} {`);
+    lines.push(`    static func preview() -> ${structName} {`);
+
+    // Build the initializer call
+    const initArgs: string[] = [];
+
+    // Add synthesised id if struct doesn't have one naturally
+    if (!hasId) {
+        initArgs.push(`id: UUID()`);
+    }
+
+    for (const field of fields) {
+        const value = previewValue(field, structName);
+        initArgs.push(`${field.name}: ${value}`);
+    }
+
+    // Format: single line if short, multi-line otherwise
+    const singleLine = `${structName}(${initArgs.join(', ')})`;
+    if (singleLine.length <= 80) {
+        lines.push(`        ${singleLine}`);
+    } else {
+        lines.push(`        ${structName}(`);
+        for (let i = 0; i < initArgs.length; i++) {
+            const trailing = i < initArgs.length - 1 ? ',' : '';
+            lines.push(`            ${initArgs[i]}${trailing}`);
+        }
+        lines.push('        )');
+    }
+
+    lines.push('    }');
+    lines.push('}');
+    lines.push('#endif');
+
+    return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // File grouping — group by sourceFile
 // ---------------------------------------------------------------------------
 
@@ -328,11 +442,15 @@ export function generateSwiftModels(model: SemanticAppModel): GeneratedFile[] {
         structs.push('import Foundation');
         structs.push('');
 
+        // Collect struct entities for preview extension generation
+        const structEntities: Entity[] = [];
+
         for (const entity of groupEntities) {
             if (isEnumEntity(entity)) {
                 structs.push(generateEnum(entity));
             } else {
                 structs.push(generateStruct(entity, model));
+                structEntities.push(entity);
             }
             structs.push('');
 
@@ -340,6 +458,16 @@ export function generateSwiftModels(model: SemanticAppModel): GeneratedFile[] {
             const fields = entity.fields ?? [];
             if (fields.length === 0) {
                 warnings.push(`Entity "${entity.name}" has no fields`);
+            }
+        }
+
+        // Generate #if DEBUG preview() factory extensions for struct entities
+        if (structEntities.length > 0) {
+            structs.push('// MARK: - Preview Data');
+            structs.push('');
+            for (const entity of structEntities) {
+                structs.push(generatePreviewExtension(entity, model));
+                structs.push('');
             }
         }
 

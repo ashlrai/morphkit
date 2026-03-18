@@ -288,6 +288,91 @@ function getSubTypeEntityNames(model: SemanticAppModel): Set<string> {
     return subTypes;
 }
 
+/**
+ * Resolve a Swift type for a Zustand store field by matching against model entities.
+ * Falls back to heuristic type inference based on common field names.
+ */
+function resolveFieldType(
+    fieldName: string,
+    storeName: string,
+    model: SemanticAppModel,
+): string {
+    const entities = model.entities ?? [];
+    const entityNames = new Set(entities.map((e) => e.name));
+    const lower = fieldName.toLowerCase();
+
+    // "items" → look for a matching sub-entity (e.g. CartItem for Cart store)
+    if (lower === 'items') {
+        const itemEntity = `${storeName}Item`;
+        if (entityNames.has(itemEntity)) return `[${itemEntity}] = []`;
+        // Fallback: look for any entity with "Item" in name
+        for (const e of entities) {
+            if (e.name.endsWith('Item')) return `[${e.name}] = []`;
+        }
+        return '[Any] = [] // TODO: replace with concrete type';
+    }
+
+    // Numeric field names
+    if (lower === 'total' || lower === 'subtotal' || lower === 'price' || lower === 'amount') {
+        return 'Double = 0';
+    }
+    if (lower === 'quantity' || lower === 'count') {
+        return 'Int = 0';
+    }
+
+    // Boolean field names
+    if (lower.startsWith('is') || lower.startsWith('has') || lower === 'loading' || lower === 'added') {
+        return 'Bool = false';
+    }
+
+    // String field names
+    if (lower === 'error' || lower === 'message') {
+        return 'String?';
+    }
+
+    // Try to match field name to an entity (e.g. "product" → Product?)
+    const pascalField = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+    if (entityNames.has(pascalField)) {
+        return `${pascalField}?`;
+    }
+
+    // Plural field → array of entity (e.g. "products" → [Product])
+    if (lower.endsWith('s') && lower.length > 1) {
+        const singular = pascalField.slice(0, -1);
+        if (entityNames.has(singular)) return `[${singular}] = []`;
+    }
+
+    return 'Any // TODO: replace with concrete type';
+}
+
+/**
+ * Resolve an array element type from a screen name by finding a matching entity.
+ * e.g. "Products" screen → "Product" entity, "Cart" screen → "CartItem" entity.
+ */
+function resolveArrayTypeFromScreenName(
+    screenName: string,
+    model: SemanticAppModel,
+): string {
+    const entities = model.entities ?? [];
+    const entityNames = new Set(entities.map((e) => e.name));
+    const pascal = pascalCase(screenName);
+
+    // Try singular form: "Products" → "Product"
+    if (pascal.endsWith('s') && pascal.length > 1) {
+        const singular = pascal.slice(0, -1);
+        if (entityNames.has(singular)) return singular;
+    }
+
+    // Try exact match
+    if (entityNames.has(pascal)) return pascal;
+
+    // Try with "Item" suffix: "Cart" → "CartItem"
+    const itemName = `${pascal}Item`;
+    if (entityNames.has(itemName)) return itemName;
+
+    return 'Any';
+}
+
 function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
     const files: GeneratedFile[] = [];
     const screens = model.screens ?? [];
@@ -317,11 +402,17 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
         lines.push('@Observable');
         lines.push(`final class ${storeName}Store {`);
 
-        // Add state properties from the Zustand shape
+        // Add state properties from the Zustand shape (deduplicated)
         if (sp.shape?.fields) {
+            const seenFieldNames = new Set<string>();
             for (const field of sp.shape.fields) {
                 const propName = field.name.charAt(0).toLowerCase() + field.name.slice(1);
-                lines.push(`    var ${propName}: Any // TODO: replace with concrete type`);
+                if (seenFieldNames.has(propName)) continue;
+                seenFieldNames.add(propName);
+
+                // Try to resolve a concrete Swift type from model entities
+                const resolvedType = resolveFieldType(propName, storeName, model);
+                lines.push(`    var ${propName}: ${resolvedType}`);
             }
         } else {
             // Fallback: use store name to infer a collection property
@@ -330,8 +421,16 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
             lines.push(`    var selected${storeName}: ${storeName}?`);
         }
 
-        lines.push('    var isLoading = false');
-        lines.push('    var error: NetworkError?');
+        // Only add isLoading/error if not already declared from shape fields
+        const shapeFieldNames = sp.shape?.fields
+            ? new Set(sp.shape.fields.map((f) => f.name.charAt(0).toLowerCase() + f.name.slice(1)))
+            : new Set<string>();
+        if (!shapeFieldNames.has('isLoading')) {
+            lines.push('    var isLoading = false');
+        }
+        if (!shapeFieldNames.has('error')) {
+            lines.push('    var error: NetworkError?');
+        }
         lines.push('');
         lines.push('    private let apiClient: APIClient');
         lines.push('');
@@ -464,8 +563,13 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
         lines.push('@Observable');
         lines.push(`final class ${viewModelName} {`);
 
+        const declaredProps = new Set<string>();
         for (const binding of screen.stateBindings) {
             const propName = binding.charAt(0).toLowerCase() + binding.slice(1);
+            // Skip duplicate property names
+            if (declaredProps.has(propName)) continue;
+            declaredProps.add(propName);
+
             // Infer a sensible type from the binding name
             if (binding.toLowerCase().startsWith('is') || binding.toLowerCase() === 'added') {
                 lines.push(`    var ${propName} = false`);
@@ -474,11 +578,16 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
             } else if (binding.toLowerCase().includes('order') || binding.toLowerCase().includes('sort') || binding.toLowerCase().includes('category')) {
                 lines.push(`    var ${propName} = ""`);
             } else {
-                lines.push(`    var ${propName}: [Any] = []`);
+                // Resolve array type from screen name → entity
+                const entityType = resolveArrayTypeFromScreenName(screen.name, model);
+                lines.push(`    var ${propName}: [${entityType}] = []`);
             }
         }
 
-        lines.push('    var isLoading = false');
+        // Only add isLoading if not already declared from stateBindings
+        if (!declaredProps.has('isLoading')) {
+            lines.push('    var isLoading = false');
+        }
         lines.push('    var error: NetworkError?');
         lines.push('}');
         lines.push('');

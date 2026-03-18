@@ -1084,12 +1084,20 @@ function buildStateManagement(
     const shape = extractStateShape(sp);
     const mutations = extractStateMutations(sp);
 
+    // Deduplicate shape fields by name
+    const seenFieldNames = new Set<string>();
+    const uniqueShape = shape.filter((field) => {
+      if (seenFieldNames.has(field.name)) return false;
+      seenFieldNames.add(field.name);
+      return true;
+    });
+
     return {
       name: getStateName(sp),
       type: mapStateType(sp.scope),
       shape: {
         kind: 'object' as const,
-        fields: shape.map((field) => ({
+        fields: uniqueShape.map((field) => ({
           name: field.name,
           type: typeFromString(field.type),
           optional: false,
@@ -1278,9 +1286,11 @@ function entitiesFromTypeDefinitions(parsedFiles: ParsedFile[]): Map<string, Ent
 
       // --- String literal union type aliases → enum entities ---
       // e.g. type SortOrder = 'price-asc' | 'price-desc' | 'name' | 'rating'
-      // These have kind 'type-alias', 0 properties, and text containing only
-      // string literals separated by |.
-      if (td.kind === 'type-alias' && td.properties.length === 0) {
+      // These have kind 'type-alias' and text containing string literals
+      // separated by |.  Note: ts-morph may resolve string union types and
+      // report string prototype properties, so we match on text pattern
+      // rather than relying on properties.length === 0.
+      if (td.kind === 'type-alias') {
         const stringUnionMatch = td.text.match(/=\s*((?:'[^']*'(?:\s*\|\s*)?)+)\s*;?\s*$/);
         if (stringUnionMatch) {
           const valuesRaw = stringUnionMatch[1];
@@ -1373,18 +1383,53 @@ function inferEntities(
       if (shape.length <= 1) continue;
 
       if (!entityMap.has(entityName)) {
+        const candidateFields = deduplicateFields(
+          shape.map((field) => ({
+            name: field.name,
+            type: typeFromString(field.type),
+            optional: false,
+            description: '',
+            isPrimaryKey: field.name === 'id',
+          })),
+        );
+
+        // Skip state-derived entities that are poorly typed (>50% unknown fields)
+        // when a better-typed entity with overlapping name/fields already exists.
+        // This avoids creating redundant "UseCartStore" entities when "Cart"/"CartItem"
+        // already exist from TS interface extraction.
+        const unknownCount = candidateFields.filter(
+          (f) => f.type.kind === 'unknown' || f.type.typeName === 'unknown',
+        ).length;
+        const isPoorlyTyped = candidateFields.length > 0 && unknownCount / candidateFields.length > 0.5;
+
+        if (isPoorlyTyped) {
+          const candidateFieldNames = new Set(candidateFields.map((f) => f.name.toLowerCase()));
+          // Strip common hook/store prefixes/suffixes for name matching
+          const strippedName = entityName.replace(/^Use/i, '').replace(/Store$/i, '');
+          let hasOverlap = false;
+          for (const [existingName, existingEntity] of entityMap) {
+            // Name overlap check
+            if (strippedName && strippedName.length >= 3 &&
+                (existingName.toLowerCase().includes(strippedName.toLowerCase()) ||
+                 strippedName.toLowerCase().includes(existingName.toLowerCase()))) {
+              hasOverlap = true;
+              break;
+            }
+            // Field overlap: >50% of candidate fields exist in the existing entity
+            const existingFieldNames = new Set((existingEntity.fields ?? []).map((f) => f.name.toLowerCase()));
+            const overlapCount = [...candidateFieldNames].filter((n) => existingFieldNames.has(n)).length;
+            if (candidateFields.length > 0 && overlapCount / candidateFields.length > 0.5) {
+              hasOverlap = true;
+              break;
+            }
+          }
+          if (hasOverlap) continue; // Skip this poorly-typed duplicate entity
+        }
+
         entityMap.set(entityName, {
           name: entityName,
           description: `Data entity derived from ${sp.kind} state "${stateName}"`,
-          fields: deduplicateFields(
-            shape.map((field) => ({
-              name: field.name,
-              type: typeFromString(field.type),
-              optional: false,
-              description: '',
-              isPrimaryKey: field.name === 'id',
-            })),
-          ),
+          fields: candidateFields,
           sourceFile: sp.filePath,
           relationships: [],
           confidence: 'medium',
@@ -1463,11 +1508,28 @@ function inferEntities(
   }
 
   // Filter out junk entities: generic type names, entities with angle brackets, empty-field entities
-  return Array.from(entityMap.values()).filter((e) => {
+  const allEntities = Array.from(entityMap.values()).filter((e) => {
     if (e.name.includes('<') || e.name.includes('>')) return false;
     if (e.name === 'Promise' || e.name === 'Array' || e.name === 'Record') return false;
     if (/^(any|unknown|void|never|undefined|null|object|string|number|boolean)$/i.test(e.name)) return false;
     return true;
+  });
+
+  // Remove entities where ALL non-id fields have type 'unknown' (Any) — these are
+  // low-quality state-inferred entities (e.g. Zustand stores) that duplicate
+  // better-typed entities derived from explicit TypeScript interfaces.
+  return allEntities.filter((e) => {
+    // Don't filter enum entities
+    if (e.fields.length === 1 && e.fields[0].name === '__enum') return true;
+    // Keep entities with no fields (they may be placeholders)
+    if (e.fields.length === 0) return true;
+    const nonIdFields = e.fields.filter((f) => f.name !== 'id' && !f.isPrimaryKey);
+    if (nonIdFields.length === 0) return true;
+    const allUnknown = nonIdFields.every((f) =>
+      f.type.kind === 'unknown' ||
+      (f.type.kind === 'object' && f.type.typeName === 'unknown'),
+    );
+    return !allUnknown;
   });
 }
 

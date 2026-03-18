@@ -504,6 +504,74 @@ function needsAsyncLoading(screen: Screen): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Detail route detection — used for wrapping list rows in NavigationLink
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a detail route for the given entity/screen.
+ * Looks for routes like `/products/:id` that map to a detail screen
+ * for the same entity that the list screen is showing.
+ */
+function findDetailRoute(screen: Screen, model: SemanticAppModel): { routeCaseName: string } | null {
+    const routes = model.navigation?.routes ?? [];
+    const screens = model.screens ?? [];
+    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    const entityLower = entityName.toLowerCase();
+
+    // Look for a route with dynamic params whose screen name relates to this entity
+    for (const route of routes) {
+        if (route.params.length === 0) continue;
+
+        // Find the screen this route maps to
+        const targetScreen = screens.find((s) => s.name === route.screen);
+        if (!targetScreen) continue;
+
+        // Check if the route path includes the entity name (e.g., /products/:id)
+        const pathLower = route.path.toLowerCase();
+        const isRelated =
+            pathLower.includes(entityLower) ||
+            pathLower.includes(entityLower + 's') ||
+            targetScreen.name.toLowerCase().includes(entityLower);
+
+        if (isRelated) {
+            const caseName = getDetailRouteCaseName(targetScreen, model);
+            if (caseName) return { routeCaseName: caseName };
+        }
+    }
+
+    // Also check if there's a detail screen by naming convention (e.g., ProductsDetail)
+    const detailScreenName = `${screen.name}Detail`;
+    const detailScreen = screens.find((s) => s.name === detailScreenName);
+    if (detailScreen) {
+        const caseName = getDetailRouteCaseName(detailScreen, model);
+        if (caseName) return { routeCaseName: caseName };
+    }
+
+    return null;
+}
+
+/**
+ * Get the AppRoute case name for a detail screen.
+ * Mirrors the logic in navigation-generator's getRouteCaseName.
+ */
+function getDetailRouteCaseName(screen: Screen, model: SemanticAppModel): string | null {
+    const baseName = camelCase(screen.name);
+    const routes = model.navigation?.routes ?? [];
+    const hasDynamic = routes.some(
+        (r) => r.screen === screen.name && r.params.length > 0,
+    );
+    const needsId = screen.layout === 'detail' && screen.dataRequirements.length > 0;
+
+    if (hasDynamic || needsId) {
+        return baseName.endsWith('Detail') ? baseName : `${baseName}Detail`;
+    }
+    if (screen.layout === 'detail' || screen.name.endsWith('Detail')) {
+        return baseName.endsWith('Detail') ? baseName : `${baseName}Detail`;
+    }
+    return null;
+}
+
+// ---------------------------------------------------------------------------
 // Action button generation
 // ---------------------------------------------------------------------------
 
@@ -635,47 +703,61 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
     const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const entity = resolveEntity(screen, model);
+    const detailRoute = findDetailRoute(screen, model);
     const lines: string[] = [];
 
     lines.push('List {');
     lines.push(`    ForEach(${varName}s) { ${varName} in`);
 
+    // Wrap row content in NavigationLink when a detail route exists
+    if (detailRoute) {
+        lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${varName}.id)) {`);
+    }
+
+    // Extra indentation when wrapped in NavigationLink
+    const ri = detailRoute ? '    ' : '';
+
     if (entity) {
         const roles = categorizeEntityFields(entity);
-        lines.push('        HStack(spacing: 12) {');
+        lines.push(`        ${ri}HStack(spacing: 12) {`);
         if (roles.imageField) {
-            lines.push(`            AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
-            lines.push('                image.resizable().aspectRatio(contentMode: .fill)');
-            lines.push('            } placeholder: {');
-            lines.push('                Image(systemName: "photo.circle.fill")');
-            lines.push('                    .foregroundStyle(.secondary)');
-            lines.push('            }');
-            lines.push('            .frame(width: 44, height: 44)');
-            lines.push('            .clipShape(RoundedRectangle(cornerRadius: 8))');
+            lines.push(`            ${ri}AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`                ${ri}image.resizable().aspectRatio(contentMode: .fill)`);
+            lines.push(`            ${ri}} placeholder: {`);
+            lines.push(`                ${ri}Image(systemName: "photo.circle.fill")`);
+            lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
+            lines.push(`            ${ri}}`);
+            lines.push(`            ${ri}.frame(width: 44, height: 44)`);
+            lines.push(`            ${ri}.clipShape(RoundedRectangle(cornerRadius: 8))`);
         }
-        lines.push('            VStack(alignment: .leading, spacing: 4) {');
+        lines.push(`            ${ri}VStack(alignment: .leading, spacing: 4) {`);
         if (roles.titleField) {
-            lines.push(`                Text(${varName}.${camelCase(roles.titleField.name)})`);
-            lines.push('                    .font(.headline)');
+            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.titleField.name)})`);
+            lines.push(`                    ${ri}.font(.headline)`);
         } else {
-            lines.push(`                Text(String(describing: ${varName}.id))`);
-            lines.push('                    .font(.headline)');
+            lines.push(`                ${ri}Text(String(describing: ${varName}.id))`);
+            lines.push(`                    ${ri}.font(.headline)`);
         }
         if (roles.subtitleField) {
-            lines.push(`                Text(${varName}.${camelCase(roles.subtitleField.name)})`);
-            lines.push('                    .font(.subheadline)');
-            lines.push('                    .foregroundStyle(.secondary)');
+            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.subtitleField.name)})`);
+            lines.push(`                    ${ri}.font(.subheadline)`);
+            lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
         }
         if (roles.priceField) {
-            lines.push(`                Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
-            lines.push('                    .font(.subheadline)');
-            lines.push('                    .fontWeight(.semibold)');
+            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push(`                    ${ri}.font(.subheadline)`);
+            lines.push(`                    ${ri}.fontWeight(.semibold)`);
         }
-        lines.push('            }');
-        lines.push('            Spacer()');
-        lines.push('        }');
+        lines.push(`            ${ri}}`);
+        lines.push(`            ${ri}Spacer()`);
+        lines.push(`        ${ri}}`);
     } else {
-        lines.push(`        ${entityName}RowView(${varName}: ${varName})`);
+        lines.push(`        ${ri}${entityName}RowView(${varName}: ${varName})`);
+    }
+
+    // Close NavigationLink if present
+    if (detailRoute) {
+        lines.push('        }');
     }
 
     lines.push('    }');
@@ -698,6 +780,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
     const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const entity = resolveEntity(screen, model);
+    const detailRoute = findDetailRoute(screen, model);
     const lines: string[] = [];
 
     lines.push('let columns = [');
@@ -708,34 +791,46 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('    LazyVGrid(columns: columns, spacing: 16) {');
     lines.push(`        ForEach(${varName}s) { ${varName} in`);
 
+    // Wrap grid item in NavigationLink when a detail route exists
+    if (detailRoute) {
+        lines.push(`            NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${varName}.id)) {`);
+    }
+
+    const gi = detailRoute ? '    ' : '';
+
     if (entity) {
         const roles = categorizeEntityFields(entity);
-        lines.push('            VStack(alignment: .leading, spacing: 8) {');
+        lines.push(`            ${gi}VStack(alignment: .leading, spacing: 8) {`);
         if (roles.imageField) {
-            lines.push(`                AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
-            lines.push('                    image.resizable().aspectRatio(contentMode: .fill)');
-            lines.push('                } placeholder: {');
-            lines.push('                    Color.gray.opacity(0.2)');
-            lines.push('                }');
-            lines.push('                .frame(height: 120)');
-            lines.push('                .clipped()');
+            lines.push(`                ${gi}AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`                    ${gi}image.resizable().aspectRatio(contentMode: .fill)`);
+            lines.push(`                ${gi}} placeholder: {`);
+            lines.push(`                    ${gi}Color.gray.opacity(0.2)`);
+            lines.push(`                ${gi}}`);
+            lines.push(`                ${gi}.frame(height: 120)`);
+            lines.push(`                ${gi}.clipped()`);
         }
         if (roles.titleField) {
-            lines.push(`                Text(${varName}.${camelCase(roles.titleField.name)})`);
-            lines.push('                    .font(.headline)');
-            lines.push('                    .lineLimit(2)');
+            lines.push(`                ${gi}Text(${varName}.${camelCase(roles.titleField.name)})`);
+            lines.push(`                    ${gi}.font(.headline)`);
+            lines.push(`                    ${gi}.lineLimit(2)`);
         }
         if (roles.priceField) {
-            lines.push(`                Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
-            lines.push('                    .font(.subheadline)');
-            lines.push('                    .fontWeight(.semibold)');
+            lines.push(`                ${gi}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push(`                    ${gi}.font(.subheadline)`);
+            lines.push(`                    ${gi}.fontWeight(.semibold)`);
         }
-        lines.push('            }');
-        lines.push('            .background(Color(.systemBackground))');
-        lines.push('            .clipShape(RoundedRectangle(cornerRadius: 12))');
-        lines.push('            .shadow(color: .black.opacity(0.1), radius: 4, y: 2)');
+        lines.push(`            ${gi}}`);
+        lines.push(`            ${gi}.background(Color(.systemBackground))`);
+        lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
+        lines.push(`            ${gi}.shadow(color: .black.opacity(0.1), radius: 4, y: 2)`);
     } else {
-        lines.push(`            ${entityName}CardView(${varName}: ${varName})`);
+        lines.push(`            ${gi}${entityName}CardView(${varName}: ${varName})`);
+    }
+
+    // Close NavigationLink if present
+    if (detailRoute) {
+        lines.push('            }');
     }
 
     lines.push('        }');
@@ -951,8 +1046,22 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
 }
 
 function generateDashboardLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
-    const entity = resolveEntity(screen, model);
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    // For dashboard/home screens, resolveEntity may return a bogus "Home" entity
+    // that doesn't match any real data model. Fall back to the first non-enum entity.
+    let entity = resolveEntity(screen, model);
+    let entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+
+    // If resolveEntity returned null or matched an entity with very few fields (< 3),
+    // fall back to the entity in the model with the most fields (e.g., "Product" for e-commerce).
+    const entities = model.entities ?? [];
+    if (entities.length > 0 && (!entity || (entity.fields ?? []).length < 3)) {
+        const bestEntity = [...entities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
+        if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
+            entity = bestEntity;
+            entityName = pascalCase(bestEntity.name);
+        }
+    }
+
     const varName = camelCase(entityName);
     const dataReqs = screen.dataRequirements ?? [];
     const actions = screen.actions ?? [];
@@ -969,9 +1078,13 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     lines.push('                .font(.largeTitle)');
     lines.push('                .fontWeight(.bold)');
     if (screen.description && screen.description !== `Screen for ${screen.name}`) {
-        lines.push(`            Text("${screen.description}")`);
+        // Truncate long descriptions to 80 chars to keep the subtitle readable
+        const desc = screen.description.length > 80
+            ? screen.description.slice(0, 77) + '...'
+            : screen.description;
+        lines.push(`            Text("${desc}")`);
     } else if (entity) {
-        lines.push('            Text("Discover our curated collection")');
+        lines.push('            Text("Discover amazing products")');
     } else {
         lines.push('            Text("Here\\u{2019}s what\\u{2019}s happening today")');
     }
@@ -1425,18 +1538,48 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     const actions = screen.actions ?? [];
     const lines: string[] = [];
 
-    // Determine field accessors from the entity if available
+    // Determine field accessors from the entity if available.
+    // If the entity has a relationship field (e.g. `product: Product`), access
+    // title/price/image through the relationship: `cartItem.product.name`.
     let nameAccessor = `${varName}.name`;
     let priceAccessor = `${varName}.price`;
     let quantityAccessor = `${varName}.quantity`;
     let imageAccessor: string | null = null;
 
     if (entity) {
-        const roles = categorizeEntityFields(entity);
-        if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
-        if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
-        if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
-        if (roles.imageField) imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
+        // Check if the entity has a reference to another entity (object field whose
+        // typeName matches a known entity). If so, categorize that referenced entity's
+        // fields and access them through the relationship field.
+        const allEntities = model.entities ?? [];
+        const entityNames = new Set(allEntities.map((e) => pascalCase(e.name)));
+        const refField = (entity.fields ?? []).find(
+            (f) => f.type.kind === 'object' && f.type.typeName && entityNames.has(pascalCase(f.type.typeName)),
+        );
+
+        if (refField && refField.type.typeName) {
+            const refEntity = allEntities.find((e) => pascalCase(e.name) === pascalCase(refField.type.typeName!));
+            const refPrefix = `${varName}.${camelCase(refField.name)}`;
+            if (refEntity) {
+                const refRoles = categorizeEntityFields(refEntity);
+                if (refRoles.titleField) nameAccessor = `${refPrefix}.${camelCase(refRoles.titleField.name)}`;
+                if (refRoles.priceField) priceAccessor = `${refPrefix}.${camelCase(refRoles.priceField.name)}`;
+                if (refRoles.imageField) imageAccessor = `${refPrefix}.${camelCase(refRoles.imageField.name)}`;
+            } else {
+                // Fallback: access common fields through the reference
+                nameAccessor = `${refPrefix}.name`;
+                priceAccessor = `${refPrefix}.price`;
+            }
+            // Quantity stays on the cart item itself
+            const roles = categorizeEntityFields(entity);
+            if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
+        } else {
+            // No reference field — access fields directly on the entity
+            const roles = categorizeEntityFields(entity);
+            if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
+            if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
+            if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
+            if (roles.imageField) imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
+        }
     }
 
     // Empty state
@@ -1979,34 +2122,63 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
-    // Entity-based properties for list/grid layouts when no explicit data requirements
-    const entityName = deriveEntityName(screen);
-    if (entityName && (screen.layout === 'list' || screen.layout === 'grid')) {
-        const varName = camelCase(entityName);
+    // Entity-based properties for list/grid/dashboard layouts when no explicit data requirements
+    let derivedEntityName = deriveEntityName(screen);
+    if (derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
+        const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {
-            lines.push(`    @State private var ${arrayVarName}: [${entityName}] = []`);
+            lines.push(`    @State private var ${arrayVarName}: [${derivedEntityName}] = []`);
             declaredNames.add(arrayVarName);
+        }
+    }
+
+    // For dashboard layouts, ensure the collection array is declared using the same
+    // fallback logic as generateDashboardLayout (prefer primary entity over "Home")
+    if (screen.layout === 'dashboard') {
+        let dashEntityName = derivedEntityName ?? inferEntityFromScreen(screen);
+        const allEntities = model.entities ?? [];
+        // If resolveEntity would return null or an entity with < 3 fields,
+        // fall back to the entity with the most fields (mirrors generateDashboardLayout).
+        const dashEntity = resolveEntity(screen, model);
+        if (allEntities.length > 0 && (!dashEntity || (dashEntity.fields ?? []).length < 3)) {
+            const bestEntity = [...allEntities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
+            if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
+                dashEntityName = pascalCase(bestEntity.name);
+            }
+        }
+        const dashVar = camelCase(dashEntityName);
+        const dashArrayVar = dashVar.endsWith('s') ? dashVar : `${dashVar}s`;
+        if (!declaredNames.has(dashArrayVar)) {
+            lines.push(`    @State private var ${dashArrayVar}: [${pascalCase(dashEntityName)}] = []`);
+            declaredNames.add(dashArrayVar);
         }
     }
 
     // Entity-based property for detail layouts — the body references entity fields via varName
     // Track let properties separately so the #Preview can pass sample data
+    // Entity-based property for detail layouts
+    // Use `id: String` pattern so ContentView can pass route IDs via navigation.
+    // The detail view loads the entity asynchronously using the id.
     const letProperties: { name: string; type: string }[] = [];
     if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
-        const detailEntity = resolveDetailEntity(screen, model);
-        // Always declare the entity property for detail screens, even when no
-        // entity is found in the model. The model-generator will create the type,
-        // and the detail layout references it via varName.
-        {
-            const eName = pascalCase(inferEntityFromScreen(screen));
-            const eVar = camelCase(inferEntityFromScreen(screen));
-            if (!declaredNames.has(eVar)) {
-                lines.push(`    let ${eVar}: ${eName}`);
-                declaredNames.add(eVar);
-                letProperties.push({ name: eVar, type: eName });
-            }
+        const eName = pascalCase(inferEntityFromScreen(screen));
+        const eVar = camelCase(inferEntityFromScreen(screen));
+
+        // Declare `let id: String` for navigation compatibility
+        if (!declaredNames.has('id')) {
+            lines.push('    let id: String');
+            declaredNames.add('id');
+            letProperties.push({ name: 'id', type: 'String' });
         }
+
+        // Declare `@State private var entity: Entity?` for the loaded data
+        if (!declaredNames.has(eVar)) {
+            lines.push(`    @State private var ${eVar}: ${eName}?`);
+            declaredNames.add(eVar);
+        }
+
+        hasApiData = true; // Ensure loadData is generated for detail views
     }
 
     // For custom layouts with repeated components, generate array state
@@ -2074,15 +2246,31 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const cartVarName = camelCase(cartEntityName);
         const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
         const cartEntity = resolveEntity(screen, model);
-        let priceField = 'price';
+        let priceExpr = 'price';
         let qtyField = 'quantity';
         if (cartEntity) {
-            const roles = categorizeEntityFields(cartEntity);
-            if (roles.priceField) priceField = camelCase(roles.priceField.name);
-            if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
+            // Check for reference field (e.g. product: Product) — access price through it
+            const allEntities = model.entities ?? [];
+            const entityNamesSet = new Set(allEntities.map((e) => pascalCase(e.name)));
+            const refField = (cartEntity.fields ?? []).find(
+                (f) => f.type.kind === 'object' && f.type.typeName && entityNamesSet.has(pascalCase(f.type.typeName)),
+            );
+            if (refField && refField.type.typeName) {
+                const refEntity = allEntities.find((e) => pascalCase(e.name) === pascalCase(refField.type.typeName!));
+                if (refEntity) {
+                    const refRoles = categorizeEntityFields(refEntity);
+                    if (refRoles.priceField) priceExpr = `${camelCase(refField.name)}.${camelCase(refRoles.priceField.name)}`;
+                }
+                const roles = categorizeEntityFields(cartEntity);
+                if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
+            } else {
+                const roles = categorizeEntityFields(cartEntity);
+                if (roles.priceField) priceExpr = camelCase(roles.priceField.name);
+                if (roles.quantityField) qtyField = camelCase(roles.quantityField.name);
+            }
         }
         lines.push(`    private var cartTotal: Double {`);
-        lines.push(`        ${cartArrayVar}.reduce(0) { $0 + $1.${priceField} * Double($1.${qtyField}) }`);
+        lines.push(`        ${cartArrayVar}.reduce(0) { $0 + $1.${priceExpr} * Double($1.${qtyField}) }`);
         lines.push('    }');
         lines.push('');
     }
@@ -2130,7 +2318,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const arrayVarName = (req.cardinality === 'many' || (req as any).type === 'list')
                     ? (varName.endsWith('s') ? varName : `${varName}s`)
                     : varName;
-                lines.push(`            ${arrayVarName} = try await fetch${pascalCase(reqSource)}()`);
+                lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(reqSource)}()`);
             }
         }
         lines.push('        } catch {');

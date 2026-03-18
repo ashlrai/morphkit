@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Morphkit</title>
+  <meta name="description" content="Privacy Policy for Morphkit, the CLI tool that converts React/TypeScript apps to native SwiftUI iOS projects.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="author" content="AshlrAI">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#3ECF8E">
+  <link rel="canonical" href="https://morphkit.dev/privacy">
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0A0A0C;
+      --bg-elevated: #141417;
+      --bg-card: #1A1A1F;
+      --border: #26262E;
+      --text: #F4F4F5;
+      --text-secondary: #A0A0AB;
+      --text-muted: #72727E;
+      --accent: #3ECF8E;
+      --accent-light: #5DDBA3;
+      --accent-glow: rgba(62, 207, 142, 0.12);
+      --accent-glow-strong: rgba(62, 207, 142, 0.22);
+      --green: #3ECF8E;
+      --orange: #F0B429;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, header, footer, main { position: relative; z-index: 1; }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10,10,12,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a.nav-cta {
+      background: var(--accent);
+      color: #0A0A0C;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .nav-links a.nav-cta:hover { opacity: 0.9; }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+    }
+
+    /* ---- LEGAL PAGE ---- */
+    .legal-page {
+      padding: 140px 0 80px;
+    }
+    .legal-content {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .legal-content h1 {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      line-height: 1.1;
+    }
+    .legal-meta {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .legal-content h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 48px;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .legal-content h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-top: 32px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .legal-content p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+    .legal-content ul {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 16px;
+      padding-left: 24px;
+    }
+    .legal-content li {
+      margin-bottom: 8px;
+    }
+    .legal-content a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .legal-content a:hover {
+      color: var(--accent-light);
+    }
+    .legal-content strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-sub {
+      width: 100%;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="https://morphkit.dev" class="logo">
+      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+        <rect width="120" height="120" rx="26" fill="#09090b"/>
+        <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
+        <path d="M30 90V42l24 28" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M90 90V42L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M54 70L60 38L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+      </svg>
+      Morphkit
+    </a>
+    <div class="nav-links">
+      <a href="https://morphkit.dev">Home</a>
+      <a href="/terms">Terms</a>
+      <a href="https://morphkit.dev/#install" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <section class="legal-page">
+    <div class="container">
+      <div class="legal-content">
+        <h1>Privacy Policy</h1>
+        <p class="legal-meta">Effective date: March 18, 2026 &middot; Last updated: March 18, 2026</p>
+
+        <p>AshlrAI ("we," "us," or "our") operates <strong>Morphkit</strong>, a CLI tool that converts React and TypeScript web applications to native SwiftUI iOS projects. This Privacy Policy explains what information we collect, how we use it, and your choices regarding your data.</p>
+
+        <p>We believe in transparency and minimal data collection. Morphkit is designed with privacy at its core — your source code never leaves your machine.</p>
+
+        <h2>1. Information We Collect</h2>
+
+        <h3>Email Address (Waitlist)</h3>
+        <p>When you sign up for the Morphkit waitlist, we collect your email address. We use this solely to notify you about product availability and important updates. You can unsubscribe at any time by clicking the link in any email or contacting us directly.</p>
+
+        <h3>Anonymous Website Analytics</h3>
+        <p>We use <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a> to understand how visitors use our website. Plausible is privacy-focused and does not use cookies. It collects no personal data or personally identifiable information. All data is aggregated and cannot be used to identify individual visitors.</p>
+
+        <h3>CLI Usage Data (Optional Telemetry)</h3>
+        <p>If you choose to enable telemetry in the Morphkit CLI, we collect anonymous usage data such as:</p>
+        <ul>
+          <li>Commands run (e.g., <code>analyze</code>, <code>generate</code>) and their duration</li>
+          <li>Framework detection results (e.g., "Next.js detected")</li>
+          <li>Error types encountered (without stack traces or file paths)</li>
+          <li>Morphkit version and operating system type</li>
+        </ul>
+        <p>Telemetry is <strong>off by default</strong> and must be explicitly opted in. You can disable it at any time.</p>
+
+        <h2>2. Information We Do NOT Collect</h2>
+
+        <p>We want to be clear about what we do not access or store:</p>
+        <ul>
+          <li><strong>Your source code.</strong> Morphkit's analysis runs entirely on your local machine. Your code is never transmitted to our servers.</li>
+          <li><strong>Personal data from generated apps.</strong> The iOS apps Morphkit generates are yours — we have no access to them or any data they process.</li>
+          <li><strong>Browsing history, cookies, or tracking pixels</strong> on our website (Plausible is cookie-free).</li>
+        </ul>
+
+        <h2>3. Third-Party Services</h2>
+
+        <p>We work with a small number of trusted third-party services:</p>
+        <ul>
+          <li><strong><a href="https://x.ai" target="_blank" rel="noopener">xAI</a></strong> — If you enable AI-enhanced analysis (optional), anonymized code structure metadata may be sent to xAI's API to improve conversion quality. No raw source code is transmitted — only abstract representations such as component trees and type signatures.</li>
+          <li><strong><a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></strong> — Privacy-focused, cookie-free website analytics hosted in the EU.</li>
+          <li><strong><a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a></strong> — Hosts our website. Subject to <a href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener">Vercel's Privacy Policy</a>.</li>
+        </ul>
+
+        <h2>4. How We Use Your Information</h2>
+
+        <p>We use the information we collect to:</p>
+        <ul>
+          <li>Notify waitlist subscribers about product availability</li>
+          <li>Understand aggregate website traffic and improve our documentation</li>
+          <li>Improve the reliability and performance of the Morphkit CLI (if telemetry is enabled)</li>
+          <li>Respond to support requests sent to our contact email</li>
+        </ul>
+
+        <h2>5. Data Retention</h2>
+
+        <p>We retain your email address until you unsubscribe from the waitlist or request deletion. Aggregated analytics data is retained indefinitely but contains no personally identifiable information. CLI telemetry data is retained for up to 12 months.</p>
+
+        <h2>6. Your Rights</h2>
+
+        <p>Depending on your location, you may have the following rights regarding your personal data:</p>
+        <ul>
+          <li><strong>Access</strong> — Request a copy of any personal data we hold about you</li>
+          <li><strong>Deletion</strong> — Request that we delete your personal data</li>
+          <li><strong>Correction</strong> — Request that we correct inaccurate data</li>
+          <li><strong>Portability</strong> — Request your data in a portable format</li>
+          <li><strong>Opt-out</strong> — Unsubscribe from communications or disable CLI telemetry at any time</li>
+        </ul>
+
+        <h3>For EU/EEA Residents (GDPR)</h3>
+        <p>We process your data based on consent (waitlist signup) and legitimate interest (improving our product). You have the right to withdraw consent at any time. Our lawful basis for processing is outlined above.</p>
+
+        <h3>For California Residents (CCPA)</h3>
+        <p>We do not sell your personal information. You have the right to know what data we collect, request deletion, and opt out of any sale of personal information (which we do not engage in). We will not discriminate against you for exercising these rights.</p>
+
+        <h2>7. Data Security</h2>
+
+        <p>We implement reasonable technical and organizational measures to protect your data, including encrypted connections (HTTPS), access controls, and minimal data collection practices. However, no system is perfectly secure, and we cannot guarantee absolute security.</p>
+
+        <h2>8. Children's Privacy</h2>
+
+        <p>Morphkit is not directed at children under the age of 13. We do not knowingly collect personal information from children. If you believe a child has provided us with personal data, please contact us and we will promptly delete it.</p>
+
+        <h2>9. Changes to This Policy</h2>
+
+        <p>We may update this Privacy Policy from time to time. We will notify you of significant changes by posting a notice on our website or sending an email to waitlist subscribers. Your continued use of Morphkit after changes take effect constitutes acceptance of the updated policy.</p>
+
+        <h2>10. Contact Us</h2>
+
+        <p>If you have questions about this Privacy Policy, your data, or want to exercise your rights, contact us at:</p>
+        <p><strong>Email:</strong> <a href="mailto:hello@ashlr.ai">hello@ashlr.ai</a><br>
+        <strong>Company:</strong> AshlrAI &middot; <a href="https://ashlr.ai" target="_blank" rel="noopener">ashlr.ai</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+          <rect width="120" height="120" rx="26" fill="#09090b"/>
+          <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#ft-grad)" stroke-opacity="0.25" stroke-width="2"/>
+          <path d="M30 90V42l24 28" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M90 90V42L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M54 70L60 38L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+        </svg>
+        Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://morphkit.dev">morphkit.dev</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a>
+      </div>
+    </div>
+    <p class="footer-sub">&copy; 2026 AshlrAI. All rights reserved.</p>
+  </div>
+</footer>
+
+</body>
+</html>

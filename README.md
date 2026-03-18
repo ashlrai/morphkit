@@ -409,7 +409,7 @@ bun install
 ### Commands
 
 ```bash
-# Run all tests (53 tests, 376 assertions)
+# Run all tests (67 tests, 508 assertions)
 bun test
 
 # TypeScript strict type checking
@@ -432,7 +432,7 @@ The test suite covers the full pipeline with a sample Next.js e-commerce app (`t
 - **Swift quality tests** — Validates generated code compiles and follows iOS conventions
 
 ```
-53 pass | 0 fail | 376 expect() calls
+67 pass | 0 fail | 508 expect() calls
 ```
 
 ### Project Conventions

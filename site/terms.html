@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service — Morphkit</title>
+  <meta name="description" content="Terms of Service for Morphkit, the CLI tool that converts React/TypeScript apps to native SwiftUI iOS projects.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="author" content="AshlrAI">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#3ECF8E">
+  <link rel="canonical" href="https://morphkit.dev/terms">
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0A0A0C;
+      --bg-elevated: #141417;
+      --bg-card: #1A1A1F;
+      --border: #26262E;
+      --text: #F4F4F5;
+      --text-secondary: #A0A0AB;
+      --text-muted: #72727E;
+      --accent: #3ECF8E;
+      --accent-light: #5DDBA3;
+      --accent-glow: rgba(62, 207, 142, 0.12);
+      --accent-glow-strong: rgba(62, 207, 142, 0.22);
+      --green: #3ECF8E;
+      --orange: #F0B429;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, header, footer, main { position: relative; z-index: 1; }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10,10,12,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a.nav-cta {
+      background: var(--accent);
+      color: #0A0A0C;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .nav-links a.nav-cta:hover { opacity: 0.9; }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+    }
+
+    /* ---- LEGAL PAGE ---- */
+    .legal-page {
+      padding: 140px 0 80px;
+    }
+    .legal-content {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .legal-content h1 {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      line-height: 1.1;
+    }
+    .legal-meta {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .legal-content h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 48px;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .legal-content h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-top: 32px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .legal-content p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+    .legal-content ul, .legal-content ol {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 16px;
+      padding-left: 24px;
+    }
+    .legal-content li {
+      margin-bottom: 8px;
+    }
+    .legal-content a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .legal-content a:hover {
+      color: var(--accent-light);
+    }
+    .legal-content strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-sub {
+      width: 100%;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="https://morphkit.dev" class="logo">
+      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+        <rect width="120" height="120" rx="26" fill="#09090b"/>
+        <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
+        <path d="M30 90V42l24 28" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M90 90V42L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M54 70L60 38L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+      </svg>
+      Morphkit
+    </a>
+    <div class="nav-links">
+      <a href="https://morphkit.dev">Home</a>
+      <a href="/privacy">Privacy</a>
+      <a href="https://morphkit.dev/#install" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <section class="legal-page">
+    <div class="container">
+      <div class="legal-content">
+        <h1>Terms of Service</h1>
+        <p class="legal-meta">Effective date: March 18, 2026 &middot; Last updated: March 18, 2026</p>
+
+        <p>These Terms of Service ("Terms") govern your use of <strong>Morphkit</strong>, a CLI tool and related services operated by AshlrAI ("we," "us," or "our"). By using Morphkit, you agree to these Terms. If you do not agree, please do not use the service.</p>
+
+        <h2>1. Overview of the Service</h2>
+
+        <p>Morphkit is a command-line tool that analyzes React and TypeScript web applications and generates native SwiftUI iOS projects. The tool runs locally on your machine, with optional cloud-based AI enhancement features.</p>
+
+        <h2>2. Ownership of Generated Code</h2>
+
+        <p>Code generated by Morphkit belongs to you. You retain full ownership of all output produced by the tool, including generated SwiftUI views, models, navigation, networking code, and Xcode project files. You are free to use, modify, distribute, and commercialize generated code without restriction.</p>
+
+        <p>We claim no intellectual property rights over the code Morphkit produces for you.</p>
+
+        <h2>3. No Warranty on App Store Acceptance</h2>
+
+        <p>While Morphkit strives to generate production-quality iOS code, <strong>we make no guarantees that generated apps will be accepted by Apple's App Store</strong>. App Store review is at Apple's sole discretion and depends on many factors beyond code quality, including design guidelines, content policies, and human review decisions.</p>
+
+        <p>You are responsible for testing, reviewing, and ensuring that any app you submit to the App Store meets Apple's current guidelines.</p>
+
+        <h2>4. Service Tiers and Usage Limits</h2>
+
+        <h3>Free Tier</h3>
+        <ul>
+          <li>Up to 20 conversions per month</li>
+          <li>Full analysis and generation capabilities</li>
+          <li>Community support</li>
+        </ul>
+        <p>Unused conversions do not roll over to the next month.</p>
+
+        <h3>Pro Tier</h3>
+        <ul>
+          <li>Unlimited conversions</li>
+          <li>AI-enhanced analysis and generation</li>
+          <li>Priority support</li>
+          <li>Early access to new features</li>
+        </ul>
+        <p>Pro subscriptions are billed monthly or annually. You may cancel at any time, and your access will continue through the end of your current billing period.</p>
+
+        <h3>Enterprise Tier</h3>
+        <ul>
+          <li>Everything in Pro</li>
+          <li>Custom integrations and dedicated support</li>
+          <li>On-premises deployment options</li>
+          <li>Service-level agreements (SLAs)</li>
+        </ul>
+        <p>Enterprise terms are governed by a separate agreement. Contact us at <a href="mailto:hello@ashlr.ai">hello@ashlr.ai</a> for details.</p>
+
+        <h2>5. Acceptable Use</h2>
+
+        <p>You agree not to use Morphkit to:</p>
+        <ul>
+          <li>Reverse-engineer, decompile, or disassemble the Morphkit CLI tool itself</li>
+          <li>Redistribute, sublicense, or resell the Morphkit tool (generated code is yours to distribute freely)</li>
+          <li>Circumvent usage limits, authentication, or licensing mechanisms</li>
+          <li>Generate code for applications that are unlawful or promote illegal activity</li>
+          <li>Interfere with or disrupt the service or its infrastructure</li>
+          <li>Use automated systems to abuse the service beyond reasonable usage patterns</li>
+        </ul>
+
+        <p>We reserve the right to suspend or terminate accounts that violate these terms.</p>
+
+        <h2>6. Your Source Code and Privacy</h2>
+
+        <p>Morphkit runs locally on your machine. Your source code is analyzed on-device and is <strong>never uploaded to our servers</strong>. When AI-enhanced features are enabled, only abstract metadata (such as component trees and type signatures) is transmitted — never raw source code. For more details, see our <a href="/privacy">Privacy Policy</a>.</p>
+
+        <h2>7. Service Availability</h2>
+
+        <p>We strive to keep Morphkit available and reliable, but we do not guarantee uninterrupted access. The service may be temporarily unavailable due to maintenance, updates, or circumstances beyond our control. We are not liable for any downtime or service interruptions.</p>
+
+        <h2>8. Disclaimer of Warranties</h2>
+
+        <p>Morphkit is provided <strong>"as is"</strong> and <strong>"as available"</strong> without warranties of any kind, whether express or implied, including but not limited to implied warranties of merchantability, fitness for a particular purpose, and non-infringement.</p>
+
+        <p>We do not warrant that:</p>
+        <ul>
+          <li>Generated code will be free of bugs or errors</li>
+          <li>The service will meet all of your requirements</li>
+          <li>Generated apps will be accepted by any app store</li>
+          <li>The service will be uninterrupted or error-free</li>
+        </ul>
+
+        <h2>9. Limitation of Liability</h2>
+
+        <p>To the maximum extent permitted by applicable law, AshlrAI and its officers, directors, employees, and agents shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, data, use, or goodwill, arising out of or related to your use of Morphkit.</p>
+
+        <p>Our total aggregate liability for any claims arising from or related to these Terms or the service shall not exceed the amount you paid us in the twelve (12) months preceding the claim, or fifty dollars ($50), whichever is greater.</p>
+
+        <h2>10. Indemnification</h2>
+
+        <p>You agree to indemnify and hold harmless AshlrAI from any claims, damages, losses, or expenses (including reasonable attorney fees) arising from your use of the service, violation of these Terms, or infringement of any third-party rights.</p>
+
+        <h2>11. Modifications to the Terms</h2>
+
+        <p>We may update these Terms from time to time. When we make significant changes, we will notify you by posting a notice on our website or via email. Continued use of Morphkit after changes take effect constitutes acceptance of the revised Terms.</p>
+
+        <h2>12. Termination</h2>
+
+        <p>You may stop using Morphkit at any time. We may suspend or terminate your access if you violate these Terms. Upon termination, your right to use the service ends, but any code previously generated remains yours.</p>
+
+        <h2>13. Governing Law</h2>
+
+        <p>These Terms shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of law provisions. Any disputes arising under these Terms shall be resolved in the state or federal courts located in Delaware.</p>
+
+        <h2>14. Severability</h2>
+
+        <p>If any provision of these Terms is found to be unenforceable, that provision will be modified to the minimum extent necessary, and the remaining provisions will continue in full force and effect.</p>
+
+        <h2>15. Contact Us</h2>
+
+        <p>If you have questions about these Terms of Service, contact us at:</p>
+        <p><strong>Email:</strong> <a href="mailto:hello@ashlr.ai">hello@ashlr.ai</a><br>
+        <strong>Company:</strong> AshlrAI &middot; <a href="https://ashlr.ai" target="_blank" rel="noopener">ashlr.ai</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+          <rect width="120" height="120" rx="26" fill="#09090b"/>
+          <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#ft-grad)" stroke-opacity="0.25" stroke-width="2"/>
+          <path d="M30 90V42l24 28" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M90 90V42L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M54 70L60 38L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+        </svg>
+        Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://morphkit.dev">morphkit.dev</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a>
+      </div>
+    </div>
+    <p class="footer-sub">&copy; 2026 AshlrAI. All rights reserved.</p>
+  </div>
+</footer>
+
+</body>
+</html>

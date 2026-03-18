@@ -36,6 +36,8 @@ import type {
   TypeDefinition,
 } from './model.js';
 import { GrokClient, getGrokClient as getClient } from '../ai/index.js';
+import type { ExtractedComponentInfo } from '../ai/prompts/component-mapping.js';
+import type { SwiftUIMapping } from '../ai/structured-output.js';
 
 // Re-export the analyzer types so consumers can reference them
 export type { ExtractedComponent } from '../analyzer/component-extractor.js';
@@ -72,29 +74,81 @@ export interface AnalysisResult {
 function getGrokClientSafe(): GrokClient | null {
   // Allow explicit opt-out via environment variable
   if (process.env.MORPHKIT_NO_AI === '1' || process.env.MORPHKIT_NO_AI === 'true') {
-    console.log('[morphkit] AI client disabled via MORPHKIT_NO_AI, using heuristics');
+    console.log('[morphkit] Using heuristic analysis (AI disabled via --no-ai)');
     return null;
   }
 
   // Only attempt AI if the API key is configured
   if (!process.env.XAI_API_KEY) {
-    console.log('[morphkit] No XAI_API_KEY set — using heuristics (set XAI_API_KEY for AI-enhanced analysis)');
+    console.log('[morphkit] Using heuristic analysis (set XAI_API_KEY for AI-enhanced results)');
     return null;
   }
 
   try {
     const client = getClient();
-    console.log('[morphkit] AI client connected (grok-4-1-fast-reasoning)');
+    console.log('[morphkit] AI-enhanced analysis enabled');
     return client;
   } catch (_err) {
     // Unexpected error during client creation — degrade gracefully
-    console.log('[morphkit] AI client not available, using heuristics');
+    console.log('[morphkit] Using heuristic analysis (AI client initialization failed)');
     return null;
   }
 }
 
 /** Default timeout for AI calls (ms). Prevents the pipeline from hanging. */
-const AI_CALL_TIMEOUT_MS = 15_000;
+const AI_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Sanitize an error message to ensure API keys are never leaked in logs.
+ * Strips any occurrence of common key patterns (xai-*, sk-*, Bearer tokens).
+ */
+function sanitizeErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  // Redact API key patterns: xai-..., sk-..., Bearer tokens
+  return msg.replace(/\b(xai-|sk-|Bearer\s+)[A-Za-z0-9_\-]{8,}/g, '$1[REDACTED]');
+}
+
+/**
+ * Convert an ExtractedComponent into the ExtractedComponentInfo shape
+ * needed by the component mapping AI prompt.
+ */
+function toComponentInfo(
+  component: ExtractedComponent,
+  sourceCode: string,
+): ExtractedComponentInfo {
+  return {
+    name: component.name,
+    jsxElements: component.children.map((c) => c.name),
+    cssClasses: [], // CSS classes are not extracted at the component level; the AI infers from source
+    hooks: component.hooks.map((h) => h.hookName),
+    eventHandlers: component.eventHandlers.map((h) => h.name),
+    props: component.props.map((p) => ({ name: p.name, type: p.type ?? 'unknown' })),
+    stateVariables: component.hooks
+      .filter((h) => h.hookName === 'useState')
+      .map((h) => ({ name: h.stateName ?? h.hookName, initialValue: h.initialValue ?? '' })),
+    uxPatterns: [],
+    sourceCode,
+  };
+}
+
+/**
+ * Call the AI for component mapping and return the result, or null on failure.
+ * Wraps the call in try/catch + timeout so it never breaks the pipeline.
+ */
+async function aiMapComponent(
+  aiClient: GrokClient,
+  component: ExtractedComponent,
+  sourceCode: string,
+): Promise<SwiftUIMapping | null> {
+  try {
+    const info = await toComponentInfo(component, sourceCode);
+    const result = await withAITimeout(aiClient.mapComponent({ component: info }));
+    return result;
+  } catch (err) {
+    console.warn(`[morphkit] AI component mapping failed for ${component.name}, using heuristics:`, sanitizeErrorMessage(err));
+    return null;
+  }
+}
 
 /**
  * Run an async AI call with a timeout. Returns null if the call exceeds the limit.
@@ -210,7 +264,7 @@ async function inferLayout(
         }
       }
     } catch (err) {
-      console.warn('[morphkit] AI layout inference failed, using heuristic fallback:', err instanceof Error ? err.message : err);
+      console.warn('[morphkit] AI layout inference failed, using heuristic fallback:', sanitizeErrorMessage(err));
     }
   }
 
@@ -872,8 +926,10 @@ async function buildScreenFromRouteAndComponent(
 
   // Enhance with AI intent analysis when available
   if (aiClient) {
+    const componentCode = await readComponentSource(component.filePath);
+
+    // 1. Intent analysis — understand what the component does and why
     try {
-      const componentCode = await readComponentSource(component.filePath);
       const intent = await withAITimeout(aiClient.analyzeIntent({
         code: componentCode,
         appContext: {
@@ -895,7 +951,16 @@ async function buildScreenFromRouteAndComponent(
         screen.confidence = 'high';
       }
     } catch (err) {
-      console.warn(`[morphkit] AI intent analysis failed for ${screenName}, using heuristics:`, err instanceof Error ? err.message : err);
+      console.warn(`[morphkit] AI intent analysis failed for ${screenName}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+
+    // 2. Component mapping — get SwiftUI mapping suggestions
+    const mapping = await aiMapComponent(aiClient, component, componentCode);
+    if (mapping) {
+      // Enrich the primary component ref with the AI-suggested SwiftUI mapping
+      if (screen.components.length > 0) {
+        screen.components[0]!.suggestedSwiftUI = mapping.swiftUIComponent;
+      }
     }
   }
 
@@ -992,10 +1057,12 @@ async function buildScreenFromComponent(
     confidence: 'low',
   };
 
-  // Enhance with AI intent analysis when available
+  // Enhance with AI when available
   if (aiClient) {
+    const componentCode = await readComponentSource(component.filePath);
+
+    // 1. Intent analysis
     try {
-      const componentCode = await readComponentSource(component.filePath);
       const intent = await withAITimeout(aiClient.analyzeIntent({
         code: componentCode,
         appContext: {
@@ -1015,7 +1082,15 @@ async function buildScreenFromComponent(
         screen.confidence = 'medium'; // Upgrade from 'low' since AI provided insight
       }
     } catch (err) {
-      console.warn(`[morphkit] AI intent analysis failed for ${component.name}, using heuristics:`, err instanceof Error ? err.message : err);
+      console.warn(`[morphkit] AI intent analysis failed for ${component.name}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+
+    // 2. Component mapping
+    const mapping = await aiMapComponent(aiClient, component, componentCode);
+    if (mapping) {
+      if (screen.components.length > 0) {
+        screen.components[0]!.suggestedSwiftUI = mapping.swiftUIComponent;
+      }
     }
   }
 

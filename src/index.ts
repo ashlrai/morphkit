@@ -129,7 +129,16 @@ program
     '  $ morphkit analyze ./app -o model.json\n' +
     '  $ morphkit preview ./app --screen Dashboard',
   )
-  .version(VERSION, '-V, --version', 'Output the current version');
+  .version(VERSION, '-V, --version', 'Output the current version')
+  .option('--no-ai', 'Disable AI-enhanced analysis (use heuristics only)')
+  .hook('preAction', () => {
+    // Set MORPHKIT_NO_AI env var when --no-ai flag is passed so the builder
+    // uses heuristic analysis instead of calling the xAI API.
+    const opts = program.opts();
+    if (opts.ai === false) {
+      process.env.MORPHKIT_NO_AI = '1';
+    }
+  });
 
 program
   .command('analyze')

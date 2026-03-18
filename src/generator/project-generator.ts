@@ -681,14 +681,17 @@ ${appName}/
 
 ${stats.warnings.length > 0 ? stats.warnings.map((w) => `- ${w}`).join('\n') : 'None'}
 
+## Getting Started
+
+Open \`Package.swift\` in Xcode to build and run the project.
+
 ## Notes
 
 This project was automatically generated and may need manual adjustments:
 
-1. Add your \`.xcodeproj\` / Swift Package — Morphkit does not generate the pbxproj file yet.
-2. Replace placeholder API base URL in \`Networking/APIConfiguration.swift\`.
-3. Add app icon to \`Assets.xcassets/AppIcon.appiconset/\`.
-4. Review all files marked with "medium" or "low" confidence.
+1. Replace placeholder API base URL in \`Networking/APIConfiguration.swift\`.
+2. Add app icon to \`Assets.xcassets/AppIcon.appiconset/\`.
+3. Review all files marked with "medium" or "low" confidence.
 `,
         sourceMapping: 'morphkit:readme',
         confidence: 'high',
@@ -697,27 +700,57 @@ This project was automatically generated and may need manual adjustments:
 }
 
 // ---------------------------------------------------------------------------
-// Xcode project note
+// Package.swift generation
 // ---------------------------------------------------------------------------
 
-function generateXcodeProjNote(model: SemanticAppModel): GeneratedFile {
+function generatePackageSwift(model: SemanticAppModel): GeneratedFile {
     const appName = pascalCase(model.appName ?? 'MyApp');
 
     return {
-        path: `../${appName}.xcodeproj/NOTE.md`,
-        content: `# Xcode Project
+        path: '../Package.swift',
+        content: `// swift-tools-version: 5.9
+import PackageDescription
 
-Morphkit does not yet generate the \`.pbxproj\` file.
+let package = Package(
+    name: "${appName}",
+    platforms: [.iOS(.v17), .macOS(.v14)],
+    products: [
+        .library(name: "${appName}", targets: ["${appName}"]),
+    ],
+    targets: [
+        .target(
+            name: "${appName}",
+            path: "${appName}"
+        ),
+        .testTarget(
+            name: "${appName}Tests",
+            dependencies: ["${appName}"],
+            path: "Tests"
+        ),
+    ]
+)
+`,
+        sourceMapping: 'morphkit:project',
+        confidence: 'high',
+        warnings: [],
+    };
+}
 
-To create the Xcode project:
+// ---------------------------------------------------------------------------
+// Xcode workspace settings
+// ---------------------------------------------------------------------------
 
-1. Open Xcode → File → New → Project → iOS App (SwiftUI)
-2. Name it "${appName}"
-3. Replace the generated files with the contents of the \`${appName}/\` folder
-4. Build and run
-
-Alternatively, use a Swift Package:
-- Create a \`Package.swift\` and use the generated source files directly.
+function generateWorkspaceSettings(): GeneratedFile {
+    return {
+        path: '../.swiftpm/xcode/package.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings',
+        content: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>
+    <false/>
+</dict>
+</plist>
 `,
         sourceMapping: 'morphkit:project',
         confidence: 'high',
@@ -774,8 +807,11 @@ export async function generateXcodeProject(
     const testFiles = generateTestStubs(model);
     allFiles.push(...testFiles);
 
-    // 10. Xcode project note
-    allFiles.push(generateXcodeProjNote(model));
+    // 10. Package.swift (at output root, one level above app folder)
+    allFiles.push(generatePackageSwift(model));
+
+    // 11. Xcode workspace settings (opens cleanly in Xcode)
+    allFiles.push(generateWorkspaceSettings());
 
     // --- Calculate stats ---
 
@@ -794,7 +830,7 @@ export async function generateXcodeProject(
         }
     }
 
-    // 11. README (needs stats)
+    // 12. README (needs stats)
     allFiles.push(generateReadme(model, stats));
 
     // Update total

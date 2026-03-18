@@ -121,10 +121,36 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
   // Step 1: Scan repository
   const scan = await scanRepo(repoPath);
 
+  // Handle empty scan gracefully — return an empty but valid result
+  if (scan.allFiles.length === 0) {
+    console.log('[morphkit] No source files found — returning empty analysis result');
+    return {
+      scanResult: scan,
+      parsedFiles: [],
+      components: [],
+      routes: [],
+      statePatterns: [],
+      apiEndpoints: [],
+    };
+  }
+
   // Step 2: Create ts-morph project with all TS/TSX/JS/JSX files
   const sourceFilePaths = scan.allFiles
     .filter((f) => ['ts', 'tsx', 'js', 'jsx'].includes(f.extension))
     .map((f) => f.absolutePath);
+
+  // If no TS/JS files exist (e.g. only CSS/JSON), short-circuit
+  if (sourceFilePaths.length === 0) {
+    console.log('[morphkit] No TypeScript/JavaScript source files found — returning empty analysis result');
+    return {
+      scanResult: scan,
+      parsedFiles: [],
+      components: [],
+      routes: [],
+      statePatterns: [],
+      apiEndpoints: [],
+    };
+  }
 
   const project = createProject(scan.repoPath, sourceFilePaths);
 

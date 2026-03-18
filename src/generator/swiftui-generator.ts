@@ -177,6 +177,28 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
             defaultValue = defaultValueForType(swiftType);
         }
 
+        // If the default is `.init()` and the type matches an enum entity in the model,
+        // use the first enum case value instead (e.g., `.priceAsc` for SortOrder).
+        if (defaultValue === '.init()') {
+            const enumEntity = (model.entities ?? []).find(
+                (e) => pascalCase(e.name) === swiftType &&
+                    e.fields.length === 1 &&
+                    e.fields[0].name === '__enum' &&
+                    e.fields[0].type.kind === 'enum' &&
+                    Array.isArray(e.fields[0].type.values) &&
+                    e.fields[0].type.values.length > 0,
+            );
+            if (enumEntity) {
+                const firstValue = String(enumEntity.fields[0].type.values![0]);
+                // Convert kebab-case value to camelCase Swift enum case name
+                const caseName = firstValue
+                    .split(/[-_ ]+/)
+                    .map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+                    .join('');
+                defaultValue = `.${caseName}`;
+            }
+        }
+
         bindings.push({
             wrapper: pattern?.type === 'global' ? '@State' : '@State',
             type: swiftType,
@@ -771,7 +793,33 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push('.searchable(text: $searchQuery)');
     }
 
+    // Pull-to-refresh for list views
+    lines.push('.refreshable { await loadData() }');
+
     lines.push(`.navigationTitle("${screen.name}")`);
+
+    // Toolbar with sort/filter when screen has sort/filter state bindings
+    const stateBindings = screen.stateBindings ?? [];
+    const hasSortOrFilter = stateBindings.some(
+        (b) => b.toLowerCase().includes('sortorder') || b.toLowerCase().includes('selectedcategory') || b.toLowerCase().includes('searchquery')
+            || b.toLowerCase().includes('sort') || b.toLowerCase().includes('category') || b.toLowerCase().includes('query'),
+    );
+    if (hasSortOrFilter) {
+        lines.push('.toolbar {');
+        lines.push('    ToolbarItem(placement: .topBarTrailing) {');
+        lines.push('        Menu {');
+        lines.push('            Picker("Sort", selection: $sortOrder) {');
+        lines.push('                Text("Name").tag("name")');
+        lines.push('                Text("Price: Low to High").tag("price-asc")');
+        lines.push('                Text("Price: High to Low").tag("price-desc")');
+        lines.push('                Text("Rating").tag("rating")');
+        lines.push('            }');
+        lines.push('        } label: {');
+        lines.push('            Image(systemName: "line.3.horizontal.decrease.circle")');
+        lines.push('        }');
+        lines.push('    }');
+        lines.push('}');
+    }
 
     return indent(lines.join('\n'), indentLevel);
 }
@@ -1042,6 +1090,29 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
         lines.push(`.navigationTitle("${cleanName}")`);
     }
 
+    // Add "Add to Cart" bottom button for detail views with cart-related actions
+    const screenActions = screen.actions ?? [];
+    const hasCartAction = screenActions.some(
+        (a) => (a.label ?? '').toLowerCase().includes('cart')
+            || (a.effect?.target ?? '').toLowerCase().includes('cart')
+            || (a.label ?? '').toLowerCase().includes('add to cart')
+            || (a.effect?.type === 'mutate' && (a.effect?.target ?? '').toLowerCase().includes('cart')),
+    );
+    if (hasCartAction) {
+        lines.push('.safeAreaInset(edge: .bottom) {');
+        lines.push('    Button {');
+        lines.push('        // TODO: Add to cart');
+        lines.push('    } label: {');
+        lines.push('        Label("Add to Cart", systemImage: "cart.badge.plus")');
+        lines.push('            .font(.headline)');
+        lines.push('            .frame(maxWidth: .infinity)');
+        lines.push('    }');
+        lines.push('    .buttonStyle(.borderedProminent)');
+        lines.push('    .controlSize(.large)');
+        lines.push('    .padding()');
+        lines.push('}');
+    }
+
     return indent(lines.join('\n'), indentLevel);
 }
 
@@ -1098,10 +1169,9 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     // Featured items horizontal scroll (when there's a collection data requirement)
     const collectionReq = dataReqs.find((r) => r.cardinality === 'many');
     if (collectionReq || entity) {
-        const featuredVar = collectionReq
-            ? camelCase(collectionReq.source ?? (collectionReq as any).entity ?? entityName)
-            : varName;
-        const featuredArrayVar = featuredVar.endsWith('s') ? featuredVar : `${featuredVar}s`;
+        // Always use the (possibly fallback-corrected) varName so the variable reference
+        // matches the @State property declared in generateViewFile.
+        const featuredArrayVar = varName.endsWith('s') ? varName : `${varName}s`;
 
         lines.push('');
         lines.push(`        // Featured ${entityName.toLowerCase()}s`);
@@ -1610,9 +1680,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push('        }');
         lines.push('        .buttonStyle(.borderedProminent)');
     } else {
-        lines.push('        NavigationLink("Start Shopping") {');
-        lines.push('            // Navigate to product listing');
-        lines.push('        }');
+        lines.push('        NavigationLink("Start Shopping", value: AppRoute.products)');
         lines.push('        .buttonStyle(.borderedProminent)');
     }
     lines.push('        Spacer()');
@@ -2132,6 +2200,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             lines.push(`    @State private var ${arrayVarName}: [${derivedEntityName}] = []`);
             declaredNames.add(arrayVarName);
         }
+        // List/grid screens with entity arrays need async data loading
+        if (!hasApiData) {
+            hasApiData = true;
+        }
     }
 
     // For dashboard layouts, ensure the collection array is declared using the same
@@ -2414,6 +2486,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('');
         lines.push(`    private func removeItems(at offsets: IndexSet) {`);
         lines.push(`        ${cartArrayVar}.remove(atOffsets: offsets)`);
+        lines.push('    }');
+        lines.push('');
+        lines.push('    private func checkout() {');
+        lines.push('        // TODO: Implement checkout flow');
         lines.push('    }');
     }
 

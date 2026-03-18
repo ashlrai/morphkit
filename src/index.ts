@@ -3,11 +3,62 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { resolve } from 'path';
+import { existsSync } from 'fs';
 import { analyzeRepo } from './analyzer/index.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import { adaptForPlatform } from './semantic/adapter.js';
 import { generateProject } from './generator/index.js';
 import type { SemanticAppModel } from './semantic/model.js';
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+/** Validate that a path exists and is a directory. Throws with a clear message if not. */
+function validateDirectoryExists(dirPath: string): void {
+  if (!existsSync(dirPath)) {
+    throw new Error(`Directory not found: ${dirPath}`);
+  }
+}
+
+/** Validate that --name is a valid Swift identifier (PascalCase, no special chars). */
+function validateAppName(name: string): void {
+  // Must start with uppercase letter, followed by alphanumeric only
+  const SWIFT_IDENTIFIER_RE = /^[A-Z][A-Za-z0-9]*$/;
+  if (!SWIFT_IDENTIFIER_RE.test(name)) {
+    throw new Error(
+      `Invalid app name "${name}". Must be PascalCase with no special characters (e.g., "MyApp", "ShopKit").`,
+    );
+  }
+}
+
+/** Check analysis result for empty projects and warn. */
+function validateAnalysisResult(
+  result: Awaited<ReturnType<typeof analyzeRepo>>,
+): void {
+  const totalComponents =
+    result.components.length +
+    result.scanResult.pages.length +
+    result.scanResult.layouts.length;
+  if (totalComponents === 0 && result.routes.length === 0) {
+    console.warn(
+      chalk.yellow(
+        '\nWarning: No React components found. Is this a Next.js/React app?',
+      ),
+    );
+  }
+}
+
+/** Warn when the semantic model has 0 screens but still proceed. */
+function warnIfEmptyModel(model: SemanticAppModel): void {
+  if (model.screens.length === 0) {
+    console.warn(
+      chalk.yellow(
+        '\nWarning: Semantic model has 0 screens. A minimal project will be generated.',
+      ),
+    );
+  }
+}
 
 const program = new Command();
 
@@ -24,12 +75,19 @@ program
   .option('-v, --verbose', 'Show detailed analysis output', false)
   .action(async (repoPath: string, options: { output?: string; verbose?: boolean }) => {
     const absolutePath = resolve(repoPath);
+
+    // Validate directory exists before starting spinner
+    validateDirectoryExists(absolutePath);
+
     const spinner = ora('Analyzing repository...').start();
 
     try {
       // Stage 1: Scan and extract
       spinner.text = 'Scanning repository structure...';
       const analysisResult = await analyzeRepo(absolutePath);
+
+      // Check if we found anything useful
+      validateAnalysisResult(analysisResult);
 
       if (options.verbose) {
         spinner.info(`Found ${analysisResult.components.length} components`);
@@ -73,6 +131,13 @@ program
   .action(async (repoPath: string, options: { output: string; name?: string; model?: string; verbose?: boolean }) => {
     const absolutePath = resolve(repoPath);
     const outputPath = resolve(options.output);
+
+    // Validate inputs before starting
+    validateDirectoryExists(absolutePath);
+    if (options.name) {
+      validateAppName(options.name);
+    }
+
     const spinner = ora('Starting generation pipeline...').start();
 
     try {
@@ -87,6 +152,7 @@ program
         // Full pipeline: analyze → build model
         spinner.text = 'Analyzing repository...';
         const analysisResult = await analyzeRepo(absolutePath);
+        validateAnalysisResult(analysisResult);
 
         spinner.text = 'Building semantic model...';
         model = await buildSemanticModel(analysisResult);
@@ -96,6 +162,9 @@ program
       if (options.name) {
         model.appName = options.name;
       }
+
+      // Warn if model is empty but continue with minimal generation
+      warnIfEmptyModel(model);
 
       // Stage 3: Adapt for iOS
       spinner.text = 'Adapting for iOS platform...';
@@ -127,7 +196,7 @@ program
       }
 
       console.log('');
-      console.log(chalk.green(`Open in Xcode: open ${outputPath}/${project.appName}.xcodeproj`));
+      console.log(chalk.green(`Open in Xcode: open ${outputPath}/Package.swift`));
     } catch (error) {
       spinner.fail('Generation failed');
       console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
@@ -142,6 +211,9 @@ program
   .option('-s, --screen <name>', 'Preview a specific screen')
   .action(async (repoPath: string, options: { screen?: string }) => {
     const absolutePath = resolve(repoPath);
+
+    validateDirectoryExists(absolutePath);
+
     const spinner = ora('Analyzing for preview...').start();
 
     try {

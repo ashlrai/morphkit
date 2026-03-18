@@ -65,6 +65,17 @@ function capitalise(s: string): string {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/**
+ * Build the URL string expression for AsyncImage. Adds `?? ""` only when the
+ * image field is optional; non-optional String fields don't need nil coalescing.
+ */
+function imageUrlExpr(accessor: string, field?: Field | null): string {
+    if (field && field.optional) {
+        return `${accessor} ?? ""`;
+    }
+    return accessor;
+}
+
 function camelCase(s: string): string {
     return s
         .replace(/[-_\s]+(.)?/g, (_, c) => (c ? c.toUpperCase() : ''))
@@ -743,7 +754,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
         const roles = categorizeEntityFields(entity);
         lines.push(`        ${ri}HStack(spacing: 12) {`);
         if (roles.imageField) {
-            lines.push(`            ${ri}AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`            ${ri}AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push(`                ${ri}image.resizable().aspectRatio(contentMode: .fill)`);
             lines.push(`            ${ri}} placeholder: {`);
             lines.push(`                ${ri}Image(systemName: "photo.circle.fill")`);
@@ -850,7 +861,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
         const roles = categorizeEntityFields(entity);
         lines.push(`            ${gi}VStack(alignment: .leading, spacing: 8) {`);
         if (roles.imageField) {
-            lines.push(`                ${gi}AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`                ${gi}AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push(`                    ${gi}image.resizable().aspectRatio(contentMode: .fill)`);
             lines.push(`                ${gi}} placeholder: {`);
             lines.push(`                    ${gi}Color.gray.opacity(0.2)`);
@@ -974,7 +985,7 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
 
         // Hero image
         if (roles.imageField) {
-            lines.push(`        AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`        AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push('            image.resizable().aspectRatio(contentMode: .fit)');
             lines.push('        } placeholder: {');
             lines.push('            Rectangle()');
@@ -1189,7 +1200,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
             const roles = categorizeEntityFields(entity);
             lines.push('                            VStack(alignment: .leading, spacing: 8) {');
             if (roles.imageField) {
-                lines.push(`                                AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+                lines.push(`                                AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
                 lines.push('                                    image.resizable().aspectRatio(contentMode: .fill)');
                 lines.push('                                } placeholder: {');
                 lines.push('                                    RoundedRectangle(cornerRadius: 12)');
@@ -1301,7 +1312,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push(`                ForEach(${arrayVar}.prefix(5)) { ${varName} in`);
         lines.push('                    HStack(spacing: 12) {');
         if (roles.imageField) {
-            lines.push(`                        AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`                        AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push('                            image.resizable().aspectRatio(contentMode: .fill)');
             lines.push('                        } placeholder: {');
             lines.push('                            Image(systemName: "photo.circle.fill")');
@@ -1462,7 +1473,7 @@ function generateProfileLayout(screen: Screen, model: SemanticAppModel, componen
     if (entity) {
         const roles = categorizeEntityFields(entity);
         if (roles.imageField) {
-            lines.push(`        AsyncImage(url: URL(string: profile.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+            lines.push(`        AsyncImage(url: URL(string: ${imageUrlExpr(`profile.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push('            image.resizable().aspectRatio(contentMode: .fill)');
             lines.push('        } placeholder: {');
             lines.push('            Image(systemName: "person.circle.fill")');
@@ -1616,6 +1627,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     let priceAccessor = `${varName}.price`;
     let quantityAccessor = `${varName}.quantity`;
     let imageAccessor: string | null = null;
+    let imageField: Field | null = null;
 
     if (entity) {
         // Check if the entity has a reference to another entity (object field whose
@@ -1634,7 +1646,10 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
                 const refRoles = categorizeEntityFields(refEntity);
                 if (refRoles.titleField) nameAccessor = `${refPrefix}.${camelCase(refRoles.titleField.name)}`;
                 if (refRoles.priceField) priceAccessor = `${refPrefix}.${camelCase(refRoles.priceField.name)}`;
-                if (refRoles.imageField) imageAccessor = `${refPrefix}.${camelCase(refRoles.imageField.name)}`;
+                if (refRoles.imageField) {
+                    imageAccessor = `${refPrefix}.${camelCase(refRoles.imageField.name)}`;
+                    imageField = refRoles.imageField;
+                }
             } else {
                 // Fallback: access common fields through the reference
                 nameAccessor = `${refPrefix}.name`;
@@ -1649,7 +1664,10 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
             if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
             if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
             if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
-            if (roles.imageField) imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
+            if (roles.imageField) {
+                imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
+                imageField = roles.imageField;
+            }
         }
     }
 
@@ -1698,7 +1716,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
 
     // Item image
     if (imageAccessor) {
-        lines.push(`                    AsyncImage(url: URL(string: ${imageAccessor} ?? "")) { image in`);
+        lines.push(`                    AsyncImage(url: URL(string: ${imageUrlExpr(imageAccessor, imageField)})) { image in`);
         lines.push('                        image.resizable().aspectRatio(contentMode: .fill)');
         lines.push('                    } placeholder: {');
         lines.push('                        Color.gray.opacity(0.2)');
@@ -1841,7 +1859,7 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
             lines.push(`        ForEach(${varName}s) { ${varName} in`);
             lines.push('            HStack(spacing: 12) {');
             if (roles.imageField) {
-                lines.push(`                AsyncImage(url: URL(string: ${varName}.${camelCase(roles.imageField.name)} ?? "")) { image in`);
+                lines.push(`                AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
                 lines.push('                    image.resizable().aspectRatio(contentMode: .fill)');
                 lines.push('                } placeholder: {');
                 lines.push('                    Color.gray.opacity(0.2)');
@@ -2209,17 +2227,15 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // For dashboard layouts, ensure the collection array is declared using the same
     // fallback logic as generateDashboardLayout (prefer primary entity over "Home")
     if (screen.layout === 'dashboard') {
-        let dashEntityName = derivedEntityName ?? inferEntityFromScreen(screen);
-        const allEntities = model.entities ?? [];
-        // If resolveEntity would return null or an entity with < 3 fields,
-        // fall back to the entity with the most fields (mirrors generateDashboardLayout).
-        const dashEntity = resolveEntity(screen, model);
-        if (allEntities.length > 0 && (!dashEntity || (dashEntity.fields ?? []).length < 3)) {
-            const bestEntity = [...allEntities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
-            if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
-                dashEntityName = pascalCase(bestEntity.name);
-            }
-        }
+        // For dashboard/home screens, always use the entity with the most fields
+        // rather than trying to derive from screen name (which gives "Home" → "Home" type)
+        const allEntities = (model.entities ?? []).filter(e => {
+            // Skip enum entities (single __enum field)
+            if (e.fields.length === 1 && e.fields[0]?.name === '__enum') return false;
+            return e.fields.length >= 3;
+        });
+        const bestEntity = allEntities.sort((a, b) => b.fields.length - a.fields.length)[0];
+        const dashEntityName = bestEntity ? pascalCase(bestEntity.name) : (derivedEntityName ?? inferEntityFromScreen(screen));
         const dashVar = camelCase(dashEntityName);
         const dashArrayVar = dashVar.endsWith('s') ? dashVar : `${dashVar}s`;
         if (!declaredNames.has(dashArrayVar)) {
@@ -2416,6 +2432,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(id: id)`);
         }
 
+        let hasLoadDataBody = isDetailWithIdLoading;
         for (const req of dataReqs) {
             if (req.fetchStrategy === 'api' || req.fetchStrategy === 'context') {
                 const reqSource = req.source ?? (req as any).entity;
@@ -2425,8 +2442,18 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     ? (varName.endsWith('s') ? varName : `${varName}s`)
                     : varName;
                 lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(reqSource)}()`);
+                hasLoadDataBody = true;
             }
         }
+
+        // For list/grid screens with entity-derived arrays but no explicit API data requirement,
+        // generate a fetch call based on the derived entity name.
+        if (!hasLoadDataBody && derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
+            const entVar = camelCase(derivedEntityName);
+            const entArrayVar = entVar.endsWith('s') ? entVar : `${entVar}s`;
+            lines.push(`            ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(derivedEntityName)}()`);
+        }
+
         lines.push('        } catch {');
         lines.push('            errorMessage = error.localizedDescription');
         lines.push('        }');

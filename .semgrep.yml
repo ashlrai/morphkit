@@ -1,0 +1,109 @@
+rules:
+  # ── Express / API Security ─────────────────────────────────────
+
+  - id: raw-sql-injection
+    patterns:
+      - pattern: |
+          $DB.execute(sql.raw($INPUT))
+      - pattern-not: |
+          $DB.execute(sql.raw("..."))
+    message: "Potential SQL injection via sql.raw() with dynamic input. Use parameterized queries."
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: "A03:2021 - Injection"
+
+  - id: no-raw-fetch-client
+    patterns:
+      - pattern: fetch($URL, ...)
+      - pattern-not-inside: |
+          function silentFetch(...) { ... }
+      - pattern-not-inside: |
+          const silentFetch = ...
+    paths:
+      include:
+        - client/
+    message: "Use apiRequest() from @/lib/queryClient instead of raw fetch(). Raw fetch breaks in production."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: correctness
+      cwe: "CWE-16: Configuration"
+
+  - id: console-log-server
+    pattern: console.log(...)
+    paths:
+      include:
+        - server/
+    message: "Use logger from server/logger.ts instead of console.log for structured logging."
+    languages: [typescript, javascript]
+    severity: INFO
+    metadata:
+      category: best-practice
+
+  - id: dangerous-inner-html
+    pattern: |
+      <$EL dangerouslySetInnerHTML={...} />
+    message: "dangerouslySetInnerHTML usage — ensure input is sanitized (DOMPurify)."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: "A03:2021 - Injection"
+      cwe: "CWE-79: XSS"
+
+  - id: env-in-client-bundle
+    pattern: process.env.$VAR
+    paths:
+      include:
+        - client/
+    message: "process.env in client code. Use import.meta.env.VITE_* for client-safe env vars only."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-200: Information Exposure"
+
+  - id: hardcoded-secret-pattern
+    patterns:
+      - pattern-regex: "(sk_live_|sk_test_|pk_live_|whsec_|sbp_)[a-zA-Z0-9_-]{10,}"
+    message: "Potential hardcoded secret detected. Use environment variables."
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798: Hardcoded Credentials"
+
+  - id: ssrf-user-controlled-url
+    patterns:
+      - pattern: |
+          fetch($REQ.$PROP, ...)
+      - pattern: |
+          axios.get($REQ.$PROP, ...)
+    paths:
+      include:
+        - server/
+    message: "Possible SSRF — server-side fetch with user-controlled URL. Validate/allowlist the URL."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: "A10:2021 - SSRF"
+      cwe: "CWE-918: SSRF"
+
+  - id: missing-rate-limit
+    patterns:
+      - pattern: |
+          $APP.post($PATH, ..., async ($REQ, $RES) => { ... })
+      - pattern-not: |
+          $APP.post($PATH, ..., $LIMITER, ..., async ($REQ, $RES) => { ... })
+    paths:
+      include:
+        - "**/server/routes/"
+    message: "POST endpoint without rate limiting middleware. Consider adding rate limiting."
+    languages: [typescript, javascript]
+    severity: INFO
+    metadata:
+      category: security
+      owasp: "A04:2021 - Insecure Design"

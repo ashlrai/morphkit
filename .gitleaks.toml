@@ -1,0 +1,39 @@
+# Gitleaks configuration for Evero BI
+# https://github.com/gitleaks/gitleaks
+
+title = "Evero Gitleaks Config"
+
+[extend]
+useDefault = true
+
+# Additional patterns specific to our stack
+[[rules]]
+id = "supabase-service-key"
+description = "Supabase service role key"
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'''
+tags = ["key", "supabase"]
+keywords = ["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"]
+
+[[rules]]
+id = "xai-api-key"
+description = "xAI API key"
+regex = '''xai-[a-zA-Z0-9]{20,}'''
+tags = ["key", "xai"]
+keywords = ["xai-"]
+
+[[rules]]
+id = "plaid-secret"
+description = "Plaid API secret"
+regex = '''[a-f0-9]{30,}'''
+tags = ["key", "plaid"]
+keywords = ["plaid_secret", "PLAID_SECRET"]
+
+# Paths to ignore (test fixtures, lock files, etc.)
+[allowlist]
+paths = [
+  '''node_modules''',
+  '''package-lock\.json''',
+  '''\.env\.example''',
+  '''dist/''',
+  '''\.next/''',
+]

@@ -1077,12 +1077,13 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     lines.push('            Text("Welcome")');
     lines.push('                .font(.largeTitle)');
     lines.push('                .fontWeight(.bold)');
-    if (screen.description && screen.description !== `Screen for ${screen.name}`) {
-        // Truncate long descriptions to 80 chars to keep the subtitle readable
-        const desc = screen.description.length > 80
-            ? screen.description.slice(0, 77) + '...'
-            : screen.description;
-        lines.push(`            Text("${desc}")`);
+    // Use a short, user-friendly subtitle — never dump raw screen.purpose or
+    // verbose AI-generated descriptions into the UI.
+    const rawDesc = screen.description ?? '';
+    const isGenericDesc = rawDesc === `Screen for ${screen.name}` || rawDesc.length === 0;
+    const isVerboseDesc = rawDesc.length > 60; // Likely an internal purpose string, not UI text
+    if (!isGenericDesc && !isVerboseDesc) {
+        lines.push(`            Text("${rawDesc}")`);
     } else if (entity) {
         lines.push('            Text("Discover amazing products")');
     } else {
@@ -2155,30 +2156,31 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
-    // Entity-based property for detail layouts — the body references entity fields via varName
-    // Track let properties separately so the #Preview can pass sample data
     // Entity-based property for detail layouts
-    // Use `id: String` pattern so ContentView can pass route IDs via navigation.
-    // The detail view loads the entity asynchronously using the id.
+    // Detail screens accept an `id` parameter and load data asynchronously,
+    // rather than requiring the full entity to be passed in.
     const letProperties: { name: string; type: string }[] = [];
+    let isDetailWithIdLoading = false;
     if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
         const eName = pascalCase(inferEntityFromScreen(screen));
         const eVar = camelCase(inferEntityFromScreen(screen));
 
-        // Declare `let id: String` for navigation compatibility
+        // Generate: let id: String
         if (!declaredNames.has('id')) {
             lines.push('    let id: String');
             declaredNames.add('id');
             letProperties.push({ name: 'id', type: 'String' });
         }
 
-        // Declare `@State private var entity: Entity?` for the loaded data
+        // Generate: @State private var entity: Entity?
         if (!declaredNames.has(eVar)) {
             lines.push(`    @State private var ${eVar}: ${eName}?`);
             declaredNames.add(eVar);
         }
 
-        hasApiData = true; // Ensure loadData is generated for detail views
+        // Mark that this detail screen needs id-based async loading
+        isDetailWithIdLoading = true;
+        hasApiData = true; // Ensure isLoading and errorMessage are generated
     }
 
     // For custom layouts with repeated components, generate array state
@@ -2200,9 +2202,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
 
     // Loading state for screens with API data
+    // Detail views default to loading=true since they must fetch before displaying
     if (hasApiData || needsAsyncLoading(screen)) {
         if (!declaredNames.has('isLoading')) {
-            lines.push('    @State private var isLoading = false');
+            const loadingDefault = isDetailWithIdLoading ? 'true' : 'false';
+            lines.push(`    @State private var isLoading = ${loadingDefault}`);
             declaredNames.add('isLoading');
         }
     }
@@ -2277,18 +2281,40 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     // Body
     lines.push('    var body: some View {');
-    lines.push(generateLayoutBody(screen, model, 2));
+
+    if (isDetailWithIdLoading) {
+        // Detail views: wrap body in Group with if-let for optional entity
+        const detailEntityName = inferEntityFromScreen(screen);
+        const detailVarName = camelCase(detailEntityName);
+
+        lines.push(indent('Group {', 2));
+        lines.push(indent(`    if let ${detailVarName} {`, 2));
+        // Generate the layout body at a deeper indent level (4) since it's inside Group > if let
+        lines.push(generateLayoutBody(screen, model, 4));
+        lines.push(indent('    } else if isLoading {', 2));
+        lines.push(indent('        ProgressView()', 2));
+        lines.push(indent('    } else {', 2));
+        lines.push(indent('        ContentUnavailableView("Not Found", systemImage: "exclamationmark.triangle")', 2));
+        lines.push(indent('    }', 2));
+        lines.push(indent('}', 2));
+    } else {
+        lines.push(generateLayoutBody(screen, model, 2));
+    }
 
     // Add .task modifier for async data loading
     if (hasApiData) {
         lines.push(indent('.task {', 2));
         lines.push(indent('    await loadData()', 2));
         lines.push(indent('}', 2));
-        lines.push(indent('.overlay {', 2));
-        lines.push(indent('    if isLoading {', 2));
-        lines.push(indent('        ProgressView()', 2));
-        lines.push(indent('    }', 2));
-        lines.push(indent('}', 2));
+
+        // For non-detail views, add overlay spinner and error alert
+        if (!isDetailWithIdLoading) {
+            lines.push(indent('.overlay {', 2));
+            lines.push(indent('    if isLoading {', 2));
+            lines.push(indent('        ProgressView()', 2));
+            lines.push(indent('    }', 2));
+            lines.push(indent('}', 2));
+        }
         lines.push(indent('.alert("Error", isPresented: .constant(errorMessage != nil)) {', 2));
         lines.push(indent('    Button("OK") { errorMessage = nil }', 2));
         lines.push(indent('} message: {', 2));
@@ -2310,6 +2336,14 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('        defer { isLoading = false }');
         lines.push('');
         lines.push('        do {');
+
+        if (isDetailWithIdLoading) {
+            // Detail view: load single entity by id
+            const detailEntityName = inferEntityFromScreen(screen);
+            const detailVarName = camelCase(detailEntityName);
+            lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(id: id)`);
+        }
+
         for (const req of dataReqs) {
             if (req.fetchStrategy === 'api' || req.fetchStrategy === 'context') {
                 const reqSource = req.source ?? (req as any).entity;
@@ -2394,9 +2428,15 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push(`    @Previewable @State var preview = true`);
     }
     lines.push(`    NavigationStack {`);
-    // If the view has required let properties, pass .preview() sample data
+    // If the view has required let properties, pass appropriate preview values
     if (letProperties.length > 0) {
-        const args = letProperties.map((p) => `${p.name}: .preview()`).join(', ');
+        const args = letProperties.map((p) => {
+            if (p.type === 'String') return `${p.name}: "preview"`;
+            if (p.type === 'Int') return `${p.name}: 0`;
+            if (p.type === 'Double') return `${p.name}: 0.0`;
+            if (p.type === 'Bool') return `${p.name}: true`;
+            return `${p.name}: .preview()`;
+        }).join(', ');
         lines.push(`        ${viewName}(${args})`);
     } else {
         lines.push(`        ${viewName}(${hasBindings ? '/* pass bindings */' : ''})`);

@@ -21,8 +21,6 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Morphkit — React → Native iOS in Seconds">
   <meta name="twitter:description" content="CLI tool that converts React/TypeScript to production-ready SwiftUI. No Swift expertise needed. Free &amp; open-source.">
-  <meta name="twitter:image" content="https://morphkit.dev/og.png">
-  <meta name="twitter:image:alt" content="Morphkit CLI converting a React app to native SwiftUI iOS">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -442,7 +440,8 @@
       color: var(--text-muted);
       line-height: 1.6;
     }
-    .feature code {
+    .feature code,
+    .faq-a-inner code {
       font-family: var(--font-mono);
       font-size: 12px;
       background: rgba(99,102,241,0.1);
@@ -685,11 +684,7 @@
     .skip-link:focus {
       top: 0;
     }
-    :focus-visible {
-      outline: 2px solid var(--accent-light);
-      outline-offset: 2px;
-    }
-    a:focus-visible, button:focus-visible {
+    a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
       outline: 2px solid var(--accent-light);
       outline-offset: 2px;
     }
@@ -743,7 +738,7 @@
     .faq-a {
       max-height: 0;
       overflow: hidden;
-      transition: max-height 0.3s ease, padding 0.3s ease;
+      transition: max-height 0.3s ease;
     }
     .faq-item.open .faq-a {
       max-height: 300px;
@@ -755,12 +750,7 @@
       line-height: 1.7;
     }
     .faq-a-inner code {
-      font-family: var(--font-mono);
       font-size: 13px;
-      background: rgba(99,102,241,0.1);
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: var(--accent-light);
     }
   </style>
   <script type="application/ld+json">
@@ -771,7 +761,6 @@
     "url": "https://morphkit.dev",
     "description": "CLI tool that converts React and TypeScript web applications to production-quality native SwiftUI iOS apps automatically.",
     "image": "https://morphkit.dev/og.png",
-    "screenshot": "https://morphkit.dev/og.png",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux, Windows",
     "targetPlatform": "iOS",
@@ -789,11 +778,6 @@
       "availability": "https://schema.org/InStock"
     },
     "author": {
-      "@type": "Organization",
-      "name": "AshlrAI",
-      "url": "https://ashlr.ai"
-    },
-    "sourceOrganization": {
       "@type": "Organization",
       "name": "AshlrAI",
       "url": "https://ashlr.ai"
@@ -1131,17 +1115,17 @@
     </div>
     <div class="install-card reveal">
       <div class="install-tabs" role="tablist" aria-label="Package manager">
-        <button class="install-tab active" data-tab="npx" role="tab" aria-selected="true" aria-controls="tab-npx">npx</button>
-        <button class="install-tab" data-tab="bun" role="tab" aria-selected="false" aria-controls="tab-bun">bun</button>
+        <button id="tab-btn-npx" class="install-tab active" data-tab="npx" role="tab" aria-selected="true" aria-controls="tab-npx">npx</button>
+        <button id="tab-btn-bun" class="install-tab" data-tab="bun" role="tab" aria-selected="false" aria-controls="tab-bun">bun</button>
       </div>
       <div class="install-content">
-        <div class="install-block active" id="tab-npx" role="tabpanel" aria-labelledby="tab-npx">
+        <div class="install-block active" id="tab-npx" role="tabpanel" aria-labelledby="tab-btn-npx">
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
         </div>
-        <div class="install-block" id="tab-bun" role="tabpanel" aria-labelledby="tab-bun">
+        <div class="install-block" id="tab-bun" role="tabpanel" aria-labelledby="tab-btn-bun">
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> bun install -g morphkit</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
@@ -1168,38 +1152,38 @@
     </div>
     <div class="faq-list">
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">Can Morphkit convert any React app to iOS?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-1">Can Morphkit convert any React app to iOS?</button>
+        <div class="faq-a" id="faq-a-1" role="region">
           <div class="faq-a-inner">Morphkit works best with React and Next.js apps built with TypeScript. It analyzes your components, routes, state management (<code>useState</code>, Zustand, Redux), and API calls to generate equivalent SwiftUI code. Complex third-party libraries with native DOM dependencies may require manual adaptation, but standard React patterns map cleanly to native iOS equivalents.</div>
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">Do I need to know Swift to use Morphkit?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-2">Do I need to know Swift to use Morphkit?</button>
+        <div class="faq-a" id="faq-a-2" role="region">
           <div class="faq-a-inner">No. Morphkit generates production-quality SwiftUI code automatically. The output is clean, idiomatic Swift that follows Apple's conventions &mdash; but you don't need Swift expertise to generate it. Familiarity with Xcode helps for building and deploying the final app to the App Store.</div>
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">How is Morphkit different from React Native?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-3">How is Morphkit different from React Native?</button>
+        <div class="faq-a" id="faq-a-3" role="region">
           <div class="faq-a-inner">React Native runs JavaScript in a bridge layer at runtime. Morphkit generates actual native SwiftUI code &mdash; no bridge, no runtime overhead. You get a real Xcode project with native Swift files, native performance, and full access to iOS APIs. It's not a cross-platform runtime; it's a code generation tool that outputs the same code a senior iOS developer would write.</div>
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">What React patterns does Morphkit support?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-4">What React patterns does Morphkit support?</button>
+        <div class="faq-a" id="faq-a-4" role="region">
           <div class="faq-a-inner">TypeScript interfaces and types become <code>Codable</code> structs. File-based and nested routes become <code>TabView</code> + <code>NavigationStack</code>. <code>useState</code> and Zustand/Redux state become <code>@Observable</code> classes. Fetch and Axios API calls become async/await <code>URLSession</code> requests. Tailwind color palettes become Xcode Asset Catalogs. React component composition becomes SwiftUI view hierarchies.</div>
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">Is Morphkit free and open-source?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-5">Is Morphkit free and open-source?</button>
+        <div class="faq-a" id="faq-a-5" role="region">
           <div class="faq-a-inner">Yes. Morphkit is free to use and open-source under the MIT license. Install it with <code>npx morphkit generate</code> or <code>bun install -g morphkit</code>. The full source code is available on GitHub.</div>
         </div>
       </div>
       <div class="faq-item reveal">
-        <button class="faq-q" aria-expanded="false">What does the generated iOS project include?</button>
-        <div class="faq-a" role="region">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-6">What does the generated iOS project include?</button>
+        <div class="faq-a" id="faq-a-6" role="region">
           <div class="faq-a-inner">A complete Xcode project with SwiftUI views for each component, <code>Codable</code> model structs from your TypeScript types, an async networking layer using <code>URLSession</code>, <code>TabView</code> and <code>NavigationStack</code> navigation derived from your routes, an Xcode Asset Catalog from your design tokens, and a clean project structure organized for App Store submission.</div>
         </div>
       </div>
@@ -1263,7 +1247,7 @@
 
   // Copy command
   function copyCmd(btn) {
-    const code = btn.parentElement.querySelector('code').textContent.replace(/^\$ /, '');
+    const code = btn.parentElement.querySelector('code').textContent.replace(/^\$\s+/, '');
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(code).then(() => {
         btn.textContent = 'Copied!';
@@ -1287,14 +1271,12 @@
   // FAQ accordion
   document.querySelectorAll('.faq-q').forEach(btn => {
     btn.addEventListener('click', () => {
-      const item = btn.parentElement;
+      const item = btn.closest('.faq-item');
       const isOpen = item.classList.contains('open');
-      // Close all
-      document.querySelectorAll('.faq-item').forEach(i => {
+      document.querySelectorAll('.faq-item.open').forEach(i => {
         i.classList.remove('open');
         i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
       });
-      // Toggle clicked
       if (!isOpen) {
         item.classList.add('open');
         btn.setAttribute('aria-expanded', 'true');

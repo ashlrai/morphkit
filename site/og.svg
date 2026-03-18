@@ -47,9 +47,9 @@
   <!-- Terminal card -->
   <g transform="translate(720, 170)">
     <rect width="400" height="280" rx="12" fill="#111114" stroke="#23232a" stroke-width="1"/>
-    <!-- Title bar -->
-    <rect width="400" height="40" rx="12" fill="rgba(255,255,255,0.02)"/>
-    <rect x="0" y="28" width="400" height="12" fill="rgba(255,255,255,0.02)"/>
+    <!-- Title bar — single rect with clipPath to get rounded top, square bottom -->
+    <clipPath id="tb-clip"><rect width="400" height="40"/></clipPath>
+    <rect width="400" height="52" rx="12" fill="rgba(255,255,255,0.02)" clip-path="url(#tb-clip)"/>
     <line x1="0" y1="40" x2="400" y2="40" stroke="#23232a" stroke-width="1"/>
     <circle cx="18" cy="20" r="5" fill="#ef4444"/>
     <circle cx="36" cy="20" r="5" fill="#eab308"/>

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Morphkit vs React Native — Which is Right for Your iOS App?</title>
+  <meta name="description" content="Compare Morphkit and React Native for iOS development. Morphkit generates native SwiftUI from your existing React app — no rewrite needed. See which approach fits your team.">
+  <meta name="keywords" content="react native alternative, react to native ios, morphkit vs react native, swiftui code generation, convert react to ios, react native comparison">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="author" content="AshlrAI">
+  <meta property="og:title" content="Morphkit vs React Native — Which is Right for Your iOS App?">
+  <meta property="og:description" content="Compare two approaches to bringing React apps to iOS. Morphkit generates native SwiftUI from your existing codebase. React Native requires a full rewrite.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://morphkit.dev/vs-react-native">
+  <meta property="og:image" content="https://morphkit.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Morphkit vs React Native comparison for iOS development">
+  <meta property="og:site_name" content="Morphkit">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Morphkit vs React Native — Which is Right for Your iOS App?">
+  <meta name="twitter:description" content="Compare two approaches to bringing React apps to iOS. Morphkit generates native SwiftUI. React Native requires a rewrite.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#3ECF8E">
+  <link rel="canonical" href="https://morphkit.dev/vs-react-native">
+  <link rel="stylesheet" href="/fonts/fonts.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Morphkit vs React Native — Which is Right for Your iOS App?",
+    "description": "A detailed comparison of Morphkit and React Native for iOS app development. Covers architecture, performance, bundle size, learning curve, and more.",
+    "author": {
+      "@type": "Organization",
+      "name": "AshlrAI",
+      "url": "https://ashlr.ai"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "AshlrAI",
+      "url": "https://ashlr.ai"
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://morphkit.dev/vs-react-native"
+    },
+    "datePublished": "2026-03-18",
+    "dateModified": "2026-03-18",
+    "about": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Morphkit",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "React Native",
+        "applicationCategory": "DeveloperApplication"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0A0A0C;
+      --bg-elevated: #141417;
+      --bg-card: #1A1A1F;
+      --border: #26262E;
+      --text: #F4F4F5;
+      --text-secondary: #A0A0AB;
+      --text-muted: #72727E;
+      --accent: #3ECF8E;
+      --accent-light: #5DDBA3;
+      --accent-glow: rgba(62, 207, 142, 0.12);
+      --accent-glow-strong: rgba(62, 207, 142, 0.22);
+      --green: #3ECF8E;
+      --orange: #F0B429;
+      --pink: #F0B429;
+      --cyan: #5DDBA3;
+      --yellow: #F0B429;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Dot pattern background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: -300px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1000px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(62,207,142,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, header, footer, nav, main { position: relative; z-index: 1; }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    a { color: var(--accent); }
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10,10,12,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a.nav-cta {
+      background: var(--accent);
+      color: #0A0A0C;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .nav-links a.nav-cta:hover { opacity: 0.9; }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      padding: 160px 0 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      background: var(--bg-elevated);
+    }
+    .hero h1 {
+      font-size: clamp(36px, 5.5vw, 64px);
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent), var(--orange));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 19px);
+      color: var(--text-secondary);
+      max-width: 640px;
+      margin: 0 auto 40px;
+      line-height: 1.65;
+    }
+
+    /* ---- BUTTONS ---- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0A0A0C;
+      font-weight: 700;
+    }
+    .btn-primary:hover {
+      background: var(--accent-light);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--bg-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-card);
+      transform: translateY(-1px);
+    }
+
+    /* ---- SECTIONS ---- */
+    .section {
+      padding: 80px 0;
+    }
+    .section-label {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-light);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 640px;
+      line-height: 1.65;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .section-header .section-desc {
+      margin: 0 auto;
+    }
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* ---- COMPARISON TABLE ---- */
+    .comparison-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      font-size: 15px;
+    }
+    .comparison-table thead th {
+      padding: 20px 24px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+    }
+    .comparison-table thead th:first-child {
+      width: 22%;
+    }
+    .comparison-table thead th:nth-child(2),
+    .comparison-table thead th:nth-child(3) {
+      width: 39%;
+    }
+    .comparison-table thead th.col-morphkit {
+      color: var(--accent-light);
+    }
+    .comparison-table tbody td {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.55;
+    }
+    .comparison-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .comparison-table tbody td:first-child {
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .comparison-table tbody td:nth-child(2) {
+      color: var(--text);
+    }
+    .comparison-table tbody td:nth-child(3) {
+      color: var(--text-secondary);
+    }
+    .comparison-table tbody tr:hover {
+      background: rgba(255,255,255,0.015);
+    }
+    .table-highlight {
+      color: var(--accent) !important;
+      font-weight: 500;
+    }
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: var(--radius-lg);
+    }
+
+    @media (max-width: 768px) {
+      .comparison-table {
+        font-size: 13px;
+      }
+      .comparison-table thead th,
+      .comparison-table tbody td {
+        padding: 14px 16px;
+      }
+      .comparison-table tbody td:first-child {
+        white-space: normal;
+      }
+    }
+
+    /* ---- WHEN-TO-USE CARDS ---- */
+    .use-cases {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+    .use-case-card {
+      padding: 36px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .use-case-card:hover {
+      border-color: var(--accent-glow-strong);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+    .use-case-card.rn-card:hover {
+      border-color: rgba(240, 180, 41, 0.22);
+      box-shadow: 0 0 30px rgba(240, 180, 41, 0.08);
+    }
+    .use-case-card h3 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .use-case-card .card-subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+    .use-case-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .use-case-card li {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      padding-left: 28px;
+      position: relative;
+    }
+    .use-case-card li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 5px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-glow);
+      border: 1.5px solid var(--accent);
+    }
+    .use-case-card li::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 10px;
+      width: 6px;
+      height: 3px;
+      border-left: 1.5px solid var(--accent);
+      border-bottom: 1.5px solid var(--accent);
+      transform: rotate(-45deg);
+    }
+    .rn-card li::before {
+      border-color: var(--orange);
+      background: rgba(240, 180, 41, 0.12);
+    }
+    .rn-card li::after {
+      border-color: var(--orange);
+    }
+
+    @media (max-width: 768px) {
+      .use-cases {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ---- DEEP DIVE CONTENT ---- */
+    .prose {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .prose h2 {
+      font-size: clamp(24px, 3.5vw, 32px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      margin-top: 64px;
+    }
+    .prose h2:first-child {
+      margin-top: 0;
+    }
+    .prose h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      margin-top: 40px;
+    }
+    .prose p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1.72;
+      margin-bottom: 20px;
+    }
+    .prose strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .prose code {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      background: var(--bg-card);
+      padding: 2px 7px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      color: var(--accent-light);
+    }
+    .prose ul {
+      list-style: none;
+      margin-bottom: 20px;
+      padding-left: 0;
+    }
+    .prose ul li {
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1.72;
+      padding-left: 24px;
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .prose ul li::before {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 11px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-glow);
+      border: 1.5px solid var(--accent);
+    }
+
+    /* ---- CTA SECTION ---- */
+    .cta-section {
+      text-align: center;
+      padding: 80px 0 100px;
+    }
+    .cta-section .section-title {
+      margin-bottom: 12px;
+    }
+    .cta-section .section-desc {
+      margin: 0 auto 32px;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-secondary);
+    }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-sub {
+      width: 100%;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 24px;
+    }
+
+    /* ---- REVEAL ANIMATION ---- */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="https://morphkit.dev" class="logo">
+      <svg class="logo-mark" width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs><linearGradient id="nav-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+        <rect width="120" height="120" rx="26" fill="#09090b"/>
+        <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#nav-grad)" stroke-opacity="0.25" stroke-width="2"/>
+        <path d="M30 90V42l24 28" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M90 90V42L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M54 70L60 38L66 70" stroke="url(#nav-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+      </svg>
+      Morphkit
+    </a>
+    <div class="nav-links">
+      <a href="https://morphkit.dev/#how-it-works">How It Works</a>
+      <a href="https://morphkit.dev/#features">Features</a>
+      <a href="https://morphkit.dev/#pricing">Pricing</a>
+      <a href="https://morphkit.dev/#install" class="nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="container">
+    <div class="hero-badge">Comparison Guide</div>
+    <h1><span class="gradient">Morphkit</span> vs React Native</h1>
+    <p class="hero-sub">Two very different approaches to bringing your React app to iOS. One generates native SwiftUI from your existing codebase. The other requires a full rewrite in a new framework. Here is how they compare.</p>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- Quick Comparison Table -->
+<section class="section" id="comparison">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Head to Head</span>
+      <h2 class="section-title">Quick Comparison</h2>
+      <p class="section-desc">The fundamental difference: Morphkit is a code generator that produces native Swift you own. React Native is a runtime framework you depend on.</p>
+    </div>
+
+    <div class="table-wrapper reveal">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th class="col-morphkit">Morphkit</th>
+            <th>React Native</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Architecture</td>
+            <td class="table-highlight">Generates native SwiftUI source code from your React app</td>
+            <td>JavaScript runtime with a bridge to native UI components</td>
+          </tr>
+          <tr>
+            <td>Performance</td>
+            <td class="table-highlight">Native compiled Swift &mdash; identical to hand-written iOS apps</td>
+            <td>JS runtime with bridge overhead; new architecture (JSI) improves but does not eliminate it</td>
+          </tr>
+          <tr>
+            <td>Bundle Size</td>
+            <td class="table-highlight">Standard native Swift binary (typically 5&ndash;10 MB)</td>
+            <td>15&ndash;30 MB minimum from the JS runtime, bridge, and bundled JavaScript</td>
+          </tr>
+          <tr>
+            <td>iOS API Access</td>
+            <td class="table-highlight">Full native access &mdash; the output is a standard Xcode project</td>
+            <td>Limited to available bridge modules; custom native modules require Swift/ObjC</td>
+          </tr>
+          <tr>
+            <td>Learning Curve</td>
+            <td class="table-highlight">Zero &mdash; automatic generation from your existing React code</td>
+            <td>Steep &mdash; requires learning React Native APIs, native module authoring, and platform-specific tooling</td>
+          </tr>
+          <tr>
+            <td>Code Sharing</td>
+            <td class="table-highlight">Keeps your React web app completely unchanged</td>
+            <td>Requires rewriting your app in React Native; web code cannot be reused directly</td>
+          </tr>
+          <tr>
+            <td>Output</td>
+            <td class="table-highlight">A complete Xcode project you own and can modify freely</td>
+            <td>A React Native runtime that your app depends on at build and run time</td>
+          </tr>
+          <tr>
+            <td>Update Model</td>
+            <td class="table-highlight">Regenerate anytime as your web app evolves</td>
+            <td>Maintain a separate React Native codebase alongside your web app</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- When to Use -->
+<section class="section" id="when-to-use">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Choosing the Right Tool</span>
+      <h2 class="section-title">It Depends on Your Team and Goals</h2>
+      <p class="section-desc">There is no universal right answer. The best choice depends on what you already have, what you need, and where you are headed.</p>
+    </div>
+
+    <div class="use-cases reveal">
+      <div class="use-case-card">
+        <h3>When to Use <span style="color: var(--accent);">Morphkit</span></h3>
+        <p class="card-subtitle">Best for teams with existing React web apps who want a native iOS companion</p>
+        <ul>
+          <li>You have a React or Next.js web app in production and want a native iOS version without a rewrite</li>
+          <li>You need true native performance &mdash; smooth 120fps animations, instant startup, and small binaries</li>
+          <li>Your team does not have Swift expertise and does not want to hire for it</li>
+          <li>You want to own the generated code &mdash; no runtime dependency, no vendor lock-in</li>
+          <li>You value speed: one CLI command generates a complete Xcode project in seconds</li>
+          <li>You want to keep your web and iOS apps in sync as your product evolves</li>
+        </ul>
+      </div>
+      <div class="use-case-card rn-card">
+        <h3>When <span style="color: var(--orange);">React Native</span> Might Be Better</h3>
+        <p class="card-subtitle">A strong choice for cross-platform mobile from scratch</p>
+        <ul>
+          <li>You need both Android and iOS from a single codebase &mdash; Morphkit currently targets iOS only</li>
+          <li>You are building a mobile-first product from scratch, not converting an existing web app</li>
+          <li>You want to share business logic between mobile and web using React Native for Web</li>
+          <li>Your team already has deep React Native expertise and an established workflow</li>
+          <li>You need over-the-air (OTA) updates to push changes without App Store review</li>
+          <li>You are building a large-scale mobile app that will diverge significantly from any web counterpart</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- Deep Dive Content -->
+<section class="section" id="deep-dive">
+  <div class="container">
+    <div class="prose reveal">
+      <h2>A Deeper Look at the Differences</h2>
+      <p>Morphkit and React Native solve fundamentally different problems. Understanding the distinction is key to making the right choice for your project.</p>
+
+      <h3>Architecture: Generation vs Runtime</h3>
+      <p><strong>Morphkit is a code generator.</strong> It analyzes your existing React and TypeScript source code, builds a semantic model of your app's screens, navigation, data flows, and API calls, and then generates a complete SwiftUI Xcode project. Once generated, the output is plain Swift code with zero dependencies on Morphkit. You can open it in Xcode, customize it, and ship it to the App Store.</p>
+      <p><strong>React Native is a runtime framework.</strong> Your JavaScript code runs inside a JS engine (Hermes or JavaScriptCore) on the device. The framework bridges your JS code to native UI components. This means your app always depends on the React Native runtime at both build time and run time. The new architecture (Fabric renderer + JSI) reduces bridge overhead but does not eliminate the runtime layer.</p>
+
+      <h3>Performance and User Experience</h3>
+      <p>Because Morphkit outputs native compiled Swift, the resulting app performs identically to one hand-written by an iOS engineer. There is no JavaScript thread, no bridge serialization, and no runtime overhead. Animations run at native frame rates. Startup is instant. Memory usage matches any other Swift app.</p>
+      <p>React Native has made significant performance improvements with its new architecture, but the JavaScript runtime still introduces measurable overhead. Complex animations may drop frames under load. The JS thread can become a bottleneck in data-intensive views. For many apps this is perfectly acceptable, but for performance-critical experiences the difference is real.</p>
+
+      <h3>Bundle Size and App Store Impact</h3>
+      <p>A Morphkit-generated app produces a standard Swift binary. For a typical app with a handful of screens, you are looking at <strong>5 to 10 MB</strong> &mdash; comparable to any native iOS app. This matters for App Store optimization: smaller downloads lead to higher conversion rates, especially on cellular networks.</p>
+      <p>React Native apps carry the JavaScript runtime, the bridge layer, and your bundled JavaScript. Even a minimal React Native app starts at <strong>15 to 30 MB</strong> before you add any of your own code. Third-party native modules add further weight.</p>
+
+      <h3>iOS API Access</h3>
+      <p>With Morphkit, the generated Xcode project gives you full access to every iOS framework &mdash; HealthKit, ARKit, Core ML, StoreKit 2, WidgetKit, App Intents, Live Activities, and anything Apple ships in the future. You add the framework import, write the Swift code, and it works. No bridge, no wrapper, no waiting for community module support.</p>
+      <p>React Native provides access to native APIs through bridge modules. Many common APIs have community-maintained packages (<code>react-native-camera</code>, <code>react-native-maps</code>), but coverage is never complete. When you need access to a new or niche iOS framework, you must write a native module in Swift or Objective-C and bridge it yourself &mdash; which requires the same iOS expertise Morphkit helps you avoid.</p>
+
+      <h3>The Developer Experience</h3>
+      <p>Morphkit is designed for teams who already have a React web app and want to extend to iOS without building a separate mobile engineering practice. The workflow is simple: run <code>npx morphkit generate ./your-app</code> and get an Xcode project. Your web team keeps working in React. When the web app changes, regenerate the iOS project.</p>
+      <p>React Native requires your team to learn a new framework, debug platform-specific issues, manage native dependencies with CocoaPods or autolinking, and maintain a separate codebase. It is a powerful tool, but it demands investment in mobile-specific expertise.</p>
+
+      <h3>Long-Term Maintenance</h3>
+      <p>Morphkit-generated code has <strong>no runtime dependency</strong>. If Morphkit disappears tomorrow, your Xcode project still compiles and ships. You own every line of the generated Swift. The code follows standard iOS patterns (NavigationStack, @Observable, async/await) that any Swift developer can understand and maintain.</p>
+      <p>React Native apps depend on the framework for their entire lifecycle. Major React Native version upgrades can be time-consuming, especially when native modules need updating. The ecosystem is active and well-supported, but the dependency is permanent for the life of the project.</p>
+
+      <h2>Frequently Asked Questions</h2>
+
+      <h3>Can I use both together?</h3>
+      <p>Yes. Some teams use Morphkit to generate a native iOS companion for their web app and React Native for a separate Android app. The approaches are not mutually exclusive. Use whichever tool is best for each platform and context.</p>
+
+      <h3>Does Morphkit support Android?</h3>
+      <p>Not yet. Morphkit currently generates SwiftUI for iOS. Android support (targeting Jetpack Compose) is on the roadmap. If you need Android today, React Native or Kotlin Multiplatform may be better options.</p>
+
+      <h3>What about Flutter or Kotlin Multiplatform?</h3>
+      <p>Flutter requires a complete rewrite in Dart. Kotlin Multiplatform shares business logic but still needs platform-specific UI code. Both are strong options for greenfield cross-platform projects. Morphkit is specifically designed for teams that already have a React web app and want to extend to iOS without rewriting anything.</p>
+
+      <h3>How complex of an app can Morphkit handle?</h3>
+      <p>Morphkit works best with data-driven apps: dashboards, admin panels, e-commerce storefronts, SaaS tools, and CRUD applications. It understands routes, state management, API calls, forms, lists, and navigation patterns. For apps with complex custom animations or heavy native integrations (like games or AR experiences), you will likely want to hand-write native code or use a framework like React Native.</p>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- CTA -->
+<section class="cta-section" id="cta">
+  <div class="container reveal">
+    <span class="section-label">Ready to Try It?</span>
+    <h2 class="section-title">Convert Your React App to Native iOS</h2>
+    <p class="section-desc">One command. No Swift knowledge required. The generated Xcode project is yours to keep, customize, and ship.</p>
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px;">
+      <a href="https://morphkit.dev/#install" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Try Morphkit Free
+      </a>
+      <a href="https://morphkit.dev" class="btn btn-secondary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Back to Homepage
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg width="28" height="28" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="ft-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3ECF8E"/><stop offset="100%" stop-color="#F0B429"/></linearGradient></defs>
+          <rect width="120" height="120" rx="26" fill="#09090b"/>
+          <rect x="1" y="1" width="118" height="118" rx="25" fill="none" stroke="url(#ft-grad)" stroke-opacity="0.25" stroke-width="2"/>
+          <path d="M30 90V42l24 28" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M90 90V42L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M54 70L60 38L66 70" stroke="url(#ft-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M78 32l8-1-1 8" stroke="#F0B429" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
+        </svg>
+        Built by <a href="https://ashlr.ai" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">AshlrAI</a>
+      </div>
+      <div class="footer-links">
+        <a href="https://morphkit.dev">morphkit.dev</a>
+        <a href="https://github.com/ashlrai/morphkit" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://ashlr.ai" target="_blank" rel="noopener">AshlrAI</a>
+      </div>
+    </div>
+    <p class="footer-sub">&copy; 2026 AshlrAI. All rights reserved.</p>
+  </div>
+</footer>
+
+<script>
+  // Reveal on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

@@ -210,12 +210,24 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
             }
         }
 
-        bindings.push({
-            wrapper: '@State',
-            type: swiftType,
-            name: camelCase(bindingName),
-            defaultValue,
-        });
+        if (pattern && pattern.type === 'global') {
+            // Global state should use @Environment to read from a shared store
+            const storeName = `${pascalCase(bindingName.replace(/^[Uu]se/, '').replace(/[Ss]tore$/, ''))}Store`;
+            bindings.push({
+                wrapper: '@Environment',
+                type: swiftType,
+                name: camelCase(bindingName),
+                defaultValue,
+                environmentKey: storeName,
+            });
+        } else {
+            bindings.push({
+                wrapper: '@State',
+                type: swiftType,
+                name: camelCase(bindingName),
+                defaultValue,
+            });
+        }
     }
 
     return bindings;
@@ -1540,7 +1552,7 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
                 lines.push('        .textFieldStyle(.roundedBorder)');
                 lines.push('        .keyboardType(.emailAddress)');
                 lines.push('        .textContentType(.emailAddress)');
-                lines.push('        .autocapitalization(.none)');
+                lines.push('        .textInputAutocapitalization(.never)');
             } else {
                 lines.push(`    TextField("${humanizeFieldName(binding)}", text: $${camelCase(binding)})`);
                 lines.push('        .textFieldStyle(.roundedBorder)');
@@ -1551,7 +1563,7 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push('        .textFieldStyle(.roundedBorder)');
         lines.push('        .keyboardType(.emailAddress)');
         lines.push('        .textContentType(.emailAddress)');
-        lines.push('        .autocapitalization(.none)');
+        lines.push('        .textInputAutocapitalization(.never)');
         lines.push('');
         lines.push('    SecureField("Password", text: $password)');
         lines.push('        .textFieldStyle(.roundedBorder)');
@@ -1698,7 +1710,17 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push('        }');
         lines.push('        .buttonStyle(.borderedProminent)');
     } else {
-        lines.push('        NavigationLink("Start Shopping", value: AppRoute.products)');
+        // Find the first non-cart, non-detail route to navigate to
+        const screens = model.screens ?? [];
+        const browseScreen = screens.find(
+            (s) => !isCartScreen(s) && s.layout !== 'detail',
+        );
+        if (browseScreen) {
+            const routeCaseName = camelCase(browseScreen.name);
+            lines.push(`        NavigationLink("Start Shopping", value: AppRoute.${routeCaseName})`);
+        } else {
+            lines.push('        NavigationLink("Start Shopping") { }');
+        }
         lines.push('        .buttonStyle(.borderedProminent)');
     }
     lines.push('        Spacer()');

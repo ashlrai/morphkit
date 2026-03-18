@@ -202,7 +202,11 @@ function generateAssets(model: SemanticAppModel): GeneratedFile[] {
 }
 
 function hexToRGB(hex: string): { r: number; g: number; b: number } {
-    const clean = hex.replace('#', '');
+    const clean = hex.replace(/^#/, '').slice(0, 6);
+    if (!/^[0-9a-fA-F]{6}$/.test(clean)) {
+        // Fallback to iOS default blue
+        return { r: 0, g: 0.478, b: 1 };
+    }
     const num = parseInt(clean, 16);
     return {
         r: ((num >> 16) & 255) / 255,

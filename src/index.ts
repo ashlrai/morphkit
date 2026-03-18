@@ -3,7 +3,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { resolve } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { analyzeRepo } from './analyzer/index.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import { adaptForPlatform } from './semantic/adapter.js';
@@ -223,23 +224,30 @@ program
 
       spinner.succeed('Analysis complete');
 
-      // Generate to memory only (don't write files)
-      const project = await generateProject(adapted, '/dev/null');
+      // Generate to a temp directory so file writes succeed
+      const tempDir = mkdtempSync(resolve(tmpdir(), 'morphkit-preview-'));
 
-      const filesToShow = options.screen
-        ? project.files.filter(f => f.path.toLowerCase().includes(options.screen!.toLowerCase()))
-        : project.files;
+      try {
+        const project = await generateProject(adapted, tempDir);
 
-      for (const file of filesToShow) {
-        console.log('');
-        console.log(chalk.bold.cyan(`── ${file.path} ──`));
-        console.log(chalk.dim(`Source: ${file.sourceMapping}`));
-        console.log(chalk.dim(`Confidence: ${file.confidence}`));
-        if (file.warnings.length > 0) {
-          console.log(chalk.yellow(`Warnings: ${file.warnings.join(', ')}`));
+        const filesToShow = options.screen
+          ? project.files.filter(f => f.path.toLowerCase().includes(options.screen!.toLowerCase()))
+          : project.files;
+
+        for (const file of filesToShow) {
+          console.log('');
+          console.log(chalk.bold.cyan(`── ${file.path} ──`));
+          console.log(chalk.dim(`Source: ${file.sourceMapping}`));
+          console.log(chalk.dim(`Confidence: ${file.confidence}`));
+          if (file.warnings.length > 0) {
+            console.log(chalk.yellow(`Warnings: ${file.warnings.join(', ')}`));
+          }
+          console.log('');
+          console.log(file.content);
         }
-        console.log('');
-        console.log(file.content);
+      } finally {
+        // Clean up temp directory
+        rmSync(tempDir, { recursive: true, force: true });
       }
     } catch (error) {
       spinner.fail('Preview failed');

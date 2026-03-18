@@ -10,7 +10,7 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase, indent, mapTsTypeToSwift } from './swiftui-generator';
+import { pascalCase, camelCase } from './swiftui-generator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,7 +28,15 @@ function isUsableTypeName(name: string | undefined): boolean {
     return !JUNK_TYPE_NAMES.has(name.toLowerCase());
 }
 
-/** Convert a TypeDefinition to a Swift type string */
+/**
+ * Convert a TypeDefinition to a Swift type string for networking context.
+ *
+ * NOTE: This intentionally differs from the canonical typeDefToSwift in
+ * swiftui-generator.ts. The networking version promotes usable typeNames
+ * on non-object kinds (e.g., `{ kind: 'string', typeName: 'Product' }` -> 'Product')
+ * because API response types often carry domain-specific type names that
+ * should appear in generated Swift method signatures.
+ */
 function typeDefToSwift(td: TypeDefinition): string {
     switch (td.kind) {
         case 'string':
@@ -422,7 +430,7 @@ function generateAPIClient(model: SemanticAppModel): string {
     lines.push('        method: String = "DELETE",');
     lines.push('        body: (any Encodable)? = nil');
     lines.push('    ) async throws {');
-    lines.push('        var url = APIConfiguration.versionedBaseURL.appendingPathComponent(path)');
+    lines.push('        let url = APIConfiguration.versionedBaseURL.appendingPathComponent(path)');
     lines.push('');
     lines.push('        var urlRequest = URLRequest(url: url)');
     lines.push('        urlRequest.httpMethod = method');

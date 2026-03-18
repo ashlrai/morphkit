@@ -348,21 +348,21 @@ Respond with valid JSON matching the specified schema. Respond with a single JSO
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // Determine if retryable
+        // Rate limit: respect Retry-After header if available (check before generic retryable)
+        if (this.isRateLimited(error) && attempt < this.maxRetries - 1) {
+          const retryAfter = this.getRetryAfter(error);
+          if (retryAfter) {
+            await sleep(retryAfter * 1000);
+            continue;
+          }
+        }
+
+        // Determine if retryable (transient server errors)
         if (this.isRetryable(error) && attempt < this.maxRetries - 1) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt);
           const jitter = Math.random() * delay * 0.1;
           await sleep(delay + jitter);
           continue;
-        }
-
-        // Rate limit: respect Retry-After header if available
-        if (this.isRateLimited(error)) {
-          const retryAfter = this.getRetryAfter(error);
-          if (retryAfter && attempt < this.maxRetries - 1) {
-            await sleep(retryAfter * 1000);
-            continue;
-          }
         }
 
         throw lastError;

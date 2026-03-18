@@ -499,17 +499,17 @@
       to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     }
 
-    /* Syntax highlighting */
-    .tok-kw { color: #C678DD; }
-    .tok-fn { color: #61AFEF; }
-    .tok-str { color: #98C379; }
-    .tok-num { color: #D19A66; }
-    .tok-typ { color: #E5C07B; }
-    .tok-cm { color: var(--text-muted); }
-    .tok-tag { color: #E06C75; }
-    .tok-attr { color: #D19A66; }
-    .tok-op { color: var(--text-muted); }
-    .tok-prop { color: #E06C75; }
+    /* Syntax highlighting — hero code morph */
+    .code-morph .tok-kw { color: #C678DD; }
+    .code-morph .tok-fn { color: #61AFEF; }
+    .code-morph .tok-str { color: #98C379; }
+    .code-morph .tok-num { color: #D19A66; }
+    .code-morph .tok-typ { color: #E5C07B; }
+    .code-morph .tok-cm { color: var(--text-muted); }
+    .code-morph .tok-tag { color: #E06C75; }
+    .code-morph .tok-attr { color: #D19A66; }
+    .code-morph .tok-op { color: var(--text-muted); }
+    .code-morph .tok-prop { color: #E06C75; }
 
     @media (max-width: 700px) {
       .code-morph { grid-template-columns: 1fr; }
@@ -1277,7 +1277,7 @@
       transition: max-height 0.3s ease;
     }
     .faq-item.open .faq-a {
-      max-height: 300px;
+      max-height: 800px;
     }
     .faq-a-inner {
       padding: 0 24px 20px;
@@ -2008,6 +2008,18 @@
   });
 
   // Copy command
+  function fallbackCopy(code, btn) {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+    posthog.capture('copy_command', { command: code });
+  }
   function copyCmd(btn) {
     const code = btn.parentElement.querySelector('code').textContent.replace(/^\$\s+/, '');
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2015,20 +2027,11 @@
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 1500);
         posthog.capture('copy_command', { command: code });
+      }).catch(() => {
+        fallbackCopy(code, btn);
       });
     } else {
-      // Fallback for non-HTTPS or older browsers
-      const ta = document.createElement('textarea');
-      ta.value = code;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      btn.textContent = 'Copied!';
-      setTimeout(() => btn.textContent = 'Copy', 1500);
-      posthog.capture('copy_command', { command: code });
+      fallbackCopy(code, btn);
     }
   }
 
@@ -2047,6 +2050,8 @@
 
     btn.textContent = 'Joining...';
     btn.disabled = true;
+    msg.classList.remove('success', 'error');
+    msg.textContent = '';
 
     const { error } = await sb
       .from('waitlist')

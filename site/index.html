@@ -4,19 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Morphkit — Your React app → Native iOS. In seconds.</title>
-  <meta name="description" content="Morphkit is a semantic AI agent that converts TypeScript/React web apps to production-quality native SwiftUI iOS apps.">
-  <meta name="keywords" content="TypeScript, React, SwiftUI, iOS, native app, code generation, AI, Morphkit">
-  <meta property="og:title" content="Morphkit — React to Native iOS in Seconds">
-  <meta property="og:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
+  <meta name="description" content="Morphkit converts your React &amp; TypeScript web app to a native SwiftUI iOS app automatically. One CLI command, production-ready Xcode project. Free &amp; open-source.">
+  <meta name="keywords" content="react to ios, typescript to swiftui, convert react to native ios, code generation, react native alternative, swiftui generator, morphkit, cli tool">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="author" content="AshlrAI">
+  <meta property="og:title" content="Morphkit — Convert React to Native iOS in Seconds">
+  <meta property="og:description" content="CLI tool that converts your React/TypeScript web app to a production-quality SwiftUI Xcode project. No Swift expertise needed.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://morphkit.dev">
   <meta property="og:image" content="https://morphkit.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Morphkit CLI converting a React app to native SwiftUI iOS">
   <meta property="og:site_name" content="Morphkit">
   <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Morphkit — React to Native iOS in Seconds">
-  <meta name="twitter:description" content="A semantic AI agent that understands your TypeScript/React web app and generates a production-quality SwiftUI Xcode project.">
+  <meta name="twitter:title" content="Morphkit — React → Native iOS in Seconds">
+  <meta name="twitter:description" content="CLI tool that converts React/TypeScript to production-ready SwiftUI. No Swift expertise needed. Free &amp; open-source.">
   <meta name="twitter:image" content="https://morphkit.dev/og.png">
+  <meta name="twitter:image:alt" content="Morphkit CLI converting a React app to native SwiftUI iOS">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -687,6 +693,75 @@
       outline: 2px solid var(--accent-light);
       outline-offset: 2px;
     }
+
+    /* ---- FAQ ---- */
+    .faq-list {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-elevated);
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+    .faq-item:hover {
+      border-color: rgba(99,102,241,0.25);
+    }
+    .faq-q {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 24px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .faq-q:hover { color: var(--accent-light); }
+    .faq-q::after {
+      content: '+';
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .faq-item.open .faq-q::after {
+      content: '\2212';
+      color: var(--accent-light);
+    }
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+    .faq-item.open .faq-a {
+      max-height: 300px;
+    }
+    .faq-a-inner {
+      padding: 0 24px 20px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+    .faq-a-inner code {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      background: rgba(99,102,241,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent-light);
+    }
   </style>
   <script type="application/ld+json">
   {
@@ -694,19 +769,124 @@
     "@type": "SoftwareApplication",
     "name": "Morphkit",
     "url": "https://morphkit.dev",
-    "description": "A semantic AI agent that converts TypeScript/React web apps to production-quality native SwiftUI iOS apps.",
+    "description": "CLI tool that converts React and TypeScript web applications to production-quality native SwiftUI iOS apps automatically.",
+    "image": "https://morphkit.dev/og.png",
+    "screenshot": "https://morphkit.dev/og.png",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux, Windows",
+    "targetPlatform": "iOS",
+    "runtimePlatform": ["Node.js", "Bun"],
+    "programmingLanguage": ["TypeScript", "Swift"],
+    "downloadUrl": "https://www.npmjs.com/package/morphkit-cli",
+    "installUrl": "https://morphkit.dev/#install",
+    "softwareVersion": "0.1.0-beta",
+    "isAccessibleForFree": true,
+    "license": "https://opensource.org/licenses/MIT",
     "offers": {
       "@type": "Offer",
       "price": "0",
-      "priceCurrency": "USD"
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
     },
     "author": {
       "@type": "Organization",
       "name": "AshlrAI",
       "url": "https://ashlr.ai"
+    },
+    "sourceOrganization": {
+      "@type": "Organization",
+      "name": "AshlrAI",
+      "url": "https://ashlr.ai"
     }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to convert a React app to native iOS with Morphkit",
+    "description": "Convert your existing React or TypeScript web application to a production-quality native SwiftUI iOS app in three steps.",
+    "totalTime": "PT2M",
+    "tool": {
+      "@type": "HowToTool",
+      "name": "Morphkit CLI"
+    },
+    "step": [
+      {
+        "@type": "HowToStep",
+        "position": 1,
+        "name": "Point Morphkit at your codebase",
+        "text": "Run npx morphkit generate with the path to your React or Next.js project. Morphkit scans your TypeScript codebase, extracting components, routes, state management, and API calls using deep AST analysis."
+      },
+      {
+        "@type": "HowToStep",
+        "position": 2,
+        "name": "AI transforms web patterns to native iOS",
+        "text": "Morphkit maps React patterns to their native SwiftUI equivalents — TabView, NavigationStack, @Observable — preserving your app's intent and user experience."
+      },
+      {
+        "@type": "HowToStep",
+        "position": 3,
+        "name": "Open the generated Xcode project",
+        "text": "Morphkit outputs a complete SwiftUI Xcode project with typed Codable models, async networking, native navigation, and an organized structure ready for the App Store."
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Can Morphkit convert any React app to iOS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Morphkit works best with React and Next.js apps built with TypeScript. It analyzes your components, routes, state management (useState, Zustand, Redux), and API calls to generate equivalent SwiftUI code. Complex third-party libraries with native DOM dependencies may require manual adaptation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need to know Swift to use Morphkit?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Morphkit generates production-quality SwiftUI code automatically. The output is clean, idiomatic Swift that follows Apple's conventions — but you don't need Swift expertise to generate it. Familiarity with Xcode helps for building and deploying the final app."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How is Morphkit different from React Native?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "React Native runs JavaScript in a bridge layer at runtime. Morphkit generates actual native SwiftUI code — no bridge, no runtime overhead. You get a real Xcode project with native Swift files, native performance, and full access to iOS APIs. It's not a cross-platform runtime; it's a code generation tool."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What React patterns does Morphkit support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Morphkit supports TypeScript interfaces and types (→ Codable structs), file-based and nested routes (→ TabView + NavigationStack), useState and Zustand/Redux state (→ @Observable), fetch/axios API calls (→ async/await URLSession), Tailwind color palettes (→ Asset Catalog), and React component composition (→ SwiftUI views)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Morphkit free and open-source?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Morphkit is free to use and open-source under the MIT license. You can install it with npx morphkit generate or bun install -g morphkit. The source code is available on GitHub."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does the generated iOS project include?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Morphkit generates a complete Xcode project including: SwiftUI views for each component, Codable model structs from your TypeScript types, an async networking layer using URLSession, TabView and NavigationStack navigation derived from your routes, an Xcode asset catalog from your Tailwind colors, and a properly organized project structure ready for App Store submission."
+        }
+      }
+    ]
   }
   </script>
 </head>
@@ -733,6 +913,7 @@
       <a href="#how-it-works">How It Works</a>
       <a href="#features">Features</a>
       <a href="#example">Example</a>
+      <a href="#faq">FAQ</a>
       <a href="#install" class="nav-cta">Get Started</a>
     </div>
   </div>
@@ -975,6 +1156,57 @@
   </div>
 </section>
 
+<div class="section-divider"></div>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">FAQ</span>
+      <h2 class="section-title">Common questions</h2>
+      <p class="section-desc">What developers ask before converting their first app.</p>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">Can Morphkit convert any React app to iOS?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">Morphkit works best with React and Next.js apps built with TypeScript. It analyzes your components, routes, state management (<code>useState</code>, Zustand, Redux), and API calls to generate equivalent SwiftUI code. Complex third-party libraries with native DOM dependencies may require manual adaptation, but standard React patterns map cleanly to native iOS equivalents.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">Do I need to know Swift to use Morphkit?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">No. Morphkit generates production-quality SwiftUI code automatically. The output is clean, idiomatic Swift that follows Apple's conventions &mdash; but you don't need Swift expertise to generate it. Familiarity with Xcode helps for building and deploying the final app to the App Store.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">How is Morphkit different from React Native?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">React Native runs JavaScript in a bridge layer at runtime. Morphkit generates actual native SwiftUI code &mdash; no bridge, no runtime overhead. You get a real Xcode project with native Swift files, native performance, and full access to iOS APIs. It's not a cross-platform runtime; it's a code generation tool that outputs the same code a senior iOS developer would write.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">What React patterns does Morphkit support?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">TypeScript interfaces and types become <code>Codable</code> structs. File-based and nested routes become <code>TabView</code> + <code>NavigationStack</code>. <code>useState</code> and Zustand/Redux state become <code>@Observable</code> classes. Fetch and Axios API calls become async/await <code>URLSession</code> requests. Tailwind color palettes become Xcode Asset Catalogs. React component composition becomes SwiftUI view hierarchies.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">Is Morphkit free and open-source?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">Yes. Morphkit is free to use and open-source under the MIT license. Install it with <code>npx morphkit generate</code> or <code>bun install -g morphkit</code>. The full source code is available on GitHub.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false">What does the generated iOS project include?</button>
+        <div class="faq-a" role="region">
+          <div class="faq-a-inner">A complete Xcode project with SwiftUI views for each component, <code>Codable</code> model structs from your TypeScript types, an async networking layer using <code>URLSession</code>, <code>TabView</code> and <code>NavigationStack</code> navigation derived from your routes, an Xcode Asset Catalog from your design tokens, and a clean project structure organized for App Store submission.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 </main>
 
 <!-- Footer -->
@@ -1051,6 +1283,24 @@
       setTimeout(() => btn.textContent = 'Copy', 1500);
     }
   }
+
+  // FAQ accordion
+  document.querySelectorAll('.faq-q').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.parentElement;
+      const isOpen = item.classList.contains('open');
+      // Close all
+      document.querySelectorAll('.faq-item').forEach(i => {
+        i.classList.remove('open');
+        i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+      });
+      // Toggle clicked
+      if (!isOpen) {
+        item.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
 </script>
 </body>
 </html>

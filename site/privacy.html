@@ -225,6 +225,17 @@
       margin-top: 24px;
     }
   </style>
+  <!-- PostHog Analytics -->
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId setPersonProperties".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_nVmJCF0OniE5Tsi9G6j2XxRBCJweUMYegBYarXbLFRN', {
+      api_host: 'https://us.i.posthog.com',
+      person_profiles: 'identified_only',
+      autocapture: false,
+      capture_pageview: true,
+      capture_pageleave: true
+    });
+  </script>
 </head>
 <body>
 
@@ -267,7 +278,7 @@
         <p>When you sign up for the Morphkit waitlist, we collect your email address. We use this solely to notify you about product availability and important updates. You can unsubscribe at any time by clicking the link in any email or contacting us directly.</p>
 
         <h3>Anonymous Website Analytics</h3>
-        <p>We use <a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a> to understand how visitors use our website. Plausible is privacy-focused and does not use cookies. It collects no personal data or personally identifiable information. All data is aggregated and cannot be used to identify individual visitors.</p>
+        <p>We use <a href="https://posthog.com" target="_blank" rel="noopener">PostHog</a> to understand how visitors use our website. PostHog is configured in privacy-first mode: we use <code>identified_only</code> person profiles so anonymous visitors are not tracked as individuals. PostHog uses localStorage (not cookies) for session continuity. No cookie banner is required. All analytics data is used solely to improve the product experience.</p>
 
         <h3>CLI Usage Data (Optional Telemetry)</h3>
         <p>If you choose to enable telemetry in the Morphkit CLI, we collect anonymous usage data such as:</p>
@@ -285,7 +296,7 @@
         <ul>
           <li><strong>Your source code.</strong> Morphkit's analysis runs entirely on your local machine. Your code is never transmitted to our servers.</li>
           <li><strong>Personal data from generated apps.</strong> The iOS apps Morphkit generates are yours — we have no access to them or any data they process.</li>
-          <li><strong>Browsing history, cookies, or tracking pixels</strong> on our website (Plausible is cookie-free).</li>
+          <li><strong>Browsing history, cookies, or tracking pixels</strong> on our website (PostHog uses localStorage, not cookies).</li>
         </ul>
 
         <h2>3. Third-Party Services</h2>
@@ -293,7 +304,9 @@
         <p>We work with a small number of trusted third-party services:</p>
         <ul>
           <li><strong><a href="https://x.ai" target="_blank" rel="noopener">xAI</a></strong> — If you enable AI-enhanced analysis (optional), anonymized code structure metadata may be sent to xAI's API to improve conversion quality. No raw source code is transmitted — only abstract representations such as component trees and type signatures.</li>
-          <li><strong><a href="https://plausible.io" target="_blank" rel="noopener">Plausible Analytics</a></strong> — Privacy-focused, cookie-free website analytics hosted in the EU.</li>
+          <li><strong><a href="https://posthog.com" target="_blank" rel="noopener">PostHog</a></strong> — Product analytics configured in privacy-first mode (<code>identified_only</code> person profiles). Hosted in the US. Subject to <a href="https://posthog.com/privacy" target="_blank" rel="noopener">PostHog's Privacy Policy</a>.</li>
+          <li><strong><a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a></strong> — Stores waitlist signups (email address and signup source). Subject to <a href="https://supabase.com/privacy" target="_blank" rel="noopener">Supabase's Privacy Policy</a>.</li>
+          <li><strong><a href="https://stripe.com" target="_blank" rel="noopener">Stripe</a></strong> — Processes payments for paid plans. We do not store credit card information — all payment data is handled by Stripe. Subject to <a href="https://stripe.com/privacy" target="_blank" rel="noopener">Stripe's Privacy Policy</a>.</li>
           <li><strong><a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a></strong> — Hosts our website. Subject to <a href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener">Vercel's Privacy Policy</a>.</li>
         </ul>
 

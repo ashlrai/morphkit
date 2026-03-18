@@ -74,7 +74,7 @@
       background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
       background-size: 24px 24px;
       pointer-events: none;
-      z-index: 0;
+      z-index: -1;
     }
 
     /* Subtle top gradient */
@@ -154,11 +154,54 @@
 
     /* ---- HERO ---- */
     .hero {
-      padding: 160px 0 100px;
+      padding: 140px 0 80px;
       text-align: center;
       position: relative;
       overflow: hidden;
     }
+    /* Dot grid background */
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(62,207,142,0.08) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 80%);
+      animation: grid-breathe 4s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+    @keyframes grid-breathe {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    /* Glow orbs */
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -300px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 500px;
+      background: radial-gradient(ellipse, rgba(62,207,142,0.12) 0%, transparent 60%);
+      filter: blur(60px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      top: -100px;
+      right: -200px;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(240,180,41,0.06) 0%, transparent 60%);
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero .container { position: relative; z-index: 1; }
     .hero-badge {
       display: inline-flex;
       align-items: center;
@@ -170,6 +213,8 @@
       color: var(--text-secondary);
       margin-bottom: 32px;
       background: var(--bg-elevated);
+      opacity: 0;
+      animation: hero-fade-up 0.6s ease forwards 0.1s;
     }
     .hero-badge .dot {
       width: 6px; height: 6px;
@@ -181,6 +226,10 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
+    @keyframes hero-fade-up {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .hero h1 {
       font-size: clamp(40px, 6vw, 72px);
       font-weight: 800;
@@ -190,6 +239,8 @@
       max-width: 800px;
       margin-left: auto;
       margin-right: auto;
+      opacity: 0;
+      animation: hero-fade-up 0.7s ease forwards 0.2s;
     }
     .hero h1 .gradient {
       background: linear-gradient(135deg, var(--accent), var(--orange));
@@ -203,6 +254,8 @@
       max-width: 620px;
       margin: 0 auto 40px;
       line-height: 1.65;
+      opacity: 0;
+      animation: hero-fade-up 0.7s ease forwards 0.35s;
     }
     .hero-buttons {
       display: flex;
@@ -210,12 +263,16 @@
       justify-content: center;
       flex-wrap: wrap;
       margin-bottom: 24px;
+      opacity: 0;
+      animation: hero-fade-up 0.7s ease forwards 0.45s;
     }
 
     /* Waitlist */
     .waitlist {
       max-width: 440px;
-      margin: 0 auto 64px;
+      margin: 0 auto 48px;
+      opacity: 0;
+      animation: hero-fade-up 0.7s ease forwards 0.55s;
     }
     .waitlist-form {
       display: flex;
@@ -264,8 +321,202 @@
     .waitlist-msg.success {
       color: var(--accent);
     }
+    .waitlist-msg.error {
+      color: #ef4444;
+    }
     @media (max-width: 480px) {
       .waitlist-form { flex-direction: column; }
+    }
+
+    /* Code Morph — dual pane transformation */
+    .code-morph {
+      max-width: 920px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 32px 100px rgba(0,0,0,0.55), 0 0 0 1px rgba(62,207,142,0.05);
+      position: relative;
+      opacity: 0;
+      animation: hero-fade-up 0.8s ease forwards 0.7s;
+    }
+    .code-morph::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      border-radius: var(--radius-lg);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .code-pane {
+      background: var(--bg-elevated);
+      position: relative;
+    }
+    .code-pane:first-child {
+      border-right: 1px solid var(--border);
+    }
+    .code-pane-bar {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-family: var(--font-mono);
+    }
+    .code-pane-bar .file-icon {
+      width: 14px;
+      height: 14px;
+      opacity: 0.6;
+    }
+    .code-pane-bar .file-name {
+      color: var(--text-muted);
+    }
+    .code-pane-bar .file-name.active {
+      color: var(--text-secondary);
+    }
+    .code-pane-bar .lang-badge {
+      margin-left: auto;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .lang-tsx { background: rgba(49,120,198,0.15); color: #61AFEF; }
+    .lang-swift { background: rgba(240,81,56,0.15); color: #F05138; }
+    .code-pane-body {
+      padding: 20px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      min-height: 240px;
+      overflow: hidden;
+    }
+    .code-pane-body .line {
+      white-space: pre;
+      opacity: 0;
+      animation: code-line-in 0.3s ease forwards;
+    }
+    .code-pane:first-child .line:nth-child(1) { animation-delay: 0.8s; }
+    .code-pane:first-child .line:nth-child(2) { animation-delay: 0.85s; }
+    .code-pane:first-child .line:nth-child(3) { animation-delay: 0.9s; }
+    .code-pane:first-child .line:nth-child(4) { animation-delay: 0.95s; }
+    .code-pane:first-child .line:nth-child(5) { animation-delay: 1.0s; }
+    .code-pane:first-child .line:nth-child(6) { animation-delay: 1.05s; }
+    .code-pane:first-child .line:nth-child(7) { animation-delay: 1.1s; }
+    .code-pane:first-child .line:nth-child(8) { animation-delay: 1.15s; }
+    .code-pane:first-child .line:nth-child(9) { animation-delay: 1.2s; }
+    .code-pane:first-child .line:nth-child(10) { animation-delay: 1.25s; }
+    .code-pane:first-child .line:nth-child(11) { animation-delay: 1.3s; }
+    .code-pane:last-child .line:nth-child(1) { animation-delay: 1.6s; }
+    .code-pane:last-child .line:nth-child(2) { animation-delay: 1.67s; }
+    .code-pane:last-child .line:nth-child(3) { animation-delay: 1.74s; }
+    .code-pane:last-child .line:nth-child(4) { animation-delay: 1.81s; }
+    .code-pane:last-child .line:nth-child(5) { animation-delay: 1.88s; }
+    .code-pane:last-child .line:nth-child(6) { animation-delay: 1.95s; }
+    .code-pane:last-child .line:nth-child(7) { animation-delay: 2.02s; }
+    .code-pane:last-child .line:nth-child(8) { animation-delay: 2.09s; }
+    .code-pane:last-child .line:nth-child(9) { animation-delay: 2.16s; }
+    .code-pane:last-child .line:nth-child(10) { animation-delay: 2.23s; }
+    .code-pane:last-child .line:nth-child(11) { animation-delay: 2.3s; }
+    @keyframes code-line-in {
+      from { opacity: 0; transform: translateX(6px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Conversion beam */
+    .code-morph .morph-beam {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 100%;
+      z-index: 2;
+      opacity: 0;
+      animation: beam-sweep 1.2s ease-in-out forwards 1.2s;
+    }
+    .morph-beam::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -20px;
+      width: 42px;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(62,207,142,0.25), var(--accent), rgba(62,207,142,0.25), transparent);
+      filter: blur(2px);
+    }
+    .morph-beam::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 20px var(--accent), 0 0 60px var(--accent);
+    }
+    @keyframes beam-sweep {
+      0% { opacity: 0; left: -5%; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; left: 105%; }
+    }
+
+    /* Morph label */
+    .morph-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: morph-label-show 0.4s ease forwards 1.9s;
+      white-space: nowrap;
+      box-shadow: 0 0 30px rgba(62,207,142,0.15);
+    }
+    @keyframes morph-label-show {
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+
+    /* Syntax highlighting */
+    .tok-kw { color: #C678DD; }
+    .tok-fn { color: #61AFEF; }
+    .tok-str { color: #98C379; }
+    .tok-num { color: #D19A66; }
+    .tok-typ { color: #E5C07B; }
+    .tok-cm { color: var(--text-muted); }
+    .tok-tag { color: #E06C75; }
+    .tok-attr { color: #D19A66; }
+    .tok-op { color: var(--text-muted); }
+    .tok-prop { color: #E06C75; }
+
+    @media (max-width: 700px) {
+      .code-morph { grid-template-columns: 1fr; }
+      .code-pane:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+      .code-pane-body { min-height: 180px; font-size: 11.5px; }
+      .morph-label { display: none; }
+      .morph-beam { display: none; }
     }
 
     /* Buttons */
@@ -287,10 +538,16 @@
       background: var(--accent);
       color: #0A0A0C;
       font-weight: 700;
+      box-shadow: 0 4px 15px rgba(62,207,142,0.25);
     }
     .btn-primary:hover {
       background: var(--accent-light);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(62,207,142,0.35), 0 0 40px rgba(62,207,142,0.15);
+    }
+    .btn-primary:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(62,207,142,0.25);
     }
     .btn-secondary {
       background: var(--bg-elevated);
@@ -347,12 +604,12 @@
       opacity: 0;
       animation: term-appear 0.3s ease forwards;
     }
-    .terminal-line:nth-child(1) { animation-delay: 0.5s; }
-    .terminal-line:nth-child(2) { animation-delay: 1.2s; }
-    .terminal-line:nth-child(3) { animation-delay: 1.8s; }
-    .terminal-line:nth-child(4) { animation-delay: 2.4s; }
-    .terminal-line:nth-child(5) { animation-delay: 3.0s; }
-    .terminal-line:nth-child(6) { animation-delay: 3.5s; }
+    .terminal-line:nth-child(1) { animation-delay: 0.3s; }
+    .terminal-line:nth-child(2) { animation-delay: 0.8s; }
+    .terminal-line:nth-child(3) { animation-delay: 1.1s; }
+    .terminal-line:nth-child(4) { animation-delay: 1.5s; }
+    .terminal-line:nth-child(5) { animation-delay: 1.8s; }
+    .terminal-line:nth-child(6) { animation-delay: 2.1s; }
     @keyframes term-appear {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
@@ -364,6 +621,123 @@
     .term-info { color: var(--text-muted); }
     .term-success { color: var(--green); }
     .term-file { color: var(--cyan); }
+
+    /* Social Proof / Dogfooding */
+    .social-proof {
+      padding: 80px 0;
+      position: relative;
+    }
+    .proof-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .proof-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border: 1px solid rgba(62,207,142,0.2);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 20px;
+      background: rgba(62,207,142,0.05);
+    }
+    .proof-title {
+      font-size: clamp(24px, 3.5vw, 36px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .proof-desc {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .proof-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      max-width: 720px;
+      margin: 0 auto 48px;
+    }
+    .proof-stat {
+      text-align: center;
+      padding: 24px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .proof-stat:hover {
+      border-color: rgba(62,207,142,0.3);
+      box-shadow: 0 0 20px rgba(62,207,142,0.08);
+    }
+    .proof-stat-number {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .proof-stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .proof-quote {
+      max-width: 560px;
+      margin: 0 auto;
+      text-align: center;
+      padding: 32px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      position: relative;
+    }
+    .proof-quote::before {
+      content: '\201C';
+      position: absolute;
+      top: -8px;
+      left: 28px;
+      font-size: 48px;
+      color: var(--accent);
+      opacity: 0.3;
+      font-family: Georgia, serif;
+      line-height: 1;
+    }
+    .proof-quote p {
+      font-size: 17px;
+      color: var(--text);
+      line-height: 1.65;
+      font-style: italic;
+      margin-bottom: 16px;
+    }
+    .proof-quote cite {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-style: normal;
+    }
+    .proof-quote cite strong {
+      color: var(--text-secondary);
+    }
+    @media (max-width: 600px) {
+      .proof-stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* prefers-reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
 
     /* ---- SECTION STYLES ---- */
     .section {
@@ -1045,8 +1419,21 @@
     ]
   }
   </script>
-  <!-- Analytics: Sign up at plausible.io and uncomment -->
-  <!-- <script defer data-domain="morphkit.dev" src="https://plausible.io/js/script.js"></script> -->
+  <!-- PostHog Analytics -->
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId setPersonProperties".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_nVmJCF0OniE5Tsi9G6j2XxRBCJweUMYegBYarXbLFRN', {
+      api_host: 'https://us.i.posthog.com',
+      person_profiles: 'identified_only',
+      autocapture: false,
+      capture_pageview: true,
+      capture_pageleave: true,
+      mask_all_text: false,
+      mask_all_element_attributes: false
+    });
+  </script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
 
@@ -1081,7 +1468,7 @@
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-glow"></div>
+  <div class="hero-grid"></div>
   <div class="container">
     <div class="hero-badge">
       <span class="dot"></span>
@@ -1108,8 +1495,63 @@
       <p class="waitlist-msg" id="waitlist-msg">Get early access. No spam, unsubscribe anytime.</p>
     </div>
 
+    <!-- Code Morph: React → SwiftUI -->
+    <div class="code-morph">
+      <div class="morph-beam"></div>
+      <span class="morph-label">Morphkit</span>
+      <!-- Source: React/TSX -->
+      <div class="code-pane">
+        <div class="code-pane-bar">
+          <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+          <span class="file-name active">ResearchView.tsx</span>
+          <span class="lang-badge lang-tsx">TSX</span>
+        </div>
+        <div class="code-pane-body">
+          <div class="line"><span class="tok-kw">export default function</span> <span class="tok-fn">ResearchView</span>() {</div>
+          <div class="line">  <span class="tok-kw">const</span> [query, setQuery] = <span class="tok-fn">useState</span>(<span class="tok-str">''</span>)</div>
+          <div class="line">  <span class="tok-kw">const</span> { agents, status } = <span class="tok-fn">useResearch</span>()</div>
+          <div class="line"></div>
+          <div class="line">  <span class="tok-kw">return</span> (</div>
+          <div class="line">    <span class="tok-tag">&lt;div</span> <span class="tok-attr">className</span>=<span class="tok-str">"research-grid"</span><span class="tok-tag">&gt;</span></div>
+          <div class="line">      <span class="tok-tag">&lt;SearchBar</span> <span class="tok-attr">value</span>={query} <span class="tok-tag">/&gt;</span></div>
+          <div class="line">      <span class="tok-tag">&lt;AgentGrid</span> <span class="tok-attr">agents</span>={agents} <span class="tok-tag">/&gt;</span></div>
+          <div class="line">      <span class="tok-tag">&lt;ReportStream</span> <span class="tok-attr">status</span>={status} <span class="tok-tag">/&gt;</span></div>
+          <div class="line">    <span class="tok-tag">&lt;/div&gt;</span></div>
+          <div class="line">  )</div>
+        </div>
+      </div>
+      <!-- Output: SwiftUI -->
+      <div class="code-pane">
+        <div class="code-pane-bar">
+          <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+          <span class="file-name active">ResearchView.swift</span>
+          <span class="lang-badge lang-swift">Swift</span>
+        </div>
+        <div class="code-pane-body">
+          <div class="line"><span class="tok-kw">struct</span> <span class="tok-typ">ResearchView</span>: <span class="tok-typ">View</span> {</div>
+          <div class="line">  <span class="tok-kw">@State private var</span> query = <span class="tok-str">""</span></div>
+          <div class="line">  <span class="tok-kw">@Observable var</span> research = <span class="tok-typ">ResearchModel</span>()</div>
+          <div class="line"></div>
+          <div class="line">  <span class="tok-kw">var</span> body: <span class="tok-kw">some</span> <span class="tok-typ">View</span> {</div>
+          <div class="line">    <span class="tok-typ">VStack</span> {</div>
+          <div class="line">      <span class="tok-typ">SearchBar</span>(text: <span class="tok-fn">$query</span>)</div>
+          <div class="line">      <span class="tok-typ">AgentGridView</span>(agents: research.<span class="tok-prop">agents</span>)</div>
+          <div class="line">      <span class="tok-typ">ReportStreamView</span>(status: research.<span class="tok-prop">status</span>)</div>
+          <div class="line">    }</div>
+          <div class="line">  }</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo Video -->
+    <div class="demo-video" style="max-width: 920px; margin: 32px auto 0; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); box-shadow: 0 24px 80px rgba(0,0,0,0.5); opacity: 0; animation: hero-fade-up 0.8s ease forwards 0.9s;">
+      <video autoplay muted loop playsinline style="width: 100%; display: block;">
+        <source src="/demo.mp4" type="video/mp4">
+      </video>
+    </div>
+
     <!-- Terminal -->
-    <div class="terminal">
+    <div class="terminal" style="margin-top: 24px;">
       <div class="terminal-bar">
         <span class="terminal-dot"></span>
         <span class="terminal-dot"></span>
@@ -1118,13 +1560,46 @@
         <span style="width:36px"></span>
       </div>
       <div class="terminal-body">
-        <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-cmd">npx morphkit generate</span> <span class="term-path">./my-nextjs-app</span> <span class="term-flag">--output</span> <span class="term-path">./ios-app</span></div>
+        <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-cmd">npx morphkit generate</span> <span class="term-path">./probe-web</span> <span class="term-flag">--output</span> <span class="term-path">./probe-ios</span></div>
         <div class="terminal-line"><span class="term-info"></span></div>
-        <div class="terminal-line"><span class="term-info">  Analyzing TypeScript codebase...</span></div>
-        <div class="terminal-line"><span class="term-success">  &#10003; Found 12 components, 4 routes, 3 API endpoints</span></div>
+        <div class="terminal-line"><span class="term-info">  Analyzing tryprobe.io codebase...</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Found 24 components, 6 routes, 8 API endpoints</span></div>
         <div class="terminal-line"><span class="term-success">  &#10003; Mapped navigation: TabView + NavigationStack</span></div>
-        <div class="terminal-line"><span class="term-success">  &#10003; Generated Xcode project &rarr;</span> <span class="term-file">./ios-app/MyApp.xcodeproj</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Generated Xcode project &rarr;</span> <span class="term-file">./probe-ios/ProbeAI.xcodeproj</span></div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- Social Proof / Dogfooding -->
+<section class="social-proof">
+  <div class="container">
+    <div class="proof-header">
+      <div class="proof-badge">Built &amp; tested on real products</div>
+      <h2 class="proof-title">We dogfood Morphkit on our own apps</h2>
+      <p class="proof-desc">Morphkit was built to convert <a href="https://tryprobe.io" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">Probe AI</a> &mdash; our 24-component React research platform &mdash; to native iOS. If it works on our codebase, it works on yours.</p>
+    </div>
+    <div class="proof-stats">
+      <div class="proof-stat">
+        <div class="proof-stat-number">24</div>
+        <div class="proof-stat-label">Components<br>converted</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-stat-number">6</div>
+        <div class="proof-stat-label">Routes<br>mapped</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-stat-number">8</div>
+        <div class="proof-stat-label">API endpoints<br>wired</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-stat-number">&lt;30s</div>
+        <div class="proof-stat-label">Total<br>generation time</div>
+      </div>
+    </div>
+    <div class="proof-quote">
+      <p>We built Morphkit because we needed it ourselves. Probe AI is a complex Next.js app with streaming, real-time agents, and Stripe billing &mdash; exactly the kind of app everyone says you can't auto-convert. We proved them wrong.</p>
+      <cite><strong>Mason Wyatt</strong>, Founder &mdash; AshlrAI</cite>
     </div>
   </div>
 </section>
@@ -1171,35 +1646,35 @@
     </div>
     <div class="features-grid" style="grid-template-columns: repeat(2, 1fr);">
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>SwiftUI views for every screen</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Typed Codable models from your TypeScript types</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Async URLSession networking layer</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>TabView + NavigationStack routing</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>@Observable state management</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Xcode Asset Catalog with your colors</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Package.swift (iOS 17+, SwiftUI)</h4>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon" style="color: var(--accent);">&#10003;</div>
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Info.plist and app entry point</h4>
       </div>
     </div>
@@ -1219,32 +1694,32 @@
     </div>
     <div class="features-grid">
       <div class="feature reveal">
-        <div class="feature-icon">&#9672;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
         <h4>TypeScript &rarr; Swift Types</h4>
         <p>Your <code>Product</code> interface becomes a <code>Codable</code> struct. Generics, optionals, and enums all map correctly.</p>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon">&#9781;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
         <h4>Tab + Stack Navigation</h4>
         <p>File-based routes and nested layouts become <code>TabView</code> and <code>NavigationStack</code> with type-safe paths.</p>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon">&#8644;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
         <h4>Async API Client</h4>
         <p>Fetch calls and Axios requests become a typed Swift API client using <code>async/await</code> and <code>URLSession</code>.</p>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon">&#8635;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.219-8.56"/><path d="M21 3v6h-6"/></svg></div>
         <h4>State &rarr; @Observable</h4>
         <p>Zustand stores and Redux slices become clean <code>@Observable</code> classes with SwiftUI's native reactivity.</p>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon">&#9670;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
         <h4>Tailwind &rarr; Asset Catalog</h4>
         <p>Your Tailwind color palette is extracted and generated as a native Xcode asset catalog with semantic names.</p>
       </div>
       <div class="feature reveal">
-        <div class="feature-icon">&#10022;</div>
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4c0 1.95-2 3-2 8h-4c0-5-2-6.05-2-8a4 4 0 014-4z"/><path d="M10 18h4"/><path d="M10 22h4"/></svg></div>
         <h4>AI Intent Extraction</h4>
         <p>Optionally use xAI Grok to understand ambiguous patterns and infer the best native implementation.</p>
       </div>
@@ -1354,7 +1829,7 @@
           <li>All React patterns</li>
           <li>Community support</li>
         </ul>
-        <a href="#install" class="pricing-cta pricing-cta-secondary">Get Started</a>
+        <a href="#install" class="pricing-cta pricing-cta-secondary" onclick="posthog.capture('pricing_click', {tier: 'free'})">Get Started</a>
       </div>
       <div class="pricing-card featured reveal">
         <div class="pricing-badge">Most Popular</div>
@@ -1368,7 +1843,7 @@
           <li>Priority support</li>
           <li>Usage analytics</li>
         </ul>
-        <a href="#install" class="pricing-cta pricing-cta-primary">Start Free Trial</a>
+        <a href="https://buy.stripe.com/5kQaEYbMud4x6ub0Ms3VC00" class="pricing-cta pricing-cta-primary" onclick="posthog.capture('pricing_click', {tier: 'pro'})">Start Free Trial</a>
       </div>
       <div class="pricing-card reveal">
         <div class="pricing-name">Enterprise</div>
@@ -1381,7 +1856,7 @@
           <li>Self-hosted option</li>
           <li>Dedicated support + SLA</li>
         </ul>
-        <a href="mailto:hello@ashlr.ai" class="pricing-cta pricing-cta-secondary">Contact Sales</a>
+        <a href="mailto:hello@ashlr.ai" class="pricing-cta pricing-cta-secondary" onclick="posthog.capture('pricing_click', {tier: 'enterprise'})">Contact Sales</a>
       </div>
     </div>
   </div>
@@ -1528,6 +2003,7 @@
       tab.classList.add('active');
       tab.setAttribute('aria-selected', 'true');
       document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      posthog.capture('install_tab_switch', { tab: tab.dataset.tab });
     });
   });
 
@@ -1538,6 +2014,7 @@
       navigator.clipboard.writeText(code).then(() => {
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 1500);
+        posthog.capture('copy_command', { command: code });
       });
     } else {
       // Fallback for non-HTTPS or older browsers
@@ -1551,23 +2028,43 @@
       document.body.removeChild(ta);
       btn.textContent = 'Copied!';
       setTimeout(() => btn.textContent = 'Copy', 1500);
+      posthog.capture('copy_command', { command: code });
     }
   }
 
+  // Supabase client
+  const sb = window.supabase.createClient(
+    'https://kvuxgjjlmhmhbpqfvqeo.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dXhnampsbWhtaGJwcWZ2cWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTI2NzAsImV4cCI6MjA4OTM4ODY3MH0.hJ_zY4_J6etZj-iQjcOUub3TrrM4RSBx1XMQ6VVLfss'
+  );
+
   // Waitlist form
-  document.getElementById('waitlist-form').addEventListener('submit', function(e) {
+  document.getElementById('waitlist-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const email = this.querySelector('input[type="email"]').value;
     const msg = document.getElementById('waitlist-msg');
     const btn = this.querySelector('.waitlist-btn');
-    // Store locally (replace with API call when backend is ready)
-    const waitlist = JSON.parse(localStorage.getItem('morphkit_waitlist') || '[]');
-    waitlist.push({ email, ts: Date.now() });
-    localStorage.setItem('morphkit_waitlist', JSON.stringify(waitlist));
+
+    btn.textContent = 'Joining...';
+    btn.disabled = true;
+
+    const { error } = await sb
+      .from('waitlist')
+      .upsert({ email, source: 'landing' }, { onConflict: 'email' });
+
+    if (error) {
+      msg.textContent = 'Something went wrong — please try again.';
+      msg.classList.add('error');
+      btn.textContent = 'Join Waitlist';
+      btn.disabled = false;
+      console.error('Waitlist error:', error.message);
+      return;
+    }
+
+    posthog.capture('waitlist_signup', { source: 'landing' });
     msg.textContent = "You're on the list! We'll be in touch.";
     msg.classList.add('success');
     btn.textContent = 'Joined!';
-    btn.disabled = true;
     this.querySelector('input').disabled = true;
   });
 
@@ -1583,6 +2080,7 @@
       if (!isOpen) {
         item.classList.add('open');
         btn.setAttribute('aria-expanded', 'true');
+        posthog.capture('faq_expand', { question: btn.textContent.trim() });
       }
     });
   });

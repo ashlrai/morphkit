@@ -2215,10 +2215,12 @@ function generateComponent(comp: any, entityName?: string): string {
 
 function generateFormComponent(comp: any): string {
     const type = comp.type ?? 'text-field';
+    // Use component name as fallback binding — better than generic 'text'
+    const bindingFallback = comp.name ? camelCase(comp.name) : 'field';
 
     switch (type) {
         case 'text-field':
-            return `TextField("${comp.placeholder ?? comp.label ?? ''}", text: $${camelCase(comp.binding ?? 'text')})`;
+            return `TextField("${comp.placeholder ?? comp.label ?? humanizeFieldName(bindingFallback)}", text: $${camelCase(comp.binding ?? bindingFallback)})`;
         case 'secure-field':
             return `SecureField("${comp.placeholder ?? 'Password'}", text: $${camelCase(comp.binding ?? 'password')})`;
         case 'toggle':

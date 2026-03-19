@@ -180,10 +180,24 @@ function relativeSourcePath(fullPath: string): string {
  * Sanitize a typeName so that JS/TS types don't leak into generated Swift.
  * Returns the cleaned name, or undefined if the name is not usable.
  */
+/** Browser/DOM/Node types that shouldn't appear in Swift */
+const JS_DOM_TYPES = new Set([
+    'File', 'Blob', 'FormData', 'FileList', 'FileReader',
+    'HTMLElement', 'Element', 'Event', 'MouseEvent', 'KeyboardEvent',
+    'Window', 'Document', 'Node', 'NodeList',
+    'XMLHttpRequest', 'Headers', 'AbortController', 'AbortSignal',
+    'ReadableStream', 'WritableStream', 'TransformStream',
+    'Uint8Array', 'ArrayBuffer', 'Buffer',
+    'RegExp', 'Symbol', 'Map', 'Set', 'WeakMap', 'WeakSet',
+    'Iterator', 'Generator', 'AsyncGenerator',
+]);
+
 function sanitizeSwiftTypeName(name: string | undefined): string | undefined {
     if (!name) return undefined;
     // Map capitalized JS types to nothing — let the kind-based logic handle them
     if (name === 'Number' || name === 'Boolean') return undefined;
+    // Reject browser/DOM/Node types
+    if (JS_DOM_TYPES.has(name)) return undefined;
     // Reject names containing TS syntax (generics, unions, object literals, arrow fns)
     if (/[<>|{}]|=>/.test(name)) return undefined;
     return name;
@@ -2582,6 +2596,22 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     if (hasSearchBinding && !declaredNames.has('searchQuery')) {
         lines.push('    @State private var searchQuery: String = ""');
         declaredNames.add('searchQuery');
+    }
+
+    // Sort/filter state — ensure sortOrder is declared when list toolbar is generated
+    const stateBindings = screen.stateBindings ?? [];
+    const hasSortOrFilter = stateBindings.some(
+        (b) => b.toLowerCase().includes('sortorder') || b.toLowerCase().includes('selectedcategory')
+            || b.toLowerCase().includes('sort') || b.toLowerCase().includes('category') || b.toLowerCase().includes('query'),
+    );
+    if (hasSortOrFilter && (screen.layout === 'list' || screen.layout === 'grid')) {
+        const sortBinding = stateBindings.find(b => b.toLowerCase().includes('sort') || b.toLowerCase().includes('order'));
+        const filterBinding = stateBindings.find(b => b.toLowerCase().includes('category') || b.toLowerCase().includes('filter') || b.toLowerCase().includes('tag'));
+        const pickerVar = sortBinding ? camelCase(sortBinding) : (filterBinding ? camelCase(filterBinding) : 'sortOrder');
+        if (!declaredNames.has(pickerVar)) {
+            lines.push(`    @State private var ${pickerVar} = ""`);
+            declaredNames.add(pickerVar);
+        }
     }
 
     // Auth layout state — ensure email/password are declared for auth screens

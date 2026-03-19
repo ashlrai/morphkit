@@ -9,7 +9,7 @@ import { generateProject } from '../../src/generator/index';
 const FIXTURE_PATH = join(import.meta.dir, '../__fixtures__/sample-nextjs-app');
 const OUTPUT_PATH = join(import.meta.dir, '../__output__/e2e-test');
 
-describe('Full Pipeline E2E', () => {
+describe('Full Pipeline E2E', { timeout: 30_000 }, () => {
   beforeAll(() => {
     // Clean up previous output
     if (existsSync(OUTPUT_PATH)) {

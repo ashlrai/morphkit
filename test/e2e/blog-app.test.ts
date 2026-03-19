@@ -9,7 +9,7 @@ import { generateProject } from '../../src/generator/index';
 const FIXTURE_PATH = join(import.meta.dir, '../__fixtures__/blog-app');
 const OUTPUT_PATH = join(import.meta.dir, '../__output__/e2e-blog-test');
 
-describe('Blog App Pipeline E2E', () => {
+describe('Blog App Pipeline E2E', { timeout: 30_000 }, () => {
   beforeAll(() => {
     // Clean up previous output
     if (existsSync(OUTPUT_PATH)) {

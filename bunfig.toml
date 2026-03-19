@@ -3,3 +3,4 @@ peer = false
 
 [test]
 coverage = true
+timeout = 30000

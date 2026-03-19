@@ -4,10 +4,11 @@
 
 Morphkit is a semantic AI agent that understands your TypeScript/React web app's *intent* — not just its code — and generates a production-quality SwiftUI Xcode project. It parses your components, routes, state, and API calls, builds a framework-agnostic semantic model, then emits idiomatic Swift targeting iOS 17+.
 
-[![npm version](https://badge.fury.io/js/morphkit.svg)](https://www.npmjs.com/package/morphkit)
+[![npm version](https://badge.fury.io/js/morphkit-cli.svg)](https://www.npmjs.com/package/morphkit-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/ashlrai/morphkit/actions/workflows/ci.yml/badge.svg)](https://github.com/ashlrai/morphkit/actions)
 
-**[morphkit.dev](https://morphkit.dev)** &nbsp;|&nbsp; **[GitHub](https://github.com/ashlrai/morphkit)** &nbsp;|&nbsp; **[Issues](https://github.com/ashlrai/morphkit/issues)**
+**[morphkit.dev](https://morphkit.dev)** &nbsp;|&nbsp; **[Docs](https://morphkit.dev/docs)** &nbsp;|&nbsp; **[GitHub](https://github.com/ashlrai/morphkit)** &nbsp;|&nbsp; **[Issues](https://github.com/ashlrai/morphkit/issues)**
 
 ---
 
@@ -441,6 +442,78 @@ The test suite covers the full pipeline with a sample Next.js e-commerce app (`t
 - Generated Swift targets iOS 17+ (`@Observable`, not `ObservableObject`; `#Preview`, not `PreviewProvider`)
 - Entity names are PascalCase, variables camelCase in generated Swift
 - Every generated file carries confidence scoring and source provenance
+
+---
+
+## Authentication
+
+Morphkit uses API keys for authentication and usage metering.
+
+```bash
+# Set your API key as an environment variable
+export MORPHKIT_API_KEY=morphkit_sk_your_key_here
+
+# Or pass it directly
+morphkit generate ./my-app --api-key morphkit_sk_your_key_here
+
+# Or save it to ~/.morphkit/config
+mkdir -p ~/.morphkit
+echo "api_key = morphkit_sk_your_key_here" > ~/.morphkit/config
+```
+
+**Free tier**: 20 conversions/month. **Pro** ($19/mo): unlimited conversions.
+
+Get your API key at [morphkit.dev/dashboard](https://morphkit.dev/dashboard).
+
+### Self-Hosted
+
+Morphkit is fully open-source (MIT). For enterprise users who want to self-host:
+
+1. Clone the repository
+2. Set up your own Supabase project for auth/metering (optional)
+3. Set `MORPHKIT_API_URL` to your instance URL, or run without auth
+
+```bash
+# Run without authentication (local/self-hosted mode)
+bun run src/index.ts generate ./my-app
+```
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+# Quick start for contributors
+git clone https://github.com/ashlrai/morphkit.git
+cd morphkit
+bun install
+bun test          # Run tests
+bun run typecheck # Type checking
+```
+
+---
+
+## Roadmap
+
+- [x] Next.js App Router (full support)
+- [x] TypeScript interfaces → Swift Codable structs
+- [x] Zustand/Redux state → @Observable stores
+- [x] API routes → URLSession client
+- [ ] Next.js Pages Router
+- [ ] React + Vite
+- [ ] Remix
+- [ ] Vue.js / Nuxt
+- [ ] Android (Jetpack Compose) output
+- [ ] Watch app generation
+- [ ] Widget generation
+
+---
+
+## Security
+
+Report security vulnerabilities to security@morphkit.dev. See [SECURITY.md](SECURITY.md).
 
 ---
 

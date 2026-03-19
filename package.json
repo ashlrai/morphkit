@@ -3,14 +3,24 @@
   "version": "0.1.0",
   "description": "Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps",
   "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "types": "./dist/index.d.ts",
   "bin": {
-    "morphkit": "./dist/index.js"
+    "morphkit": "./dist/index.js",
+    "morphkit-cli": "./dist/index.js"
   },
   "files": [
     "dist",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CONTRIBUTING.md"
   ],
   "scripts": {
     "dev": "bun run src/index.ts",

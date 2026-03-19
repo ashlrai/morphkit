@@ -14,7 +14,8 @@ import { generateNavigation } from './navigation-generator';
 import { generateNetworkingLayer } from './networking-generator';
 
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join, dirname, normalize, resolve } from 'node:path';
+import { execSync } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -224,21 +225,48 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
  * Used by both Zustand-derived stores (when no mutations defined) and
  * entity-based stores to avoid duplicating the fetch boilerplate.
  */
-function generateDefaultFetchMethod(storeName: string): string[] {
+function generateDefaultFetchMethod(storeName: string, model?: SemanticAppModel): string[] {
     const varName = storeName.charAt(0).toLowerCase() + storeName.slice(1);
     const lines: string[] = [];
+
+    // Check if a plural fetch method (fetchProducts()) would exist in the generated APIClient
+    // The APIClient generates fetchX() from endpoints where X matches the resource path segment
+    const endpoints = model?.apiEndpoints ?? [];
+    const pluralName = `${storeName}s`;
+    // A plural fetch method exists when there's a GET endpoint whose path ends with the
+    // plural resource name (e.g., /products, /api/products) AND has no path params
+    // (parameterized endpoints like /posts/:id/comments generate fetchComment(postId:), not fetchComments())
+    const hasFetchMethod = endpoints.some(ep => {
+        if ((ep.method ?? 'GET') !== 'GET') return false;
+        const url = ep.url?.toLowerCase() ?? '';
+        // Skip endpoints with path parameters — they generate methods with args
+        if (url.includes(':') || url.includes('{')) return false;
+        const lastSegment = url.split('/').filter(s => s).pop() ?? '';
+        return lastSegment === varName + 's' || lastSegment === varName;
+    });
+
     lines.push('');
-    lines.push(`    func fetch${storeName}s() async {`);
+    lines.push(`    func fetch${pluralName}() async {`);
     lines.push('        isLoading = true');
     lines.push('        error = nil');
     lines.push('');
-    lines.push('        do {');
-    lines.push(`            ${varName}s = try await apiClient.fetch${storeName}s()`);
-    lines.push('        } catch let networkError as NetworkError {');
-    lines.push('            error = networkError');
-    lines.push('        } catch {');
-    lines.push('            self.error = .unknown(error)');
-    lines.push('        }');
+
+    if (hasFetchMethod) {
+        lines.push('        do {');
+        lines.push(`            ${varName}s = try await apiClient.fetch${pluralName}()`);
+        lines.push('        } catch let networkError as NetworkError {');
+        lines.push('            error = networkError');
+        lines.push('        } catch {');
+        lines.push('            self.error = .unknown(error)');
+        lines.push('        }');
+    } else {
+        // No matching API endpoint — generate a placeholder that compiles
+        lines.push(`        // Fetch ${varName}s from your API`);
+        lines.push(`        // apiClient.fetch${pluralName}() is not yet configured`);
+        lines.push(`        // Add the endpoint to your API and uncomment:`);
+        lines.push(`        // ${varName}s = try await apiClient.fetch${pluralName}()`);
+    }
+
     lines.push('');
     lines.push('        isLoading = false');
     lines.push('    }');
@@ -359,7 +387,7 @@ function resolveFieldType(
         for (const e of entities) {
             if (e.name.endsWith('Item')) return `[${e.name}] = []`;
         }
-        return '[Any] = [] // TODO: replace with concrete type';
+        return '[Any] = [] // Replace with concrete item type';
     }
 
     // Numeric field names
@@ -392,7 +420,7 @@ function resolveFieldType(
         if (entityNames.has(singular)) return `[${singular}] = []`;
     }
 
-    return 'Any // TODO: replace with concrete type';
+    return 'Any // Replace with concrete type';
 }
 
 /**
@@ -494,11 +522,11 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
             for (const mutation of sp.mutations) {
                 const methodName = mutation.name.charAt(0).toLowerCase() + mutation.name.slice(1);
                 lines.push(`    func ${methodName}() async {`);
-                lines.push('        // TODO: implement');
+                lines.push('        print("\\(#function) called")');
                 lines.push('    }');
             }
         } else {
-            lines.push(...generateDefaultFetchMethod(storeName));
+            lines.push(...generateDefaultFetchMethod(storeName, model));
         }
 
         lines.push('}');
@@ -543,7 +571,7 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
             lines.push('@Observable');
             lines.push(`final class ${name}Store {`);
             lines.push(...generateStoreBoilerplate(name));
-            lines.push(...generateDefaultFetchMethod(name));
+            lines.push(...generateDefaultFetchMethod(name, model));
             lines.push('}');
             lines.push('');
 
@@ -731,7 +759,11 @@ let package = Package(
     targets: [
         .target(
             name: "${appName}",
-            path: "${appName}"
+            path: "${appName}",
+            exclude: ["Info.plist"],
+            resources: [
+                .process("Assets.xcassets"),
+            ]
         ),
         .testTarget(
             name: "${appName}Tests",
@@ -767,6 +799,67 @@ function generateWorkspaceSettings(): GeneratedFile {
         confidence: 'high',
         warnings: [],
     };
+}
+
+// ---------------------------------------------------------------------------
+// Swift syntax validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate generated Swift files by running `swiftc --parse` on each one.
+ * Returns an array of warning strings for any syntax errors found.
+ * Gracefully skips validation if the Swift toolchain is not installed.
+ */
+async function validateSwiftSyntax(appDir: string, files: GeneratedFile[]): Promise<string[]> {
+    const warnings: string[] = [];
+
+    // Check if swiftc is available on PATH
+    try {
+        execSync('which swiftc', { stdio: 'pipe' });
+    } catch {
+        return ['Swift toolchain not found — skipping syntax validation'];
+    }
+
+    // Filter to only .swift files
+    const swiftFiles = files.filter((f) => f.path.endsWith('.swift'));
+
+    for (const file of swiftFiles) {
+        // Resolve the full path on disk, handling both relative (../) and normal paths
+        const fullPath = file.path.startsWith('..')
+            ? resolve(appDir, file.path)
+            : join(appDir, file.path);
+
+        try {
+            execSync(`swiftc -parse "${fullPath}"`, {
+                stdio: 'pipe',
+                timeout: 30_000,
+            });
+        } catch (err: unknown) {
+            // swiftc writes syntax errors to stderr
+            const stderr = (err as { stderr?: Buffer })?.stderr?.toString() ?? '';
+            if (stderr.trim()) {
+                // Parse individual error lines from stderr and format them
+                // swiftc output format: /path/to/file.swift:LINE:COL: error: message
+                const lines = stderr.trim().split('\n');
+                for (const line of lines) {
+                    // Match swiftc error/warning output lines
+                    const match = line.match(/:(\d+):\d+:\s*(error|warning):\s*(.+)$/);
+                    if (match) {
+                        const [, lineNum, , message] = match;
+                        warnings.push(`[${file.path}:${lineNum}] ${message}`);
+                    }
+                }
+                // If no lines matched the pattern, include the raw stderr as a fallback
+                if (!warnings.length || !lines.some((l) => /:(\d+):\d+:\s*(error|warning):/.test(l))) {
+                    warnings.push(`[${file.path}] Swift syntax error: ${stderr.trim().split('\n')[0]}`);
+                }
+            } else {
+                warnings.push(`[${file.path}] Swift syntax validation failed (unknown error)`);
+            }
+        }
+    }
+
+    return warnings;
 }
 
 // ---------------------------------------------------------------------------
@@ -849,12 +942,41 @@ export async function generateXcodeProject(
 
     // --- Write files to disk ---
 
-    for (const file of allFiles) {
-        const fullPath = join(appDir, file.path);
-        const dir = dirname(fullPath);
+    const resolvedAppDir = resolve(appDir);
 
-        await mkdir(dir, { recursive: true });
-        await writeFile(fullPath, file.content, 'utf-8');
+    for (const file of allFiles) {
+        // Security: reject paths containing traversal sequences or absolute paths
+        if (file.path.includes('..') && normalize(file.path).startsWith('..')) {
+            // Allow controlled parent references (e.g., ../Package.swift, ../README.md)
+            // but verify the resolved path stays within the output directory
+            const fullPath = resolve(appDir, file.path);
+            const resolvedOutputDir = resolve(outputPath);
+            if (!fullPath.startsWith(resolvedOutputDir)) {
+                allWarnings.push(`[${file.path}] Skipped: path resolves outside output directory`);
+                continue;
+            }
+            const dir = dirname(fullPath);
+            await mkdir(dir, { recursive: true });
+            await writeFile(fullPath, file.content, 'utf-8');
+        } else {
+            const fullPath = join(appDir, file.path);
+            const normalizedFull = resolve(fullPath);
+            // Verify resolved path is within the app directory or output directory
+            if (!normalizedFull.startsWith(resolvedAppDir) && !normalizedFull.startsWith(resolve(outputPath))) {
+                allWarnings.push(`[${file.path}] Skipped: path resolves outside output directory`);
+                continue;
+            }
+            const dir = dirname(fullPath);
+            await mkdir(dir, { recursive: true });
+            await writeFile(fullPath, file.content, 'utf-8');
+        }
+    }
+
+    // --- Validate Swift syntax ---
+
+    const syntaxWarnings = await validateSwiftSyntax(appDir, allFiles);
+    if (syntaxWarnings.length > 0) {
+        stats.warnings.push(...syntaxWarnings);
     }
 
     return {

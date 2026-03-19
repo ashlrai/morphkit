@@ -108,8 +108,19 @@ function isEnumEntity(entity: Entity): boolean {
 function enumCaseName(value: string): string {
     // Split on hyphens, underscores, spaces
     const parts = value.split(/[-_ ]+/);
-    if (parts.length === 1) return parts[0];
-    return parts[0] + parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+    let result: string;
+    if (parts.length === 1) {
+        result = parts[0];
+    } else {
+        result = parts[0] + parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+    }
+    // Ensure the first character is lowercase (valid Swift enum case)
+    result = result.charAt(0).toLowerCase() + result.slice(1);
+    // If the result starts with a digit or is a Swift keyword, prefix with backticks
+    if (/^\d/.test(result)) {
+        result = '`' + result + '`';
+    }
+    return result;
 }
 
 /**
@@ -281,12 +292,29 @@ function formatDefaultValue(value: any, swiftType: string): string {
  */
 function previewValue(field: SwiftField, entityName: string): string {
     const nameLower = field.name.toLowerCase();
+    const baseSwiftType = field.type.replace('?', '');
 
     // Optional fields → nil
     if (field.isOptional) return 'nil';
 
     // Array fields → empty array
     if (field.isArray) return '[]';
+
+    // Type-based overrides FIRST — prevents name heuristics from producing
+    // wrong types (e.g., field named "email" with type Bool)
+    if (baseSwiftType === 'Bool') return 'true';
+    if (baseSwiftType === 'Int') {
+        // Use name-based values for Int
+        if (nameLower === 'quantity' || nameLower === 'count') return '1';
+        return '1';
+    }
+    if (baseSwiftType === 'Double') {
+        if (nameLower === 'price' || nameLower === 'cost' || nameLower === 'amount') return '29.99';
+        if (nameLower === 'rating' || nameLower === 'score') return '4.5';
+        return '0.0';
+    }
+    if (baseSwiftType === 'Date') return '.now';
+    if (baseSwiftType === 'UUID') return 'UUID()';
 
     // ID fields
     if (field.isId) {
@@ -310,14 +338,8 @@ function previewValue(field: SwiftField, entityName: string): string {
     if (nameLower === 'rating' || nameLower === 'score') return '4.5';
     if (nameLower === 'quantity' || nameLower === 'count') return '1';
 
-    // Type-based fallbacks
-    const baseSwiftType = field.type.replace('?', '');
-    if (baseSwiftType === 'Bool') return 'true';
-    if (baseSwiftType === 'Date') return '.now';
-    if (baseSwiftType === 'Int') return '1';
-    if (baseSwiftType === 'Double') return '0.0';
+    // String fallback for remaining String fields
     if (baseSwiftType === 'String') return '"Sample"';
-    if (baseSwiftType === 'UUID') return 'UUID()';
 
     // Nested entity → .preview()
     // Detect by PascalCase type name that isn't a Swift stdlib type
@@ -414,9 +436,28 @@ function groupEntities(entities: Entity[]): Map<string, Entity[]> {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Names that are not valid Swift struct/enum names — skip generating models for these */
+const JUNK_ENTITY_NAMES = new Set([
+    'any', 'unknown', 'object', 'request', 'response', 'void', 'undefined', 'null',
+    'promise', 'promise<any>', 'promise<response>', 'promise<void>',
+    'nextrequest', 'nextresponse', 'nextapiresponse',
+    'error', 'function', 'array',
+]);
+
+function isJunkEntity(entity: Entity): boolean {
+    const lower = entity.name.toLowerCase();
+    if (JUNK_ENTITY_NAMES.has(lower)) return true;
+    // Filter entities whose names contain invalid Swift characters (e.g., angle brackets)
+    if (/[<>(){}[\]]/.test(entity.name)) return true;
+    // Filter entities with all-unknown typed fields (no useful type information)
+    const fields = entity.fields ?? [];
+    if (fields.length > 0 && fields.every(f => f.type.kind === 'unknown')) return true;
+    return false;
+}
+
 export function generateSwiftModels(model: SemanticAppModel): GeneratedFile[] {
     const files: GeneratedFile[] = [];
-    const entities = model.entities ?? [];
+    const entities = (model.entities ?? []).filter(e => !isJunkEntity(e));
 
     if (entities.length === 0) {
         return files;

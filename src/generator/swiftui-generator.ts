@@ -70,6 +70,10 @@ function capitalise(s: string): string {
  * image field is optional; non-optional String fields don't need nil coalescing.
  */
 function imageUrlExpr(accessor: string, field?: Field | null): string {
+    // Handle array image fields (e.g., images: [String]?) — use .first
+    if (field && field.type.kind === 'array') {
+        return `${accessor}${field.optional ? '?' : ''}.first ?? ""`;
+    }
     if (field && field.optional) {
         return `${accessor} ?? ""`;
     }
@@ -325,6 +329,7 @@ function defaultValueForType(swiftType: string): string {
     if (swiftType === 'String') return '""';
     if (swiftType === 'Double' || swiftType === 'Int') return '0';
     if (swiftType === 'Bool') return 'false';
+    if (swiftType === 'Any') return '"" as Any';
     if (swiftType.startsWith('[') && swiftType.endsWith(']') && !swiftType.includes(':')) return '[]';
     if (swiftType.startsWith('[') && swiftType.includes(':')) return '[:]';
     if (swiftType.endsWith('?')) return 'nil';
@@ -726,8 +731,16 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
     const detailRoute = findDetailRoute(screen, model);
     const lines: string[] = [];
 
+    // If the inferred entity doesn't exist in the model and there are no data requirements,
+    // this is likely a static content page — fall back to custom layout
+    const allEntities = model.entities ?? [];
+    const entityExists = entity || allEntities.some(e => pascalCase(e.name) === pascalCase(entityName));
+    if (!entityExists && (screen.dataRequirements ?? []).length === 0) {
+        return generateCustomLayout(screen, model, components, indentLevel);
+    }
+
     lines.push('List {');
-    lines.push(`    ForEach(${varName}s) { ${varName} in`);
+    lines.push(`    ForEach(${varName}s) { (${varName}: ${entityName}) in`);
 
     // Wrap row content in NavigationLink when a detail route exists
     if (detailRoute) {
@@ -803,10 +816,19 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
             || b.toLowerCase().includes('sort') || b.toLowerCase().includes('category') || b.toLowerCase().includes('query'),
     );
     if (hasSortOrFilter) {
+        // Find the actual sort/filter state binding name
+        const sortBinding = stateBindings.find(b =>
+            b.toLowerCase().includes('sort') || b.toLowerCase().includes('order'),
+        );
+        const filterBinding = stateBindings.find(b =>
+            b.toLowerCase().includes('category') || b.toLowerCase().includes('filter') || b.toLowerCase().includes('tag'),
+        );
+        const pickerBinding = sortBinding ? camelCase(sortBinding) : (filterBinding ? camelCase(filterBinding) : 'sortOrder');
+
         lines.push('.toolbar {');
-        lines.push('    ToolbarItem(placement: .topBarTrailing) {');
+        lines.push('    ToolbarItem(placement: .automatic) {');
         lines.push('        Menu {');
-        lines.push('            Picker("Sort", selection: $sortOrder) {');
+        lines.push(`            Picker("Sort", selection: $${pickerBinding}) {`);
         lines.push('                Text("Name").tag("name")');
         lines.push('                Text("Price: Low to High").tag("price-asc")');
         lines.push('                Text("Price: High to Low").tag("price-desc")');
@@ -835,7 +857,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('');
     lines.push('ScrollView {');
     lines.push('    LazyVGrid(columns: columns, spacing: 16) {');
-    lines.push(`        ForEach(${varName}s) { ${varName} in`);
+    lines.push(`        ForEach(${varName}s) { (${varName}: ${entityName}) in`);
 
     // Wrap grid item in NavigationLink when a detail route exists
     if (detailRoute) {
@@ -867,7 +889,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
             lines.push(`                    ${gi}.fontWeight(.semibold)`);
         }
         lines.push(`            ${gi}}`);
-        lines.push(`            ${gi}.background(Color(.systemBackground))`);
+        lines.push(`            ${gi}.background(Color.clear)`);
         lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
         lines.push(`            ${gi}.shadow(color: .black.opacity(0.1), radius: 4, y: 2)`);
     } else {
@@ -957,18 +979,37 @@ function generateFormLayout(screen: Screen, model: SemanticAppModel, components:
 function generateDetailLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
     // For detail screens, use resolveDetailEntity to get the singular item entity
     // (not a collection wrapper) so we render individual fields like name, price, etc.
-    // Do NOT fall back to resolveEntity — it may return a collection wrapper
-    // (e.g., "Products" entity with only a products[] field).
     const entity = resolveDetailEntity(screen, model);
-    const entityName = inferEntityFromScreen(screen);
+    // Use the same entity resolution as the state declaration in generateViewFile
+    // to ensure the variable name matches what was declared as @State
+    const allEntities = (model.entities ?? []).filter(e => !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+    const inferredName = inferEntityFromScreen(screen);
+    const inferredExists = allEntities.some(e => pascalCase(e.name) === pascalCase(inferredName));
+    let resolvedEntity = entity;
+    if (!inferredExists) {
+        // Same fallback logic as generateViewFile
+        let matched = entity;
+        if (matched) {
+            const bestEntity = [...allEntities].sort((a, b) => (b.fields?.length ?? 0) - (a.fields?.length ?? 0))[0];
+            if (bestEntity && bestEntity.name !== matched.name && (bestEntity.fields?.length ?? 0) > (matched.fields?.length ?? 0) * 1.5) {
+                matched = bestEntity;
+            }
+        } else if (allEntities.length > 0) {
+            matched = [...allEntities].sort((a, b) => (b.fields?.length ?? 0) - (a.fields?.length ?? 0))[0];
+        }
+        resolvedEntity = matched || entity;
+    }
+    const entityName = resolvedEntity ? resolvedEntity.name : inferredName;
     const varName = camelCase(entityName);
     const lines: string[] = [];
 
     lines.push('ScrollView {');
     lines.push('    VStack(alignment: .leading, spacing: 16) {');
 
-    if (entity) {
-        const roles = categorizeEntityFields(entity);
+    // Use resolvedEntity (which may differ from entity when fallback picked a better match)
+    const effectiveEntity = resolvedEntity ?? entity;
+    if (effectiveEntity) {
+        const roles = categorizeEntityFields(effectiveEntity);
 
         // Hero image
         if (roles.imageField) {
@@ -1076,8 +1117,8 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
     lines.push('}');
 
     // For detail views, use the entity title field as dynamic nav title if available
-    if (entity) {
-        const roles = categorizeEntityFields(entity);
+    if (effectiveEntity) {
+        const roles = categorizeEntityFields(effectiveEntity);
         if (roles.titleField) {
             lines.push(`.navigationTitle(${varName}.${camelCase(roles.titleField.name)})`);
         } else {
@@ -1099,7 +1140,7 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
     if (hasCartAction) {
         lines.push('.safeAreaInset(edge: .bottom) {');
         lines.push('    Button {');
-        lines.push('        // TODO: Add to cart');
+        lines.push('        addToCart()');
         lines.push('    } label: {');
         lines.push('        Label("Add to Cart", systemImage: "cart.badge.plus")');
         lines.push('            .font(.headline)');
@@ -1188,7 +1229,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push('');
         lines.push('                ScrollView(.horizontal, showsIndicators: false) {');
         lines.push('                    LazyHStack(spacing: 16) {');
-        lines.push(`                        ForEach(${featuredArrayVar}) { ${varName} in`);
+        lines.push(`                        ForEach(${featuredArrayVar}) { (${varName}: ${entityName}) in`);
 
         if (entity) {
             const roles = categorizeEntityFields(entity);
@@ -1209,7 +1250,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
                 lines.push('                                    .overlay {');
                 lines.push('                                        Image(systemName: "star.fill")');
                 lines.push('                                            .font(.largeTitle)');
-                lines.push('                                            .foregroundStyle(.accent)');
+                lines.push('                                            .tint(.accentColor)');
                 lines.push('                                    }');
             }
             if (roles.titleField) {
@@ -1221,7 +1262,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
                 lines.push(`                                Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
                 lines.push('                                    .font(.subheadline)');
                 lines.push('                                    .fontWeight(.semibold)');
-                lines.push('                                    .foregroundStyle(.accent)');
+                lines.push('                                    .tint(.accentColor)');
             } else if (roles.subtitleField) {
                 lines.push(`                                Text(${varName}.${camelCase(roles.subtitleField.name)})`);
                 lines.push('                                    .font(.subheadline)');
@@ -1303,7 +1344,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push('                        .font(.subheadline)');
         lines.push('                }');
         lines.push('');
-        lines.push(`                ForEach(${arrayVar}.prefix(5)) { ${varName} in`);
+        lines.push(`                ForEach(${arrayVar}.prefix(5)) { (${varName}: ${entityName}) in`);
         lines.push('                    HStack(spacing: 12) {');
         if (roles.imageField) {
             lines.push(`                        AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
@@ -1532,7 +1573,7 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('    Image(systemName: "person.circle.fill")');
     lines.push('        .resizable()');
     lines.push('        .frame(width: 80, height: 80)');
-    lines.push('        .foregroundStyle(.accent)');
+    lines.push('        .tint(.accentColor)');
     lines.push('');
     lines.push(`    Text("${screen.name}")`);
     lines.push('        .font(.title)');
@@ -1683,6 +1724,9 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
         }
     }
 
+    // Wrap in Group so modifiers like .navigationTitle can be applied
+    lines.push('Group {');
+
     // Empty state
     lines.push(`if ${arrayVar}.isEmpty {`);
     lines.push('    // Empty cart state');
@@ -1733,7 +1777,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('    VStack(spacing: 0) {');
     lines.push('        // Cart items');
     lines.push('        List {');
-    lines.push(`            ForEach(${arrayVar}) { ${varName} in`);
+    lines.push(`            ForEach(${arrayVar}) { (${varName}: ${entityName}) in`);
     lines.push('                HStack(spacing: 12) {');
 
     // Item image
@@ -1778,11 +1822,19 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('                        }');
     lines.push('                    }');
     lines.push('                    .buttonStyle(.plain)');
-    lines.push('                    .foregroundStyle(.accent)');
+    lines.push('                    .tint(.accentColor)');
     lines.push('                }');
     lines.push('                .padding(.vertical, 4)');
+    lines.push('                .swipeActions(edge: .trailing, allowsFullSwipe: true) {');
+    lines.push(`                    Button(role: .destructive) {`);
+    lines.push(`                        if let index = ${arrayVar}.firstIndex(where: { $0.id == ${varName}.id }) {`);
+    lines.push(`                            ${arrayVar}.remove(at: index)`);
+    lines.push('                        }');
+    lines.push('                    } label: {');
+    lines.push('                        Label("Delete", systemImage: "trash")');
+    lines.push('                    }');
+    lines.push('                }');
     lines.push('            }');
-    lines.push(`            .onDelete { indexSet in removeItems(at: indexSet) }`);
     lines.push('        }');
     lines.push('        .listStyle(.plain)');
     lines.push('');
@@ -1832,6 +1884,9 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('    }');
     lines.push('}');
 
+    // Close Group wrapper
+    lines.push('}');
+
     lines.push(`.navigationTitle("${screen.name}")`);
 
     return indent(lines.join('\n'), indentLevel);
@@ -1878,7 +1933,7 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
 
             lines.push('');
             lines.push(`        // ${entityName} list`);
-            lines.push(`        ForEach(${varName}s) { ${varName} in`);
+            lines.push(`        ForEach(${varName}s) { (${varName}: ${entityName}) in`);
             lines.push('            HStack(spacing: 12) {');
             if (roles.imageField) {
                 lines.push(`                AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
@@ -2016,7 +2071,7 @@ function generateComponent(comp: any, entityName?: string): string {
     if (swiftComp) {
         switch (type) {
             case 'button':
-                return `Button("${comp.label ?? 'Action'}") {\n    // TODO: Handle action\n}`;
+                return `Button("${comp.label ?? 'Action'}") {\n    // Action: ${comp.label ?? 'Action'}\n}`;
             case 'text':
                 if (comp.binding) {
                     return `Text(${comp.binding})`;
@@ -2034,7 +2089,7 @@ function generateComponent(comp: any, entityName?: string): string {
             case 'toggle':
                 return `Toggle("${comp.label ?? ''}", isOn: $${camelCase(comp.binding ?? 'isOn')})`;
             case 'picker':
-                return `Picker("${comp.label ?? ''}", selection: $${camelCase(comp.binding ?? 'selection')}) {\n    // TODO: Add picker options\n}`;
+                return `Picker("${comp.label ?? ''}", selection: $${camelCase(comp.binding ?? 'selection')}) {\n    // Add picker options here\n}`;
             case 'divider':
                 return 'Divider()';
             case 'spacer':
@@ -2059,7 +2114,7 @@ function generateFormComponent(comp: any): string {
         case 'toggle':
             return `Toggle("${comp.label ?? ''}", isOn: $${camelCase(comp.binding ?? 'isOn')})`;
         case 'picker':
-            return `Picker("${comp.label ?? ''}", selection: $${camelCase(comp.binding ?? 'selection')}) {\n            // TODO: Add options\n        }`;
+            return `Picker("${comp.label ?? ''}", selection: $${camelCase(comp.binding ?? 'selection')}) {\n            // Add options here\n        }`;
         case 'date-picker':
             return `DatePicker("${comp.label ?? ''}", selection: $${camelCase(comp.binding ?? 'date')})`;
         case 'slider':
@@ -2067,7 +2122,7 @@ function generateFormComponent(comp: any): string {
         case 'stepper':
             return `Stepper("${comp.label ?? ''}", value: $${camelCase(comp.binding ?? 'value')})`;
         case 'button':
-            return `Button("${comp.label ?? 'Submit'}") {\n            // TODO: Handle action\n        }`;
+            return `Button("${comp.label ?? 'Submit'}") {\n            // Action: ${comp.label ?? 'Submit'}\n        }`;
         default:
             return generateComponent(comp);
     }
@@ -2271,9 +2326,32 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // rather than requiring the full entity to be passed in.
     const letProperties: { name: string; type: string }[] = [];
     let isDetailWithIdLoading = false;
+    // Resolved detail entity info — shared across state declaration, body, and loadData
+    let resolvedDetailEntityName = '';
+    let resolvedDetailVarName = '';
     if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
-        const eName = pascalCase(inferEntityFromScreen(screen));
-        const eVar = camelCase(inferEntityFromScreen(screen));
+        // Try to find the actual entity for this detail screen
+        const inferredName = inferEntityFromScreen(screen);
+        const allEntities = (model.entities ?? []).filter(e => !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+        let matchedEntity = resolveDetailEntity(screen, model);
+        const inferredExists = allEntities.some(e => pascalCase(e.name) === pascalCase(inferredName));
+        // If no match found and inferred name doesn't match any entity, fall back to
+        // the entity with the most fields (most likely the primary data entity)
+        if (!matchedEntity && !inferredExists && allEntities.length > 0) {
+            matchedEntity = [...allEntities].sort((a, b) => (b.fields?.length ?? 0) - (a.fields?.length ?? 0))[0];
+        }
+        // If matched entity doesn't align with the inferred name AND a significantly larger
+        // entity exists, prefer the larger one (e.g., prefer Post over Comment for BlogDetail)
+        if (matchedEntity && !inferredExists) {
+            const bestEntity = [...allEntities].sort((a, b) => (b.fields?.length ?? 0) - (a.fields?.length ?? 0))[0];
+            if (bestEntity && bestEntity.name !== matchedEntity.name && (bestEntity.fields?.length ?? 0) > (matchedEntity.fields?.length ?? 0) * 1.5) {
+                matchedEntity = bestEntity;
+            }
+        }
+        const eName = matchedEntity ? pascalCase(matchedEntity.name) : pascalCase(inferredName);
+        const eVar = matchedEntity ? camelCase(matchedEntity.name) : camelCase(inferredName);
+        resolvedDetailEntityName = eName;
+        resolvedDetailVarName = eVar;
 
         // Generate: let id: String
         if (!declaredNames.has('id')) {
@@ -2407,8 +2485,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     if (isDetailWithIdLoading) {
         // Detail views: wrap body in Group with if-let for optional entity
-        const detailEntityName = inferEntityFromScreen(screen);
-        const detailVarName = camelCase(detailEntityName);
+        // Reuse the same entity resolution as the state declaration
+        const detailEntityName = resolvedDetailEntityName || inferEntityFromScreen(screen);
+        const detailVarName = resolvedDetailVarName || camelCase(detailEntityName);
 
         lines.push(indent('Group {', 2));
         lines.push(indent(`    if let ${detailVarName} {`, 2));
@@ -2461,10 +2540,30 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('        do {');
 
         if (isDetailWithIdLoading) {
-            // Detail view: load single entity by id
-            const detailEntityName = inferEntityFromScreen(screen);
-            const detailVarName = camelCase(detailEntityName);
-            lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(id: id)`);
+            // Reuse the same entity resolution as state declaration and body
+            const detailEntityName = resolvedDetailEntityName || inferEntityFromScreen(screen);
+            const detailVarName = resolvedDetailVarName || camelCase(detailEntityName);
+            // Check if a matching fetch method would exist in the generated API client
+            const detailEndpoints = model.apiEndpoints ?? [];
+            const hasFetchEndpoint = detailEndpoints.some(ep => {
+                const url = ep.url?.toLowerCase() ?? '';
+                const nameLower = detailEntityName.toLowerCase();
+                return url.includes(nameLower) || url.includes(nameLower + 's');
+            });
+            if (hasFetchEndpoint) {
+                // Find the actual parameter name from the matching endpoint URL
+                const matchingEp = detailEndpoints.find(ep => {
+                    const url = ep.url?.toLowerCase() ?? '';
+                    const nameLower = detailEntityName.toLowerCase();
+                    return (url.includes(nameLower) || url.includes(nameLower + 's')) && (url.includes(':') || url.includes('{'));
+                });
+                const paramMatch = matchingEp?.url?.match(/:([a-zA-Z_]+)/) ?? matchingEp?.url?.match(/\{([a-zA-Z_]+)\}/);
+                const paramName = paramMatch ? camelCase(paramMatch[1]) : 'id';
+                lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(${paramName}: id)`);
+            } else {
+                lines.push(`            // Configure fetch${pascalCase(detailEntityName)}(id:) in APIClient`);
+                lines.push(`            // ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(id: id)`);
+            }
         }
 
         let hasLoadDataBody = isDetailWithIdLoading;
@@ -2476,7 +2575,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const arrayVarName = (req.cardinality === 'many' || (req as any).type === 'list')
                     ? (varName.endsWith('s') ? varName : `${varName}s`)
                     : varName;
-                lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(reqSource)}()`);
+                // For many/list cardinality, use plural fetch method name
+                const fetchName = (req.cardinality === 'many' || (req as any).type === 'list')
+                    ? (reqSource.endsWith('s') ? reqSource : `${reqSource}s`)
+                    : reqSource;
+                lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
                 hasLoadDataBody = true;
             }
         }
@@ -2486,7 +2589,22 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (!hasLoadDataBody && derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
             const entVar = camelCase(derivedEntityName);
             const entArrayVar = entVar.endsWith('s') ? entVar : `${entVar}s`;
-            lines.push(`            ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(derivedEntityName)}()`);
+            const pluralName = derivedEntityName.endsWith('s') ? derivedEntityName : `${derivedEntityName}s`;
+            // Check if the fetch method would exist in the generated API client
+            const listEndpoints = model.apiEndpoints ?? [];
+            const hasListFetch = listEndpoints.some(ep => {
+                if ((ep.method ?? 'GET') !== 'GET') return false;
+                const url = ep.url?.toLowerCase() ?? '';
+                if (url.includes(':') || url.includes('{')) return false;
+                const lastSeg = url.split('/').filter(s => s).pop() ?? '';
+                return lastSeg === entVar + 's' || lastSeg === entVar || lastSeg === pluralName.toLowerCase();
+            });
+            if (hasListFetch) {
+                lines.push(`            ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(pluralName)}()`);
+            } else {
+                lines.push(`            // Configure fetch${pascalCase(pluralName)}() in APIClient`);
+                lines.push(`            // ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(pluralName)}()`);
+            }
         }
 
         lines.push('        } catch {');
@@ -2512,7 +2630,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
             lines.push('');
             lines.push(`    private func ${funcName}() {`);
-            lines.push(`        // TODO: Implement ${humanizeActionTarget(target).toLowerCase()}`);
+            lines.push(`        print("${humanizeActionTarget(target)}")`);
             lines.push('    }');
         }
     }
@@ -2563,7 +2681,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('    }');
         lines.push('');
         lines.push('    private func checkout() {');
-        lines.push('        // TODO: Implement checkout flow');
+        lines.push('        print("Checkout initiated")');
         lines.push('    }');
     }
 
@@ -2633,6 +2751,11 @@ function generateRowView(screen: Screen, model: SemanticAppModel): GeneratedFile
     const entity = resolveEntity(screen, model);
     if (entity) return null;
 
+    // Skip if the inferred entity doesn't exist in the model
+    const entities = model.entities ?? [];
+    const entityExists = entities.some(e => pascalCase(e.name) === pascalCase(entityName));
+    if (!entityExists) return null;
+
     const varName = camelCase(entityName);
     const lines: string[] = [];
 
@@ -2671,6 +2794,12 @@ function generateCardView(screen: Screen, model: SemanticAppModel): GeneratedFil
     const entity = resolveEntity(screen, model);
     if (entity) return null;
 
+    // Skip if the inferred entity doesn't exist in the model — the generated view
+    // would reference a non-existent type and fail to compile
+    const entities = model.entities ?? [];
+    const entityExists = entities.some(e => pascalCase(e.name) === pascalCase(entityName));
+    if (!entityExists) return null;
+
     const varName = camelCase(entityName);
     const lines: string[] = [];
 
@@ -2686,7 +2815,7 @@ function generateCardView(screen: Screen, model: SemanticAppModel): GeneratedFil
     lines.push(`            Text(String(describing: ${varName}.id))`);
     lines.push('                .font(.headline)');
     lines.push('        }');
-    lines.push('        .background(Color(.systemBackground))');
+    lines.push('        .background(Color.clear)');
     lines.push('        .clipShape(RoundedRectangle(cornerRadius: 12))');
     lines.push('        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)');
     lines.push('    }');

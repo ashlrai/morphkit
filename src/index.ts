@@ -12,6 +12,106 @@ import { generateProject } from './generator/index.js';
 import type { SemanticAppModel } from './semantic/model.js';
 
 // ---------------------------------------------------------------------------
+// API Key Authentication
+// ---------------------------------------------------------------------------
+
+const MORPHKIT_API_URL = process.env.MORPHKIT_API_URL ?? 'https://kvuxgjjlmhmhbpqfvqeo.supabase.co/functions/v1';
+
+interface AuthResult {
+  valid: boolean;
+  tier: 'free' | 'pro' | 'enterprise';
+  remaining: number;
+  error?: string;
+}
+
+/**
+ * Resolve the API key from CLI flag, env var, or config file.
+ */
+function resolveApiKey(flagValue?: string): string | null {
+  // 1. CLI flag takes priority
+  if (flagValue) return flagValue;
+
+  // 2. Environment variable
+  const envKey = process.env.MORPHKIT_API_KEY;
+  if (envKey) return envKey;
+
+  // 3. Config file (~/.morphkit/config)
+  const configPath = join(process.env.HOME ?? '', '.morphkit', 'config');
+  if (existsSync(configPath)) {
+    try {
+      const config = readFileSync(configPath, 'utf-8');
+      const match = config.match(/^api_key\s*=\s*(.+)$/m);
+      if (match) return match[1].trim();
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validate an API key against the Morphkit API and check usage quota.
+ * Returns auth result with tier info and remaining quota.
+ */
+async function validateApiKey(apiKey: string): Promise<AuthResult> {
+  try {
+    const response = await fetch(`${MORPHKIT_API_URL}/validate-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (response.status === 401) {
+      return { valid: false, tier: 'free', remaining: 0, error: 'Invalid API key' };
+    }
+
+    if (response.status === 429) {
+      return { valid: true, tier: 'free', remaining: 0, error: 'Usage quota exceeded. Upgrade at https://morphkit.dev/pricing' };
+    }
+
+    if (!response.ok) {
+      return { valid: false, tier: 'free', remaining: 0, error: `API error: ${response.status}` };
+    }
+
+    const data = await response.json() as { tier: string; remaining: number };
+    return {
+      valid: true,
+      tier: (data.tier as AuthResult['tier']) ?? 'free',
+      remaining: data.remaining ?? 0,
+    };
+  } catch (error) {
+    // Network error — allow offline usage with a warning
+    if (error instanceof TypeError || (error as any)?.code === 'ECONNREFUSED') {
+      return { valid: true, tier: 'free', remaining: -1, error: 'Could not reach Morphkit API — running in offline mode' };
+    }
+    return { valid: true, tier: 'free', remaining: -1, error: 'API validation failed — running in offline mode' };
+  }
+}
+
+/**
+ * Log usage after a successful generation.
+ */
+async function logUsage(apiKey: string, sourceRepo: string, status: 'success' | 'failed'): Promise<void> {
+  try {
+    await fetch(`${MORPHKIT_API_URL}/log-usage`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ source_repo: sourceRepo, status }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    // Usage logging is best-effort — don't fail the generation
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -215,8 +315,9 @@ program
   .option('-o, --output <dir>', 'Output directory for the iOS project', './ios-app')
   .option('-n, --name <name>', 'App name (defaults to package.json name)')
   .option('--model <file>', 'Use a pre-built semantic model JSON file instead of analyzing')
+  .option('--api-key <key>', 'Morphkit API key (or set MORPHKIT_API_KEY env var)')
   .option('-v, --verbose', 'Show detailed generation output', false)
-  .action(async (repoPath: string, options: { output: string; name?: string; model?: string; verbose?: boolean }) => {
+  .action(async (repoPath: string, options: { output: string; name?: string; model?: string; verbose?: boolean; apiKey?: string }) => {
     const absolutePath = resolve(repoPath);
     const outputPath = resolve(options.output);
 
@@ -229,6 +330,27 @@ program
 
     // Show banner for generate command
     console.log(BANNER);
+
+    // API key authentication
+    const apiKey = resolveApiKey(options.apiKey);
+    if (apiKey) {
+      const auth = await validateApiKey(apiKey);
+      if (!auth.valid) {
+        console.error(chalk.red(`\nAuthentication failed: ${auth.error}`));
+        console.error(chalk.dim('Get an API key at https://morphkit.dev/dashboard'));
+        process.exit(1);
+      }
+      if (auth.remaining === 0) {
+        console.error(chalk.red(`\n${auth.error}`));
+        process.exit(1);
+      }
+      if (auth.error) {
+        // Offline mode warning
+        console.warn(chalk.yellow(`\n${auth.error}`));
+      } else {
+        console.log(chalk.dim(`  Authenticated (${auth.tier} tier${auth.remaining > 0 ? `, ${auth.remaining} conversions remaining` : ''})`));
+      }
+    }
 
     const startTime = performance.now();
     const spinner = ora('Starting generation pipeline...').start();
@@ -274,6 +396,11 @@ program
       const elapsed = formatElapsed(Math.round(performance.now() - startTime));
       spinner.succeed('Generation complete!');
 
+      // Log usage (best-effort, non-blocking)
+      if (apiKey) {
+        logUsage(apiKey, absolutePath, 'success').catch(() => {});
+      }
+
       // Print summary
       console.log('');
       console.log(chalk.bold('Generated Project Summary'));
@@ -301,6 +428,9 @@ program
       console.log(chalk.green(`Open in Xcode: open ${outputPath}/Package.swift`));
     } catch (error) {
       spinner.fail('Generation failed');
+      if (apiKey) {
+        logUsage(apiKey, absolutePath, 'failed').catch(() => {});
+      }
       console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
       process.exit(1);
     }

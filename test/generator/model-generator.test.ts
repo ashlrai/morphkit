@@ -78,7 +78,8 @@ describe('Swift Model Generator', () => {
     expect(file.content).toContain('var isActive: Bool');
     expect(file.content).toContain('var createdAt: Date');
     expect(file.content).toContain('var tags: [String]');
-    expect(file.content).toContain('var metadata: [String: Any]?');
+    // Any is replaced with String for Codable/Hashable conformance
+    expect(file.content).toContain('var metadata: [String: String]?');
   });
 
   test('adds UUID default for missing id fields', () => {

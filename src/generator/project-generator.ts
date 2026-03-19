@@ -609,17 +609,28 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
             if (declaredProps.has(propName)) continue;
             declaredProps.add(propName);
 
-            // Infer a sensible type from the binding name
-            if (binding.toLowerCase().startsWith('is') || binding.toLowerCase() === 'added') {
+            // Infer type from the binding name
+            const lower = binding.toLowerCase();
+            if (lower.startsWith('is') || lower.startsWith('has') || lower.startsWith('show') || lower.startsWith('should') || lower === 'added' || lower.includes('loading') || lower.includes('loaded') || lower.includes('saving')) {
                 lines.push(`    var ${propName} = false`);
-            } else if (binding.toLowerCase().includes('query') || binding.toLowerCase().includes('search')) {
+            } else if (lower.includes('query') || lower.includes('search') || lower.includes('text') || lower.includes('input') || lower.includes('name') || lower.includes('email') || lower.includes('password')) {
                 lines.push(`    var ${propName} = ""`);
-            } else if (binding.toLowerCase().includes('order') || binding.toLowerCase().includes('sort') || binding.toLowerCase().includes('category')) {
+            } else if (lower.includes('order') || lower.includes('sort') || lower.includes('category') || lower.includes('filter') || lower.includes('mode') || lower.includes('status') || lower.includes('type') || lower.includes('view')) {
                 lines.push(`    var ${propName} = ""`);
-            } else {
-                // Resolve array type from screen name → entity
+            } else if (lower.includes('count') || lower.includes('index') || lower.includes('page') || lower.includes('total')) {
+                lines.push(`    var ${propName} = 0`);
+            } else if (lower.includes('error') || lower.includes('message')) {
+                lines.push(`    var ${propName}: String?`);
+            } else if (lower.includes('items') || lower.includes('list') || lower.includes('results') || lower.includes('ids') || lower.includes('collections')) {
                 const entityType = resolveArrayTypeFromScreenName(screen.name, model);
                 lines.push(`    var ${propName}: [${entityType}] = []`);
+            } else if (lower.includes('id') || lower.includes('url') || lower.includes('token')) {
+                lines.push(`    var ${propName}: String?`);
+            } else if (lower.includes('date') || lower.includes('range')) {
+                lines.push(`    var ${propName}: Date?`);
+            } else {
+                // Default to String for safety
+                lines.push(`    var ${propName} = ""`);
             }
         }
 
@@ -627,7 +638,9 @@ function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
         if (!declaredProps.has('isLoading')) {
             lines.push('    var isLoading = false');
         }
-        lines.push('    var error: NetworkError?');
+        if (!declaredProps.has('error')) {
+            lines.push('    var error: NetworkError?');
+        }
         lines.push('}');
         lines.push('');
 

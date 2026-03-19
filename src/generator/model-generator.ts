@@ -60,6 +60,12 @@ function analyseField(field: Field): SwiftField {
     // Map TS primitive names that may have leaked through
     if (swiftType === 'Number') swiftType = 'Double';
     if (swiftType === 'Boolean') swiftType = 'Bool';
+    // Replace Any-containing types that break Codable/Hashable conformance
+    if (swiftType === 'Any') swiftType = 'String';
+    if (swiftType === '[Any]') swiftType = '[String]';
+    if (swiftType === '[String: Any]') swiftType = '[String: String]';
+    if (swiftType.includes('[String: Any]')) swiftType = swiftType.replace('[String: Any]', '[String: String]');
+    if (swiftType === 'Any?') swiftType = 'String?';
 
     // Detect integer types from hints or naming
     const isInteger =

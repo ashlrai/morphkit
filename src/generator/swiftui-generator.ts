@@ -982,6 +982,13 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
     const detailRoute = findDetailRoute(screen, model);
     const lines: string[] = [];
 
+    // If entity doesn't exist in the model and no data requirements, fall back to custom layout
+    const allEntities = model.entities ?? [];
+    const entityExists = entity || allEntities.some(e => pascalCase(e.name) === entityName);
+    if (!entityExists && (screen.dataRequirements ?? []).length === 0) {
+        return generateCustomLayout(screen, model, components, indentLevel);
+    }
+
     lines.push('let columns = [');
     lines.push('    GridItem(.adaptive(minimum: 160), spacing: 16)');
     lines.push(']');
@@ -2446,7 +2453,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     // Entity-based properties for list/grid/dashboard layouts when no explicit data requirements
     let derivedEntityName = deriveEntityName(screen);
-    if (derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
+    // Also include custom layouts with repeated components or collection data requirements
+    const hasRepeatedContent = (screen.components ?? []).some(c => c.count === 'repeated');
+    const hasCollectionReq = (screen.dataRequirements ?? []).some(r => r.cardinality === 'many');
+    if (derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid' || ((screen.layout === 'custom' || !screen.layout) && (hasRepeatedContent || hasCollectionReq)))) {
         const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {

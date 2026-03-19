@@ -121,6 +121,15 @@ function isEnumEntity(entity: Entity): boolean {
     );
 }
 
+/** Swift reserved keywords that require backtick escaping in enum case names */
+const SWIFT_KEYWORDS = new Set([
+    'default', 'case', 'return', 'class', 'struct', 'enum', 'func',
+    'var', 'let', 'for', 'in', 'if', 'else', 'switch', 'true', 'false',
+    'nil', 'do', 'try', 'catch', 'throw', 'import', 'self', 'super',
+    'init', 'deinit', 'guard', 'where', 'while', 'repeat', 'break',
+    'continue', 'type', 'protocol', 'extension', 'as', 'is', 'get', 'set',
+]);
+
 /**
  * Convert a kebab-case or arbitrary string value to a valid Swift camelCase
  * enum case name.  e.g. 'price-asc' → 'priceAsc', 'name' → 'name'
@@ -137,13 +146,6 @@ function enumCaseName(value: string): string {
     // Ensure the first character is lowercase (valid Swift enum case)
     result = result.charAt(0).toLowerCase() + result.slice(1);
     // If the result starts with a digit or is a Swift keyword, prefix with backticks
-    const SWIFT_KEYWORDS = new Set([
-        'default', 'case', 'return', 'class', 'struct', 'enum', 'func',
-        'var', 'let', 'for', 'in', 'if', 'else', 'switch', 'true', 'false',
-        'nil', 'do', 'try', 'catch', 'throw', 'import', 'self', 'super',
-        'init', 'deinit', 'guard', 'where', 'while', 'repeat', 'break',
-        'continue', 'type', 'protocol', 'extension', 'as', 'is', 'get', 'set',
-    ]);
     if (/^\d/.test(result) || SWIFT_KEYWORDS.has(result)) {
         result = '`' + result + '`';
     }
@@ -179,16 +181,24 @@ function generateEnum(entity: Entity): string {
 }
 
 // ---------------------------------------------------------------------------
+// Field filtering — shared pipeline for struct and preview generation
+// ---------------------------------------------------------------------------
+
+/** Filter raw entity fields to only those valid for Swift code generation */
+function filterSwiftFields(fields: Field[]): Field[] {
+    return fields
+        .filter(f => isValidSwiftFieldName(f.name))
+        .filter(f => !JS_BUILTIN_FIELDS.has(f.name))
+        .filter(f => !/=>/.test(JSON.stringify(f.type ?? {})));
+}
+
+// ---------------------------------------------------------------------------
 // Struct generation
 // ---------------------------------------------------------------------------
 
 function generateStruct(entity: Entity, model: SemanticAppModel): string {
     const structName = pascalCase(entity.name);
-    const fields = (entity.fields ?? [])
-        .filter(f => isValidSwiftFieldName(f.name))
-        .filter(f => !JS_BUILTIN_FIELDS.has(f.name))          // Skip leaked prototype methods
-        .filter(f => !/=>/.test(JSON.stringify(f.type ?? {})))  // Skip fields with arrow fn types
-        .map(analyseField);
+    const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
     const hasId = fields.some((f) => f.isId);
     const needsCodingKeys = fields.some((f) => f.needsCodingKey);
 
@@ -371,7 +381,7 @@ function previewValue(field: SwiftField, entityName: string, enumNames?: Map<str
         return `"A sample ${entityName.charAt(0).toLowerCase() + entityName.slice(1)} for previewing"`;
     }
     if ((nameLower === 'price' || nameLower === 'cost' || nameLower === 'amount') && baseSwiftType === 'Double') return '29.99';
-    if (nameLower === 'imageurl' || nameLower === 'image' || nameLower === 'imageurl' || nameLower === 'thumbnailurl' || nameLower === 'thumbnail' || nameLower === 'avatar' || nameLower === 'avatarurl' || nameLower === 'photo' || nameLower === 'photourl') {
+    if (nameLower === 'imageurl' || nameLower === 'image' || nameLower === 'thumbnailurl' || nameLower === 'thumbnail' || nameLower === 'avatar' || nameLower === 'avatarurl' || nameLower === 'photo' || nameLower === 'photourl') {
         return '"https://picsum.photos/200"';
     }
     if (nameLower === 'email') return '"preview@example.com"';
@@ -409,11 +419,7 @@ function previewValue(field: SwiftField, entityName: string, enumNames?: Map<str
  */
 function generatePreviewExtension(entity: Entity, model: SemanticAppModel): string {
     const structName = pascalCase(entity.name);
-    const fields = (entity.fields ?? [])
-        .filter(f => isValidSwiftFieldName(f.name))
-        .filter(f => !JS_BUILTIN_FIELDS.has(f.name))          // Skip leaked prototype methods
-        .filter(f => !/=>/.test(JSON.stringify(f.type ?? {})))  // Skip fields with arrow fn types
-        .map(analyseField);
+    const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
     const hasId = fields.some((f) => f.isId);
 
     // Build enum lookup: PascalCase entity name → first case name

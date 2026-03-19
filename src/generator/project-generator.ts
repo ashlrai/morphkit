@@ -8,7 +8,7 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { generateSwiftUIViews, pascalCase, relativeSourcePath, isMarketingScreen } from './swiftui-generator';
+import { generateSwiftUIViews, pascalCase, relativeSourcePath, isMarketingScreen, pluralize, cleanStoreName } from './swiftui-generator';
 import { generateSwiftModels } from './model-generator';
 import { generateNavigation } from './navigation-generator';
 import { generateNetworkingLayer } from './networking-generator';
@@ -220,16 +220,6 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
 // State layer generation
 // ---------------------------------------------------------------------------
 
-/** Naive pluralize — handles common English singular suffixes */
-function pluralize(word: string): string {
-    if (word.endsWith('y') && !/[aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
-    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
-        word.endsWith('sh') || word.endsWith('ch')) {
-        return word + 'es';
-    }
-    return word + 's';
-}
-
 /**
  * Generate the default fetch method lines for a store.
  * Used by both Zustand-derived stores (when no mutations defined) and
@@ -302,24 +292,6 @@ function generateStoreBoilerplate(storeName: string): string[] {
     lines.push('        self.apiClient = apiClient');
     lines.push('    }');
     return lines;
-}
-
-/**
- * Clean a Zustand/Redux store name for Swift:
- *   - Strip leading 'Use'/'use' prefix (React hook convention)
- *   - Strip trailing 'Store'/'store' suffix (will be re-added)
- *   - Return PascalCase base name
- * e.g. 'useCartStore' → 'Cart', 'UseCartStore' → 'Cart', 'cartStore' → 'Cart'
- */
-function cleanStoreName(raw: string): string {
-    let name = raw;
-    // Strip leading 'use' (case-insensitive)
-    name = name.replace(/^[Uu]se/, '');
-    // Strip trailing 'Store' (case-insensitive)
-    name = name.replace(/[Ss]tore$/, '');
-    // PascalCase the result
-    if (name.length === 0) name = 'App';
-    return pascalCase(name);
 }
 
 /**

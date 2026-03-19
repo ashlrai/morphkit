@@ -31,9 +31,15 @@ interface SwiftField {
 /**
  * Convert a TypeDefinition to a raw string representation for mapTsTypeToSwift,
  * or use typeDefToSwift directly for structured types.
+ * Includes a guard to catch any leaked TS/JS syntax in the result.
  */
 function typeDefinitionToSwiftType(td: TypeDefinition): string {
-    return typeDefToSwift(td);
+    let result = typeDefToSwift(td);
+    // Final safety net: if the resolved type still contains TS/JS syntax, fall back
+    if (/[<>|{}]|=>/.test(result)) {
+        result = 'String';
+    }
+    return result;
 }
 
 function analyseField(field: Field): SwiftField {
@@ -46,6 +52,14 @@ function analyseField(field: Field): SwiftField {
     let isArray = td.kind === 'array';
 
     let swiftType = typeDefinitionToSwiftType(td);
+
+    // Sanitize: if the resolved type contains TS/JS syntax, fall back to safe types
+    if (/[<>{}|]|=>/.test(swiftType)) {
+        swiftType = isOptional ? 'String?' : 'String';
+    }
+    // Map TS primitive names that may have leaked through
+    if (swiftType === 'Number') swiftType = 'Double';
+    if (swiftType === 'Boolean') swiftType = 'Bool';
 
     // Detect integer types from hints or naming
     const isInteger =
@@ -444,6 +458,18 @@ const JUNK_ENTITY_NAMES = new Set([
     'error', 'function', 'array',
 ]);
 
+/** JS built-in method names that indicate a leaked prototype, not real data fields */
+const JS_BUILTIN_FIELDS = new Set([
+    'charAt', 'charCodeAt', 'indexOf', 'lastIndexOf', 'slice', 'substring',
+    'toLowerCase', 'toUpperCase', 'trim', 'split', 'replace', 'match',
+    'concat', 'includes', 'startsWith', 'endsWith', 'repeat', 'padStart',
+    'padEnd', 'search', 'toString', 'valueOf', 'localeCompare', 'normalize',
+    'map', 'filter', 'reduce', 'forEach', 'find', 'findIndex', 'some',
+    'every', 'flat', 'flatMap', 'push', 'pop', 'shift', 'unshift',
+    'then', 'catch', 'finally', 'resolve', 'reject', 'all', 'race',
+    'apply', 'call', 'bind', 'constructor', 'prototype', 'hasOwnProperty',
+]);
+
 function isJunkEntity(entity: Entity): boolean {
     const lower = entity.name.toLowerCase();
     if (JUNK_ENTITY_NAMES.has(lower)) return true;
@@ -452,6 +478,13 @@ function isJunkEntity(entity: Entity): boolean {
     // Filter entities with all-unknown typed fields (no useful type information)
     const fields = entity.fields ?? [];
     if (fields.length > 0 && fields.every(f => f.type.kind === 'unknown')) return true;
+    // Filter entities that look like leaked JS prototypes (fields are built-in method names)
+    if (fields.length >= 3) {
+        const builtinCount = fields.filter(f => JS_BUILTIN_FIELDS.has(f.name)).length;
+        if (builtinCount >= 3 || builtinCount > fields.length * 0.5) return true;
+    }
+    // Filter entities with fields containing arrow function types (TS syntax leak)
+    if (fields.some(f => /=>/.test(f.type.typeName ?? ''))) return true;
     return false;
 }
 

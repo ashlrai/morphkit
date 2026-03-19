@@ -30,7 +30,12 @@ function isUsableTypeName(name: string | undefined): boolean {
     if (!name) return false;
     // Normalize: lowercase and strip hyphens/underscores for matching
     const normalized = name.toLowerCase().replace(/[-_]+/g, '');
-    return !JUNK_TYPE_NAMES.has(normalized) && !JUNK_TYPE_NAMES.has(name.toLowerCase());
+    if (JUNK_TYPE_NAMES.has(normalized) || JUNK_TYPE_NAMES.has(name.toLowerCase())) return false;
+    // Reject lowercase TS primitives that shouldn't be Swift type names
+    if (name === 'number' || name === 'boolean' || name === 'string') return false;
+    // Reject names containing TS/JS syntax characters (generics, unions, object literals, arrow fns)
+    if (/[<>|{}]|=>/.test(name)) return false;
+    return true;
 }
 
 /**
@@ -43,9 +48,13 @@ function isUsableTypeName(name: string | undefined): boolean {
  * should appear in generated Swift method signatures.
  */
 function typeDefToSwift(td: TypeDefinition): string {
+    // Sanitize typeName: map JS/TS type names that leak through the analyzer
+    const rawName = td.typeName;
+    const sanitizedName = sanitizeTypeName(rawName);
+
     switch (td.kind) {
         case 'string':
-            return isUsableTypeName(td.typeName) ? pascalCase(td.typeName!) : 'String';
+            return isUsableTypeName(sanitizedName) ? pascalCase(sanitizedName!) : 'String';
         case 'number':
             return 'Double';
         case 'boolean':
@@ -58,17 +67,37 @@ function typeDefToSwift(td: TypeDefinition): string {
             }
             return '[Any]';
         case 'object':
-            return isUsableTypeName(td.typeName) ? pascalCase(td.typeName!) : 'Any';
+            return isUsableTypeName(sanitizedName) ? pascalCase(sanitizedName!) : 'Any';
         case 'enum':
-            return isUsableTypeName(td.typeName) ? pascalCase(td.typeName!) : 'String';
+            return isUsableTypeName(sanitizedName) ? pascalCase(sanitizedName!) : 'String';
         case 'union':
-            return isUsableTypeName(td.typeName) ? pascalCase(td.typeName!) : 'String';
+            return isUsableTypeName(sanitizedName) ? pascalCase(sanitizedName!) : 'String';
         case 'literal':
             return 'String';
         case 'unknown':
         default:
-            return isUsableTypeName(td.typeName) ? pascalCase(td.typeName!) : 'Any';
+            return isUsableTypeName(sanitizedName) ? pascalCase(sanitizedName!) : 'Any';
     }
+}
+
+/**
+ * Sanitize a raw typeName from the analyzer — map leaked JS/TS types to their
+ * Swift equivalents or return undefined if the name is not usable.
+ */
+function sanitizeTypeName(name: string | undefined): string | undefined {
+    if (!name) return undefined;
+
+    // Map capitalized JS types to Swift equivalents
+    if (name === 'Number') return undefined;   // handled by kind='number' → Double
+    if (name === 'Boolean') return undefined;   // handled by kind='boolean' → Bool
+
+    // Reject names containing TS syntax (Promise<...>, unions, arrow fns, object literals)
+    if (/[<>|{}]|=>/.test(name)) return undefined;
+
+    // Reject function signature types
+    if (/\(.*\)\s*=>/.test(name)) return undefined;
+
+    return name;
 }
 
 // ---------------------------------------------------------------------------
@@ -490,12 +519,20 @@ function generateAPIClient(model: SemanticAppModel): string {
     lines.push('        }');
     lines.push('    }');
 
-    // Generated endpoint methods
+    // Generated endpoint methods — deduplicate by function signature
     if (endpoints.length > 0) {
         lines.push('');
         lines.push('    // MARK: - API Endpoints');
 
+        const generatedFuncNames = new Set<string>();
         for (const endpoint of endpoints) {
+            const funcName = camelCase(generateFunctionName(endpoint));
+            // Build a signature key including parameter types to allow overloads
+            const pathParams = extractPathParams(cleanURL(endpoint.url) ?? '/');
+            const sigKey = `${funcName}(${pathParams.length})`;
+            if (generatedFuncNames.has(sigKey)) continue;
+            generatedFuncNames.add(sigKey);
+
             lines.push('');
             lines.push(generateEndpointMethod(endpoint, model.entities ?? []));
         }
@@ -518,6 +555,12 @@ function generateEndpointMethod(endpoint: ApiEndpoint, entities: Entity[] = []):
     // type, otherwise try to infer from entity names matched against the URL.
     let returnType = typeDefToSwift(endpoint.responseType);
     let typeInferred = false;
+
+    // Guard: if the resolved return type still contains TS/JS syntax, treat as unresolvable
+    if (/[<>|{}]|=>/.test(returnType)) {
+        returnType = 'Any';
+    }
+
     if (returnType === 'Any' || returnType === '[Any]') {
         const inferred = inferReturnTypeFromEntities(endpoint, entities);
         if (inferred) {

@@ -219,7 +219,8 @@ describe('Blog App Pipeline E2E', { timeout: 30_000 }, () => {
     const project = await generateProject(adapted, OUTPUT_PATH);
 
     const viewFiles = project.files.filter(f => f.path.startsWith('Views/'));
-    expect(viewFiles.length).toBeGreaterThanOrEqual(4);
+    // Marketing pages (about) may be filtered out — at least the core screens remain
+    expect(viewFiles.length).toBeGreaterThanOrEqual(2);
 
     // Views should not be empty shells
     for (const view of viewFiles) {

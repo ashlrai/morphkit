@@ -10,7 +10,7 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase, indent } from './swiftui-generator';
+import { pascalCase, camelCase, indent, isMarketingScreen } from './swiftui-generator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -478,25 +478,35 @@ function generateMixedContentView(model: SemanticAppModel, appName: string): str
 export function generateNavigation(model: SemanticAppModel): GeneratedFile[] {
     const files: GeneratedFile[] = [];
     const warnings: string[] = [];
-    const screens = model.screens ?? [];
 
-    if (screens.length === 0) {
+    // Filter out marketing / static content screens from navigation
+    const filteredScreens = (model.screens ?? []).filter((s) => !isMarketingScreen(s));
+    const filteredScreenNames = new Set(filteredScreens.map(s => s.name));
+    // Also filter routes that reference marketing screens
+    const filteredRoutes = (model.navigation?.routes ?? []).filter(r => filteredScreenNames.has(r.screen));
+    const filteredModel: SemanticAppModel = {
+        ...model,
+        screens: filteredScreens,
+        navigation: { ...model.navigation, routes: filteredRoutes },
+    };
+
+    if (filteredScreens.length === 0) {
         warnings.push('No screens found in model — generating minimal navigation');
     }
 
     // AppRoute enum
     files.push({
         path: 'Navigation/AppRoute.swift',
-        content: generateRouteEnum(model),
+        content: generateRouteEnum(filteredModel),
         sourceMapping: 'morphkit:navigation',
-        confidence: screens.length > 0 ? 'high' : 'low',
+        confidence: filteredScreens.length > 0 ? 'high' : 'low',
         warnings: [],
     });
 
     // AppTab enum (always generate — even stack-only apps may evolve)
     files.push({
         path: 'Navigation/AppTab.swift',
-        content: generateTabEnum(model),
+        content: generateTabEnum(filteredModel),
         sourceMapping: 'morphkit:navigation',
         confidence: 'high',
         warnings: [],
@@ -505,23 +515,23 @@ export function generateNavigation(model: SemanticAppModel): GeneratedFile[] {
     // Router
     files.push({
         path: 'Navigation/Router.swift',
-        content: generateRouter(model),
+        content: generateRouter(filteredModel),
         sourceMapping: 'morphkit:navigation',
         confidence: 'high',
         warnings: [],
     });
 
     // ContentView
-    const navType = model.navigation?.type ?? inferNavigationType(model);
+    const navType = filteredModel.navigation?.type ?? inferNavigationType(filteredModel);
     let contentConfidence: 'high' | 'medium' | 'low' = 'high';
-    if (!model.navigation?.type) {
+    if (!filteredModel.navigation?.type) {
         contentConfidence = 'medium';
         warnings.push(`Navigation type inferred as "${navType}" — verify this matches the intended UX`);
     }
 
     files.push({
         path: 'ContentView.swift',
-        content: generateContentView(model),
+        content: generateContentView(filteredModel),
         sourceMapping: 'morphkit:navigation',
         confidence: contentConfidence,
         warnings,

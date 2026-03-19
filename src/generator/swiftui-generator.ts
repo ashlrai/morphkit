@@ -85,8 +85,9 @@ for (const v of Object.values(COMPONENT_MAP)) {
  */
 function isKnownSwiftUIView(name: string): boolean {
     if (KNOWN_SWIFTUI_VIEWS.has(name)) return true;
-    // Generated companion types (e.g. ProductRow, CartItemCell, SettingsView)
-    if (/(?:View|Row|Cell|Screen|Page|Card)$/.test(name)) return true;
+    // Generated companion types need a meaningful prefix before the suffix
+    // (e.g., ProductRow, CartItemCell, SettingsView — but NOT bare "Card", "View", "Cell")
+    if (/^[A-Z][a-zA-Z]+(?:View|Row|Cell|Screen|Page)$/.test(name) && name.length > 6) return true;
     return false;
 }
 
@@ -366,7 +367,12 @@ function inferTypeFromName(name: string): string {
     if (lower.includes('date') || lower.includes('time')) return 'Date';
     if (lower.includes('items') || lower.includes('list') || lower.includes('results') || lower.endsWith('s')) return '[Any]';
     if (lower.includes('selected') || lower.includes('category') || lower.includes('order') || lower.includes('sort')) return 'String';
-    return 'Any';
+    if (lower.includes('error') || lower.includes('message') || lower.includes('code') || lower.includes('token')) return 'String?';
+    if (lower.includes('loading') || lower.includes('saving') || lower.includes('sending')) return 'Bool';
+    if (lower.includes('email') || lower.includes('password') || lower.includes('username') || lower.includes('url')) return 'String';
+    if (lower.includes('state') || lower.includes('status') || lower.includes('mode') || lower.includes('type')) return 'String';
+    // Default to String (safer than Any — String is always valid in SwiftUI bindings)
+    return 'String';
 }
 
 function mapTsTypeToSwift(tsType: string): string {
@@ -890,7 +896,27 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push(`            ${ri}Spacer()`);
         lines.push(`        ${ri}}`);
     } else {
-        lines.push(`        ${ri}${entityName}RowView(${varName}: ${varName})`);
+        // No entity resolved — try to find it by name for a basic inline row
+        const fallbackEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);
+        if (fallbackEntity) {
+            const fbRoles = categorizeEntityFields(fallbackEntity);
+            lines.push(`        ${ri}VStack(alignment: .leading, spacing: 4) {`);
+            if (fbRoles.titleField) {
+                lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.titleField.name)})`);
+                lines.push(`                ${ri}.font(.headline)`);
+            } else {
+                lines.push(`            ${ri}Text(String(describing: ${varName}.id))`);
+                lines.push(`                ${ri}.font(.headline)`);
+            }
+            if (fbRoles.subtitleField) {
+                lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.subtitleField.name)})`);
+                lines.push(`                ${ri}.font(.subheadline).foregroundStyle(.secondary)`);
+            }
+            lines.push(`        ${ri}}`);
+        } else {
+            lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
+            lines.push(`            ${ri}.font(.headline)`);
+        }
     }
 
     // Close NavigationLink if present
@@ -998,7 +1024,26 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
         lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
         lines.push(`            ${gi}.shadow(color: .black.opacity(0.1), radius: 4, y: 2)`);
     } else {
-        lines.push(`            ${gi}${entityName}CardView(${varName}: ${varName})`);
+        // Inline a basic card instead of referencing a non-existent CardView
+        const fbEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);
+        if (fbEntity) {
+            const fbR = categorizeEntityFields(fbEntity);
+            lines.push(`            ${gi}VStack(alignment: .leading, spacing: 8) {`);
+            if (fbR.titleField) {
+                lines.push(`                ${gi}Text(${varName}.${camelCase(fbR.titleField.name)})`);
+                lines.push(`                    ${gi}.font(.headline).lineLimit(2)`);
+            }
+            if (fbR.subtitleField) {
+                lines.push(`                ${gi}Text(${varName}.${camelCase(fbR.subtitleField.name)})`);
+                lines.push(`                    ${gi}.font(.subheadline).foregroundStyle(.secondary)`);
+            }
+            lines.push(`            ${gi}}`);
+            lines.push(`            ${gi}.padding()`);
+            lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
+        } else {
+            lines.push(`            ${gi}Text(String(describing: ${varName}.id))`);
+            lines.push(`                ${gi}.font(.headline)`);
+        }
     }
 
     // Close NavigationLink if present
@@ -1725,7 +1770,8 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
         ? ((submitAction.label && submitAction.label !== 'inline') ? capitalise(submitAction.label) : 'Sign In')
         : 'Sign In';
     lines.push(`    Button("${submitLabel}") {`);
-    lines.push(`        ${submitAction ? camelCase(submitAction.effect?.target ?? 'signIn') : 'signIn'}()`);
+    const authActionName = submitAction ? camelCase(submitAction.effect?.target ?? 'signIn') : 'signIn';
+    lines.push(`        ${authActionName}()`);
     lines.push('    }');
     lines.push('    .buttonStyle(.borderedProminent)');
     lines.push('    .controlSize(.large)');
@@ -2070,17 +2116,12 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
             lines.push('            Divider()');
             lines.push('        }');
         } else {
+            // No entity resolved — render repeated components as static placeholders
+            // (we can't generate ForEach over undeclared variables)
             lines.push('');
             for (const comp of repeatedComponents) {
-                const viewName = comp.suggestedSwiftUI ?? pascalCase(comp.name);
-                lines.push(`        // ${comp.name} list`);
-                lines.push(`        ForEach(${camelCase(comp.name)}s) { item in`);
-                if (isKnownSwiftUIView(viewName)) {
-                    lines.push(`            ${viewName}(item: item)`);
-                } else {
-                    lines.push(`            Text("\\(item)") // TODO: Map ${comp.name} to SwiftUI`);
-                }
-                lines.push('        }');
+                lines.push(`        // ${comp.name} (repeated)`);
+                lines.push(`        ${safeComponentCall(comp.name)}`);
             }
         }
     }
@@ -2156,8 +2197,8 @@ function generateSemanticComponent(comp: ComponentRef, screen: Screen): string {
         return `NavigationLink("View Details") {\n            // Navigate to detail\n        }`;
     }
     if (lower.includes('button') || lower.includes('action')) {
-        const label = name.replace(/Button$/i, '').replace(/([A-Z])/g, ' $1').trim();
-        return `Button("${label}") {\n            // ${name} action\n            ${camelCase(name)}()\n        }`;
+        const label = name.replace(/Button$/i, '').replace(/([A-Z])/g, ' $1').trim() || 'Action';
+        return `Button("${label}") {\n            // ${name} action\n            print("${label} tapped")\n        }`;
     }
     if (lower.includes('card')) {
         return safeComponentCall(name);
@@ -2384,7 +2425,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (req.cardinality === 'many' || (req as any).type === 'list') {
             const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
             if (!declaredNames.has(arrayVarName)) {
-                lines.push(`    @State private var ${arrayVarName}: [${entityName}] = []`);
+                // Only use typed array if the entity exists in the model
+                const entityExists = (model.entities ?? []).some(e => pascalCase(e.name) === entityName);
+                const arrayType = entityExists ? `[${entityName}]` : '[String]';
+                lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
                 declaredNames.add(arrayVarName);
             }
         } else {
@@ -2527,6 +2571,18 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     if (hasSearchBinding && !declaredNames.has('searchQuery')) {
         lines.push('    @State private var searchQuery: String = ""');
         declaredNames.add('searchQuery');
+    }
+
+    // Auth layout state — ensure email/password are declared for auth screens
+    if (screen.layout === 'auth') {
+        if (!declaredNames.has('email')) {
+            lines.push('    @State private var email = ""');
+            declaredNames.add('email');
+        }
+        if (!declaredNames.has('password')) {
+            lines.push('    @State private var password = ""');
+            declaredNames.add('password');
+        }
     }
 
     // Cart-specific: ensure cart items array state exists and add computed total
@@ -2745,6 +2801,23 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             lines.push('');
             lines.push(`    private func ${funcName}() {`);
             lines.push(`        print("${humanizeActionTarget(target)}")`);
+            lines.push('    }');
+        }
+    }
+
+    // Auth layout: ensure the signIn action stub exists
+    if (screen.layout === 'auth') {
+        const existingFuncs = new Set(
+            meaningfulActions.map(a => camelCase(a.effect?.target ?? a.label ?? '')),
+        );
+        if (!existingFuncs.has('signIn')) {
+            if (meaningfulActions.length === 0) {
+                lines.push('');
+                lines.push('    // MARK: - Actions');
+            }
+            lines.push('');
+            lines.push('    private func signIn() {');
+            lines.push('        print("Sign in tapped")');
             lines.push('    }');
         }
     }

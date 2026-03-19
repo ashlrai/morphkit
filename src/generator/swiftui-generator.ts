@@ -2255,8 +2255,9 @@ function generateComponent(comp: any, entityName?: string): string {
 }
 
 function generateFormComponent(comp: any): string {
-    const type = comp.type ?? 'text-field';
-    // Use component name as fallback binding — better than generic 'text'
+    // Only treat as a form input if it has an explicit form type — don't default
+    // every unknown component to a TextField (which generates invalid $bindings)
+    const type = comp.type ?? (comp.binding ? 'text-field' : 'unknown');
     const bindingFallback = comp.name ? camelCase(comp.name) : 'field';
 
     switch (type) {

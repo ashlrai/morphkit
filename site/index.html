@@ -302,18 +302,18 @@
       animation: hero-fade-up 0.7s ease forwards 0.45s;
     }
 
-    /* Waitlist */
-    .waitlist {
+    /* Sign-up CTA */
+    .signup {
       max-width: 440px;
       margin: 0 auto 48px;
       opacity: 0;
       animation: hero-fade-up 0.7s ease forwards 0.55s;
     }
-    .waitlist-form {
+    .signup-form {
       display: flex;
       gap: 8px;
     }
-    .waitlist-input {
+    .signup-input {
       flex: 1;
       padding: 12px 16px;
       border-radius: 10px;
@@ -325,13 +325,13 @@
       outline: none;
       transition: border-color 0.2s;
     }
-    .waitlist-input:focus {
+    .signup-input:focus {
       border-color: var(--accent);
     }
-    .waitlist-input::placeholder {
+    .signup-input::placeholder {
       color: var(--text-muted);
     }
-    .waitlist-btn {
+    .signup-btn {
       padding: 12px 20px;
       border-radius: 10px;
       border: none;
@@ -344,23 +344,23 @@
       transition: background 0.2s;
       white-space: nowrap;
     }
-    .waitlist-btn:hover {
+    .signup-btn:hover {
       background: var(--accent-light);
     }
-    .waitlist-msg {
+    .signup-msg {
       font-size: 13px;
       color: var(--text-muted);
       margin-top: 10px;
       text-align: center;
     }
-    .waitlist-msg.success {
+    .signup-msg.success {
       color: var(--accent);
     }
-    .waitlist-msg.error {
+    .signup-msg.error {
       color: #ef4444;
     }
     @media (max-width: 480px) {
-      .waitlist-form { flex-direction: column; }
+      .signup-form { flex-direction: column; }
     }
 
     /* Demo Video */
@@ -1516,7 +1516,8 @@
       <a href="#features">Features</a>
       <a href="#example">Example</a>
       <a href="#pricing">Pricing</a>
-      <a href="#install" class="nav-cta">Get Started</a>
+      <a href="https://github.com/ashlrai/morphkit" target="_blank" rel="noopener">GitHub</a>
+      <a href="/dashboard" class="nav-cta">Dashboard</a>
     </div>
   </div>
 </nav>
@@ -1545,11 +1546,23 @@
     </div>
 
     <div class="waitlist">
-      <form class="waitlist-form" id="waitlist-form">
-        <input type="email" class="waitlist-input" placeholder="you@company.com" required aria-label="Email address">
-        <button type="submit" class="waitlist-btn">Join Waitlist</button>
+      <form class="signup-form" id="signup-form">
+        <input type="email" class="signup-input" placeholder="you@company.com" required aria-label="Email address">
+        <button type="submit" class="signup-btn">Get API Key</button>
       </form>
-      <p class="waitlist-msg" id="waitlist-msg">Get early access. No spam, unsubscribe anytime.</p>
+      <p class="signup-msg" id="signup-msg">Free tier — 20 conversions/month. No credit card required.</p>
+    </div>
+
+    <!-- GitHub Star -->
+    <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 32px; opacity: 0; animation: hero-fade-up 0.7s ease forwards 0.7s;">
+      <a href="https://github.com/ashlrai/morphkit" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; transition: border-color 0.2s;">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Star on GitHub
+      </a>
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 13px;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+        MIT Licensed &amp; Open Source
+      </span>
     </div>
 
     <!-- Code Morph: React → SwiftUI -->
@@ -1887,7 +1900,7 @@
           <li>All React patterns</li>
           <li>Community support</li>
         </ul>
-        <a href="#install" class="pricing-cta pricing-cta-secondary" onclick="posthog.capture('pricing_click', {tier: 'free'})">Get Started</a>
+        <a href="/dashboard" class="pricing-cta pricing-cta-secondary" onclick="posthog.capture('pricing_click', {tier: 'free'})">Get Free API Key</a>
       </div>
       <div class="pricing-card featured reveal">
         <div class="pricing-badge">Most Popular</div>
@@ -2099,35 +2112,38 @@
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dXhnampsbWhtaGJwcWZ2cWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTI2NzAsImV4cCI6MjA4OTM4ODY3MH0.hJ_zY4_J6etZj-iQjcOUub3TrrM4RSBx1XMQ6VVLfss'
   );
 
-  // Waitlist form
-  document.getElementById('waitlist-form').addEventListener('submit', async function(e) {
+  // Sign-up form — Supabase Auth magic link
+  document.getElementById('signup-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const email = this.querySelector('input[type="email"]').value;
-    const msg = document.getElementById('waitlist-msg');
-    const btn = this.querySelector('.waitlist-btn');
+    const msg = document.getElementById('signup-msg');
+    const btn = this.querySelector('.signup-btn');
 
-    btn.textContent = 'Joining...';
+    btn.textContent = 'Sending...';
     btn.disabled = true;
     msg.classList.remove('success', 'error');
     msg.textContent = '';
 
-    const { error } = await sb
-      .from('waitlist')
-      .upsert({ email, source: 'landing' }, { onConflict: 'email' });
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + '/dashboard',
+      },
+    });
 
     if (error) {
       msg.textContent = 'Something went wrong — please try again.';
       msg.classList.add('error');
-      btn.textContent = 'Join Waitlist';
+      btn.textContent = 'Get API Key';
       btn.disabled = false;
-      console.error('Waitlist error:', error.message);
+      console.error('Auth error:', error.message);
       return;
     }
 
-    posthog.capture('waitlist_signup', { source: 'landing' });
-    msg.textContent = "You're on the list! We'll be in touch.";
+    posthog.capture('signup', { source: 'landing' });
+    msg.textContent = 'Check your email for the magic link! Your API key will be ready on the dashboard.';
     msg.classList.add('success');
-    btn.textContent = 'Joined!';
+    btn.textContent = 'Email Sent!';
     this.querySelector('input').disabled = true;
   });
 

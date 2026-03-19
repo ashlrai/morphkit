@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Morphkit</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0A0A0C; --bg-elevated: #141417; --bg-card: #1A1A1F;
+      --border: #26262E; --text: #F4F4F5; --text-secondary: #A0A0AB;
+      --text-muted: #72727E; --accent: #3ECF8E; --accent-light: #5DDBA3;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+      --radius: 12px;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 800px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    .dash-header { padding: 24px 0; border-bottom: 1px solid var(--border); margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center; }
+    .dash-header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+    .dash-header h1 { font-size: 20px; font-weight: 600; }
+
+    /* Auth state */
+    #auth-section { display: none; }
+    #dashboard-section { display: none; }
+
+    /* Auth form */
+    .auth-box { max-width: 400px; margin: 120px auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px; }
+    .auth-box h2 { font-size: 24px; margin-bottom: 8px; }
+    .auth-box p { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; }
+    .auth-box input { width: 100%; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 15px; margin-bottom: 16px; outline: none; font-family: var(--font-body); }
+    .auth-box input:focus { border-color: var(--accent); }
+    .auth-box button { width: 100%; padding: 12px; background: var(--accent); color: #0A0A0C; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font-body); }
+    .auth-box button:hover { background: var(--accent-light); }
+    .auth-box .error { color: #ef4444; font-size: 13px; margin-top: 8px; }
+    .auth-box .success { color: var(--accent); font-size: 13px; margin-top: 8px; }
+
+    /* Dashboard cards */
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+    .card h3 { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+    .card .value { font-size: 28px; font-weight: 700; }
+    .card .sub { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+    /* API Key */
+    .key-display { display: flex; align-items: center; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-family: var(--font-mono); font-size: 14px; }
+    .key-display code { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }
+    .key-display button { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 12px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+    .key-display button:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Tier badge */
+    .tier-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+    .tier-free { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+    .tier-pro { background: rgba(62,207,142,0.15); color: var(--accent); }
+    .tier-enterprise { background: rgba(240,180,41,0.15); color: #F0B429; }
+
+    /* Usage bar */
+    .usage-bar { height: 8px; background: var(--bg); border-radius: 4px; margin-top: 12px; overflow: hidden; }
+    .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s ease; }
+
+    /* Actions */
+    .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+    .btn-secondary { padding: 8px 16px; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; cursor: pointer; font-family: var(--font-body); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { padding: 8px 16px; background: none; border: 1px solid #ef4444; border-radius: 8px; color: #ef4444; font-size: 13px; cursor: pointer; font-family: var(--font-body); }
+    .btn-primary { padding: 10px 20px; background: var(--accent); border: none; border-radius: 8px; color: #0A0A0C; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font-body); }
+    .btn-primary:hover { background: var(--accent-light); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Auth Section -->
+    <div id="auth-section">
+      <div class="auth-box">
+        <h2>Sign in to Morphkit</h2>
+        <p>Enter your email to receive a magic link.</p>
+        <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+        <button id="auth-submit" onclick="handleSignIn()">Send Magic Link</button>
+        <div id="auth-message"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section">
+      <div class="dash-header">
+        <h1>Morphkit Dashboard</h1>
+        <a href="#" onclick="handleSignOut(); return false;">Sign out</a>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="card">
+          <h3>Current Plan</h3>
+          <div>
+            <span id="tier-badge" class="tier-badge tier-free">Free</span>
+          </div>
+          <div class="sub" id="billing-info">20 conversions / month</div>
+        </div>
+        <div class="card">
+          <h3>Usage This Month</h3>
+          <div class="value" id="usage-count">0 / 20</div>
+          <div class="usage-bar"><div class="usage-bar-fill" id="usage-bar" style="width: 0%"></div></div>
+        </div>
+      </div>
+
+      <!-- API Key -->
+      <div class="card">
+        <h3>API Key</h3>
+        <div class="key-display">
+          <code id="api-key-display">morphkit_sk_****************************</code>
+          <button onclick="copyApiKey()">Copy</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="regenerateKey()">Regenerate Key</button>
+        </div>
+        <div class="sub" style="margin-top: 12px;">
+          Set as environment variable: <code style="font-family: var(--font-mono); color: var(--accent);">export MORPHKIT_API_KEY=your_key</code>
+        </div>
+      </div>
+
+      <!-- Upgrade -->
+      <div class="card" id="upgrade-card">
+        <h3>Upgrade to Pro</h3>
+        <div class="value" style="font-size: 24px;">$19<span style="font-size: 14px; color: var(--text-secondary); font-weight: 400;">/month</span></div>
+        <div class="sub">Unlimited conversions, priority support, early access to new features.</div>
+        <div class="btn-row">
+          <button class="btn-primary" onclick="handleUpgrade()">Upgrade Now</button>
+        </div>
+      </div>
+
+      <!-- Account -->
+      <div class="card">
+        <h3>Account</h3>
+        <div class="sub">Email: <span id="user-email">—</span></div>
+        <div class="sub">Member since: <span id="user-since">—</span></div>
+        <div class="btn-row">
+          <button class="btn-danger" onclick="handleCancelSubscription()">Cancel Subscription</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://kvuxgjjlmhmhbpqfvqeo.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dXhnampsbWhtaGJwcWZ2cWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTI2NzAsImV4cCI6MjA4OTM4ODY3MH0.hJ_zY4_J6etZj-iQjcOUub3TrrM4RSBx1XMQ6VVLfss';
+    const STRIPE_CHECKOUT_URL = 'https://buy.stripe.com/5kQaEYbMud4x6ub0Ms3VC00';
+
+    let supabase;
+    let currentUser = null;
+
+    async function init() {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // Check for existing session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+        showDashboard();
+      } else {
+        document.getElementById('auth-section').style.display = 'block';
+      }
+
+      // Listen for auth changes (magic link callback)
+      supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          currentUser = session.user;
+          showDashboard();
+        }
+      });
+    }
+
+    async function handleSignIn() {
+      const email = document.getElementById('auth-email').value.trim();
+      if (!email) return;
+
+      const btn = document.getElementById('auth-submit');
+      btn.textContent = 'Sending...';
+      btn.disabled = true;
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin + '/dashboard' }
+      });
+
+      const msg = document.getElementById('auth-message');
+      if (error) {
+        msg.className = 'error';
+        msg.textContent = error.message;
+      } else {
+        msg.className = 'success';
+        msg.textContent = 'Check your email for the magic link!';
+      }
+      btn.textContent = 'Send Magic Link';
+      btn.disabled = false;
+    }
+
+    async function handleSignOut() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      document.getElementById('dashboard-section').style.display = 'none';
+      document.getElementById('auth-section').style.display = 'block';
+    }
+
+    async function showDashboard() {
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('dashboard-section').style.display = 'block';
+
+      // Load user data
+      document.getElementById('user-email').textContent = currentUser.email;
+      document.getElementById('user-since').textContent = new Date(currentUser.created_at).toLocaleDateString();
+
+      // Load subscription
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('tier, status, current_period_end')
+        .eq('user_id', currentUser.id)
+        .single();
+
+      const tier = sub?.tier ?? 'free';
+      const badge = document.getElementById('tier-badge');
+      badge.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+      badge.className = `tier-badge tier-${tier}`;
+
+      if (tier === 'pro' || tier === 'enterprise') {
+        document.getElementById('billing-info').textContent =
+          `Unlimited conversions${sub?.current_period_end ? ' · Renews ' + new Date(sub.current_period_end).toLocaleDateString() : ''}`;
+        document.getElementById('upgrade-card').style.display = 'none';
+      }
+
+      // Load usage
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const { count } = await supabase
+        .from('usage_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', currentUser.id)
+        .eq('status', 'success')
+        .gte('timestamp', startOfMonth.toISOString());
+
+      const used = count ?? 0;
+      const limit = tier === 'free' ? 20 : Infinity;
+      document.getElementById('usage-count').textContent =
+        tier === 'free' ? `${used} / ${limit}` : `${used} this month`;
+      document.getElementById('usage-bar').style.width =
+        tier === 'free' ? `${Math.min(100, (used / limit) * 100)}%` : '0%';
+
+      // Load API key
+      const { data: keys } = await supabase
+        .from('api_keys')
+        .select('key_prefix')
+        .eq('user_id', currentUser.id)
+        .is('revoked_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (keys && keys.length > 0) {
+        document.getElementById('api-key-display').textContent =
+          keys[0].key_prefix + '****************************';
+      }
+    }
+
+    function copyApiKey() {
+      const keyText = document.getElementById('api-key-display').textContent;
+      navigator.clipboard.writeText(keyText).then(() => {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+
+    async function regenerateKey() {
+      if (!confirm('Regenerate your API key? Your current key will stop working immediately.')) return;
+
+      const btn = document.querySelector('[onclick="regenerateKey()"]');
+      btn.textContent = 'Regenerating...';
+      btn.disabled = true;
+
+      try {
+        // Get the current session token to use as the API key bearer
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        // Get the current plaintext key from localStorage if stored, otherwise use session
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/regenerate-key`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to regenerate key');
+        }
+
+        // Show the new key — this is the ONLY time the user sees it
+        const keyDisplay = document.getElementById('api-key-display');
+        keyDisplay.textContent = data.api_key;
+        keyDisplay.style.color = 'var(--accent)';
+
+        // Store the key temporarily so the user can copy it
+        keyDisplay.dataset.fullKey = data.api_key;
+
+        // Flash success feedback
+        btn.textContent = 'Key Regenerated!';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+
+        setTimeout(() => {
+          keyDisplay.textContent = data.key_prefix + '****************************';
+          keyDisplay.style.color = '';
+          btn.textContent = 'Regenerate Key';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+          btn.disabled = false;
+        }, 30000); // Show the full key for 30 seconds
+      } catch (err) {
+        console.error('Key regeneration failed:', err);
+        btn.textContent = 'Regenerate Key';
+        btn.disabled = false;
+
+        const sub = btn.closest('.card').querySelector('.sub');
+        const originalText = sub.textContent;
+        sub.style.color = '#ef4444';
+        sub.textContent = `Error: ${err.message}`;
+        setTimeout(() => {
+          sub.style.color = '';
+          sub.textContent = originalText;
+        }, 5000);
+      }
+    }
+
+    function handleUpgrade() {
+      // Redirect to Stripe Checkout with user metadata
+      const url = new URL(STRIPE_CHECKOUT_URL);
+      url.searchParams.set('client_reference_id', currentUser.id);
+      url.searchParams.set('prefilled_email', currentUser.email);
+      window.location.href = url.toString();
+    }
+
+    async function handleCancelSubscription() {
+      if (!confirm('Cancel your subscription? You will be downgraded to the free tier at the end of your billing period.')) return;
+
+      const btn = document.querySelector('[onclick="handleCancelSubscription()"]');
+      btn.textContent = 'Canceling...';
+      btn.disabled = true;
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-subscription`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to cancel subscription');
+        }
+
+        // Update UI to reflect cancellation
+        const cancelDate = new Date(data.cancel_at).toLocaleDateString();
+        btn.textContent = 'Subscription Canceled';
+        btn.disabled = true;
+        btn.style.borderColor = 'var(--text-muted)';
+        btn.style.color = 'var(--text-muted)';
+
+        // Update the billing info
+        const billingInfo = document.getElementById('billing-info');
+        billingInfo.textContent = `Access until ${cancelDate} · Canceled`;
+        billingInfo.style.color = '#ef4444';
+      } catch (err) {
+        console.error('Subscription cancellation failed:', err);
+        btn.textContent = 'Cancel Subscription';
+        btn.disabled = false;
+
+        // Show error message inline
+        const accountCard = btn.closest('.card');
+        const errorMsg = document.createElement('div');
+        errorMsg.className = 'sub';
+        errorMsg.style.color = '#ef4444';
+        errorMsg.style.marginTop = '8px';
+        errorMsg.textContent = `Error: ${err.message}`;
+        accountCard.appendChild(errorMsg);
+
+        setTimeout(() => errorMsg.remove(), 5000);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -15,6 +15,8 @@ import type {
     Field,
 } from '../semantic/model';
 
+import { isJunkEntity } from './model-generator';
+
 export interface GeneratedFile {
     path: string;
     content: string;
@@ -98,7 +100,14 @@ function isKnownSwiftUIView(name: string): boolean {
  */
 function safeComponentCall(rawName: string): string {
     const name = pascalCase(rawName);
-    if (isKnownSwiftUIView(name)) {
+    // SwiftUI Link requires (title, destination:) arguments — emit a placeholder instead
+    if (name === 'Link') {
+        return `Text("Link") // TODO: Map React Link to SwiftUI NavigationLink`;
+    }
+    // Only emit raw SwiftUI view calls for views in the explicit known set.
+    // Don't use isKnownSwiftUIView here — its suffix-based pattern (e.g., *Row, *Cell)
+    // would incorrectly match React components like HeatmapRow that aren't generated views.
+    if (KNOWN_SWIFTUI_VIEWS.has(name)) {
         return `${name}()`;
     }
     // Fallback: render a visible placeholder instead of an unknown identifier
@@ -136,6 +145,11 @@ function imageUrlExpr(accessor: string, field?: Field | null): string {
     return accessor;
 }
 
+/** Reject field names that contain symbols invalid in Swift identifiers (e.g. `@iterator@17868`). */
+function isValidSwiftFieldName(name: string): boolean {
+    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
+}
+
 function camelCase(s: string): string {
     return s
         .replace(/[-_\s]+(.)?/g, (_, c) => (c ? c.toUpperCase() : ''))
@@ -143,7 +157,24 @@ function camelCase(s: string): string {
 }
 
 function pascalCase(s: string): string {
-    return capitalise(camelCase(s));
+    // If already PascalCase (starts with uppercase, no separators), return as-is
+    if (/^[A-Z][a-zA-Z0-9]*$/.test(s) && !/_|-|\s/.test(s)) return s;
+    // If camelCase, just capitalise first letter (preserves internal word boundaries)
+    if (/^[a-z][a-zA-Z0-9]*$/.test(s) && !/_|-|\s/.test(s)) return capitalise(s);
+    // Otherwise, split on separators and join
+    return s
+        .replace(/[-_\s]+(.)?/g, (_, c) => (c ? c.toUpperCase() : ''))
+        .replace(/^[a-z]/, (c) => c.toUpperCase());
+}
+
+/** Naive pluralize — handles common English singular suffixes */
+function pluralize(word: string): string {
+    if (word.endsWith('y') && !/[aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
+    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
+        word.endsWith('sh') || word.endsWith('ch')) {
+        return word + 'es';
+    }
+    return word + 's';
 }
 
 function viewFileName(screenName: string): string {
@@ -297,6 +328,19 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
                     .map((p, i) => (i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)))
                     .join('');
                 defaultValue = `.${caseName}`;
+            } else {
+                // The type is a custom PascalCase name that doesn't exist as a generated
+                // entity or enum (e.g., AccentColor). Fall back to String to avoid
+                // referencing an undefined type.
+                const SWIFT_STDLIB_TYPES = new Set([
+                    'String', 'Int', 'Double', 'Bool', 'Date', 'UUID', 'URL', 'Data', 'Any',
+                    'Float', 'Int8', 'Int16', 'Int32', 'Int64', 'UInt', 'UInt8', 'UInt16',
+                    'UInt32', 'UInt64', 'CGFloat', 'Decimal', 'Color', 'Void',
+                ]);
+                if (!SWIFT_STDLIB_TYPES.has(swiftType) && !entityExistsInOutput(swiftType, model)) {
+                    swiftType = 'String';
+                    defaultValue = '""';
+                }
             }
         }
 
@@ -331,6 +375,21 @@ function resolveStatePatternType(pattern: StatePattern, bindingName: string, mod
     const shape = pattern.shape;
     if (!shape) return inferTypeFromName(bindingName);
 
+    // Helper: fix casing of type names by matching against known entities
+    const fixCasing = (type: string): string => {
+        if (!model) return type;
+        // Handle array types: [TypeName] → fix inner
+        const arrayMatch = type.match(/^\[(.+)\]$/);
+        if (arrayMatch) {
+            return `[${resolveEntityCasing(arrayMatch[1], model)}]`;
+        }
+        // Handle optional types: TypeName? → fix base
+        if (type.endsWith('?')) {
+            return `${resolveEntityCasing(type.slice(0, -1), model)}?`;
+        }
+        return resolveEntityCasing(type, model);
+    };
+
     // If the shape has fields, look for one matching the binding name
     if (shape.fields && shape.fields.length > 0) {
         // Single-field pattern where the field name matches the pattern name
@@ -350,13 +409,13 @@ function resolveStatePatternType(pattern: StatePattern, bindingName: string, mod
                     return inferTypeFromName(bindingName);
                 }
             }
-            return resolved;
+            return fixCasing(resolved);
         }
 
         // If the shape itself is array-like (has an array field), use that
         const arrayField = shape.fields.find((f) => f.type.kind === 'array');
         if (arrayField) {
-            return typeDefToSwift(arrayField.type);
+            return fixCasing(typeDefToSwift(arrayField.type));
         }
     }
 
@@ -366,7 +425,7 @@ function resolveStatePatternType(pattern: StatePattern, bindingName: string, mod
     if (directType === 'Any' || directType === '[String: Any]') {
         return inferTypeFromName(bindingName);
     }
-    return directType;
+    return fixCasing(directType);
 }
 
 /**
@@ -439,8 +498,13 @@ function defaultValueForType(swiftType: string): string {
     if (swiftType === 'Double' || swiftType === 'Int') return '0';
     if (swiftType === 'Bool') return 'false';
     if (swiftType === 'Any') return '"" as Any';
-    if (swiftType.startsWith('[') && swiftType.endsWith(']') && !swiftType.includes(':')) return '[]';
-    if (swiftType.startsWith('[') && swiftType.includes(':')) return '[:]';
+    if (swiftType.startsWith('[') && swiftType.endsWith(']')) {
+        // Check if the outer level is an array (not a dictionary).
+        // A dictionary type starts with `[Key:` — an array starts with `[Element]` or `[[...]]`.
+        const inner = swiftType.slice(1, -1).trim();
+        if (inner.startsWith('[') || !inner.includes(':')) return '[]';
+        return '[:]';
+    }
     if (swiftType.endsWith('?')) return 'nil';
     return '.init()';
 }
@@ -465,12 +529,51 @@ function cleanSourceName(raw: string): string {
     return source;
 }
 
-function deriveEntityName(screen: Screen): string | null {
+function deriveEntityName(screen: Screen, model?: SemanticAppModel): string | null {
     const req = screen.dataRequirements?.[0];
     if (!req) return null;
     const raw = req.source ?? (req as any).entity;
     if (!raw) return null;
-    return pascalCase(cleanSourceName(raw));
+    const name = pascalCase(cleanSourceName(raw));
+    return model ? resolveEntityCasing(name, model) : name;
+}
+
+/**
+ * Resolve a type name against known entity names in the model using
+ * case-insensitive matching. Returns the properly-cased entity name
+ * if found, or the original name if not.
+ *
+ * This fixes the issue where data requirement sources come through as
+ * all-lowercase compound words (e.g., "historyitem" from URL paths)
+ * that pascalCase can't split into proper words ("Historyitem" instead
+ * of "HistoryItem").
+ */
+/** Check if an entity name will exist in the generated Swift output (not junk, not filtered) */
+function entityExistsInOutput(name: string, model: SemanticAppModel): boolean {
+    return (model.entities ?? []).some(e => !isJunkEntity(e) && pascalCase(e.name) === name);
+}
+
+/**
+ * Build a ForEach closure header with an explicit type annotation only when the
+ * entity type exists in the generated output. When the type doesn't exist (e.g.,
+ * "Collections"), omit the annotation so Swift infers from the array element type.
+ */
+function forEachHeader(arrayExpr: string, varName: string, entityName: string, model: SemanticAppModel): string {
+    if (entityExistsInOutput(entityName, model)) {
+        return `ForEach(${arrayExpr}) { (${varName}: ${entityName}) in`;
+    }
+    return `ForEach(${arrayExpr}) { ${varName} in`;
+}
+
+function resolveEntityCasing(name: string, model: SemanticAppModel): string {
+    const entities = model.entities ?? [];
+    const lower = name.toLowerCase();
+    for (const e of entities) {
+        if (!isJunkEntity(e) && pascalCase(e.name).toLowerCase() === lower) {
+            return pascalCase(e.name);
+        }
+    }
+    return name;
 }
 
 /**
@@ -482,7 +585,7 @@ function resolveEntity(screen: Screen, model: SemanticAppModel): Entity | null {
     if (entities.length === 0) return null;
 
     // 1. Match by data requirement source
-    const entityName = deriveEntityName(screen);
+    const entityName = deriveEntityName(screen, model);
     if (entityName) {
         const match = entities.find((e) => pascalCase(e.name) === entityName);
         if (match) return match;
@@ -663,6 +766,7 @@ function categorizeEntityFields(entity: Entity): EntityFieldRoles {
 function deduplicateFields(fields: Field[]): Field[] {
     const seen = new Set<string>();
     return fields.filter((f) => {
+        if (!isValidSwiftFieldName(f.name)) return false;
         if (seen.has(f.name)) return false;
         seen.add(f.name);
         return true;
@@ -690,15 +794,27 @@ function needsAsyncLoading(screen: Screen): boolean {
 function findDetailRoute(screen: Screen, model: SemanticAppModel): { routeCaseName: string } | null {
     const routes = model.navigation?.routes ?? [];
     const screens = model.screens ?? [];
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    // Only consider screens that will actually be generated (not filtered as marketing)
+    const generatedScreens = screens.filter((s) => !isMarketingScreen(s));
+    const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
     const entityLower = entityName.toLowerCase();
+
+    // Build the set of AppRoute case names that the navigation generator will emit,
+    // so we only reference routes that actually exist in the generated code.
+    const generatedRouteCases = new Set<string>();
+    for (const s of generatedScreens) {
+        const caseName = getDetailRouteCaseName(s, model);
+        if (caseName) generatedRouteCases.add(caseName);
+        // Also add the plain camelCase name (non-detail routes)
+        generatedRouteCases.add(camelCase(s.name));
+    }
 
     // Look for a route with dynamic params whose screen name relates to this entity
     for (const route of routes) {
         if (route.params.length === 0) continue;
 
-        // Find the screen this route maps to
-        const targetScreen = screens.find((s) => s.name === route.screen);
+        // Find the screen this route maps to — must be a generated (non-marketing) screen
+        const targetScreen = generatedScreens.find((s) => s.name === route.screen);
         if (!targetScreen) continue;
 
         // Check if the route path includes the entity name (e.g., /products/:id)
@@ -710,16 +826,16 @@ function findDetailRoute(screen: Screen, model: SemanticAppModel): { routeCaseNa
 
         if (isRelated) {
             const caseName = getDetailRouteCaseName(targetScreen, model);
-            if (caseName) return { routeCaseName: caseName };
+            if (caseName && generatedRouteCases.has(caseName)) return { routeCaseName: caseName };
         }
     }
 
     // Also check if there's a detail screen by naming convention (e.g., ProductsDetail)
     const detailScreenName = `${screen.name}Detail`;
-    const detailScreen = screens.find((s) => s.name === detailScreenName);
+    const detailScreen = generatedScreens.find((s) => s.name === detailScreenName);
     if (detailScreen) {
         const caseName = getDetailRouteCaseName(detailScreen, model);
-        if (caseName) return { routeCaseName: caseName };
+        if (caseName && generatedRouteCases.has(caseName)) return { routeCaseName: caseName };
     }
 
     return null;
@@ -850,7 +966,7 @@ function generateLayoutBody(screen: Screen, model: SemanticAppModel, indentLevel
 }
 
 function generateListLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const entity = resolveEntity(screen, model);
     const detailRoute = findDetailRoute(screen, model);
@@ -864,81 +980,96 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
         return generateCustomLayout(screen, model, components, indentLevel);
     }
 
+    const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
+
+    // Detect complex row: NavigationLink + AsyncImage creates deep nesting that
+    // overwhelms the Swift type checker. Extract row content to a helper method.
+    const roles = entity ? categorizeEntityFields(entity) : null;
+    const needsRowHelper = detailRoute && entity && roles?.imageField;
+
     lines.push('List {');
-    lines.push(`    ForEach(${varName}s) { (${varName}: ${entityName}) in`);
-
-    // Wrap row content in NavigationLink when a detail route exists
-    if (detailRoute) {
+    if (needsRowHelper) {
+        // Use extracted helper to keep ForEach closure simple for Swift type checker
+        lines.push(`    ${forEachHeader(arrayVar, varName, entityName, model)}`);
         lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
-    }
-
-    // Extra indentation when wrapped in NavigationLink
-    const ri = detailRoute ? '    ' : '';
-
-    if (entity) {
-        const roles = categorizeEntityFields(entity);
-        lines.push(`        ${ri}HStack(spacing: 12) {`);
-        if (roles.imageField) {
-            lines.push(`            ${ri}AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
-            lines.push(`                ${ri}image.resizable().aspectRatio(contentMode: .fill)`);
-            lines.push(`            ${ri}} placeholder: {`);
-            lines.push(`                ${ri}Image(systemName: "photo.circle.fill")`);
-            lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
-            lines.push(`            ${ri}}`);
-            lines.push(`            ${ri}.frame(width: 44, height: 44)`);
-            lines.push(`            ${ri}.clipShape(RoundedRectangle(cornerRadius: 8))`);
-        }
-        lines.push(`            ${ri}VStack(alignment: .leading, spacing: 4) {`);
-        if (roles.titleField) {
-            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.titleField.name)})`);
-            lines.push(`                    ${ri}.font(.headline)`);
-        } else {
-            lines.push(`                ${ri}Text(String(describing: ${varName}.id))`);
-            lines.push(`                    ${ri}.font(.headline)`);
-        }
-        if (roles.subtitleField) {
-            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.subtitleField.name)})`);
-            lines.push(`                    ${ri}.font(.subheadline)`);
-            lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
-        }
-        if (roles.priceField) {
-            lines.push(`                ${ri}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
-            lines.push(`                    ${ri}.font(.subheadline)`);
-            lines.push(`                    ${ri}.fontWeight(.semibold)`);
-        }
-        lines.push(`            ${ri}}`);
-        lines.push(`            ${ri}Spacer()`);
-        lines.push(`        ${ri}}`);
+        lines.push(`            rowContent(for: ${varName})`);
+        lines.push('        }');
+        lines.push('    }');
     } else {
-        // No entity resolved — try to find it by name for a basic inline row
-        const fallbackEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);
-        if (fallbackEntity) {
-            const fbRoles = categorizeEntityFields(fallbackEntity);
-            lines.push(`        ${ri}VStack(alignment: .leading, spacing: 4) {`);
-            if (fbRoles.titleField) {
-                lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.titleField.name)})`);
-                lines.push(`                ${ri}.font(.headline)`);
+        lines.push(`    ${forEachHeader(arrayVar, varName, entityName, model)}`);
+
+        // Wrap row content in NavigationLink when a detail route exists
+        if (detailRoute) {
+            lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
+        }
+
+        // Extra indentation when wrapped in NavigationLink
+        const ri = detailRoute ? '    ' : '';
+
+        if (entity && roles) {
+            lines.push(`        ${ri}HStack(spacing: 12) {`);
+            if (roles.imageField) {
+                lines.push(`            ${ri}AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
+                lines.push(`                ${ri}image.resizable().aspectRatio(contentMode: .fill)`);
+                lines.push(`            ${ri}} placeholder: {`);
+                lines.push(`                ${ri}Image(systemName: "photo.circle.fill")`);
+                lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
+                lines.push(`            ${ri}}`);
+                lines.push(`            ${ri}.frame(width: 44, height: 44)`);
+                lines.push(`            ${ri}.clipShape(RoundedRectangle(cornerRadius: 8))`);
+            }
+            lines.push(`            ${ri}VStack(alignment: .leading, spacing: 4) {`);
+            if (roles.titleField) {
+                lines.push(`                ${ri}Text(${varName}.${camelCase(roles.titleField.name)})`);
+                lines.push(`                    ${ri}.font(.headline)`);
             } else {
-                lines.push(`            ${ri}Text(String(describing: ${varName}.id))`);
-                lines.push(`                ${ri}.font(.headline)`);
+                lines.push(`                ${ri}Text(String(describing: ${varName}.id))`);
+                lines.push(`                    ${ri}.font(.headline)`);
             }
-            if (fbRoles.subtitleField) {
-                lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.subtitleField.name)})`);
-                lines.push(`                ${ri}.font(.subheadline).foregroundStyle(.secondary)`);
+            if (roles.subtitleField) {
+                lines.push(`                ${ri}Text(${varName}.${camelCase(roles.subtitleField.name)})`);
+                lines.push(`                    ${ri}.font(.subheadline)`);
+                lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
             }
+            if (roles.priceField) {
+                lines.push(`                ${ri}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+                lines.push(`                    ${ri}.font(.subheadline)`);
+                lines.push(`                    ${ri}.fontWeight(.semibold)`);
+            }
+            lines.push(`            ${ri}}`);
+            lines.push(`            ${ri}Spacer()`);
             lines.push(`        ${ri}}`);
         } else {
-            lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
-            lines.push(`            ${ri}.font(.headline)`);
+            // No entity resolved — try to find it by name for a basic inline row
+            const fallbackEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);
+            if (fallbackEntity) {
+                const fbRoles = categorizeEntityFields(fallbackEntity);
+                lines.push(`        ${ri}VStack(alignment: .leading, spacing: 4) {`);
+                if (fbRoles.titleField) {
+                    lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.titleField.name)})`);
+                    lines.push(`                ${ri}.font(.headline)`);
+                } else {
+                    lines.push(`            ${ri}Text(String(describing: ${varName}.id))`);
+                    lines.push(`                ${ri}.font(.headline)`);
+                }
+                if (fbRoles.subtitleField) {
+                    lines.push(`            ${ri}Text(${varName}.${camelCase(fbRoles.subtitleField.name)})`);
+                    lines.push(`                ${ri}.font(.subheadline).foregroundStyle(.secondary)`);
+                }
+                lines.push(`        ${ri}}`);
+            } else {
+                lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
+                lines.push(`            ${ri}.font(.headline)`);
+            }
         }
-    }
 
-    // Close NavigationLink if present
-    if (detailRoute) {
-        lines.push('        }');
-    }
+        // Close NavigationLink if present
+        if (detailRoute) {
+            lines.push('        }');
+        }
 
-    lines.push('    }');
+        lines.push('    }');
+    }
     lines.push('}');
 
     // Search support if screen has a search-related state binding
@@ -990,7 +1121,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
 }
 
 function generateGridLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
     const varName = camelCase(entityName);
     const entity = resolveEntity(screen, model);
     const detailRoute = findDetailRoute(screen, model);
@@ -1008,8 +1139,9 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push(']');
     lines.push('');
     lines.push('ScrollView {');
+    const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
     lines.push('    LazyVGrid(columns: columns, spacing: 16) {');
-    lines.push(`        ForEach(${varName}s) { (${varName}: ${entityName}) in`);
+    lines.push(`        ${forEachHeader(arrayVar, varName, entityName, model)}`);
 
     // Wrap grid item in NavigationLink when a detail route exists
     if (detailRoute) {
@@ -1153,7 +1285,7 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
     const entity = resolveDetailEntity(screen, model);
     // Use the same entity resolution as the state declaration in generateViewFile
     // to ensure the variable name matches what was declared as @State
-    const allEntities = (model.entities ?? []).filter(e => !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+    const allEntities = (model.entities ?? []).filter(e => !isJunkEntity(e) && !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
     const inferredName = inferEntityFromScreen(screen);
     const inferredExists = allEntities.some(e => pascalCase(e.name) === pascalCase(inferredName));
     let resolvedEntity = entity;
@@ -1330,12 +1462,13 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
     // For dashboard/home screens, resolveEntity may return a bogus "Home" entity
     // that doesn't match any real data model. Fall back to the first non-enum entity.
     let entity = resolveEntity(screen, model);
-    let entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    let entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
 
     // If resolveEntity returned null or matched an entity with very few fields (< 3),
     // fall back to the entity in the model with the most fields (e.g., "Product" for e-commerce).
-    const entities = model.entities ?? [];
-    if (entities.length > 0 && (!entity || (entity.fields ?? []).length < 3)) {
+    // Filter out junk entities and enum-only entities so we pick a real data model.
+    const entities = (model.entities ?? []).filter(e => !isJunkEntity(e) && !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+    if (entities.length > 0 && (!entity || isJunkEntity(entity) || (entity.fields ?? []).length < 3)) {
         const bestEntity = [...entities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
         if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
             entity = bestEntity;
@@ -1400,7 +1533,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push('');
         lines.push('                ScrollView(.horizontal, showsIndicators: false) {');
         lines.push('                    LazyHStack(spacing: 16) {');
-        lines.push(`                        ForEach(${featuredArrayVar}) { (${varName}: ${entityName}) in`);
+        lines.push(`                        ${forEachHeader(featuredArrayVar, varName, entityName, model)}`);
 
         if (entity) {
             const roles = categorizeEntityFields(entity);
@@ -1515,7 +1648,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push('                        .font(.subheadline)');
         lines.push('                }');
         lines.push('');
-        lines.push(`                ForEach(${arrayVar}.prefix(5)) { (${varName}: ${entityName}) in`);
+        lines.push(`                ${forEachHeader(`${arrayVar}.prefix(5)`, varName, entityName, model)}`);
         lines.push('                    HStack(spacing: 12) {');
         if (roles.imageField) {
             lines.push(`                        AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
@@ -1753,18 +1886,23 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
 
     // Form fields from state bindings
     const bindings = screen.stateBindings ?? [];
+    // Non-text bindings that should not become TextFields (booleans, status flags, arrays, etc.)
+    const nonTextBindings = new Set(['loading', 'isloading', 'error', 'success', 'showpassword', 'issubmitting', 'iserror', 'issuccess', 'disabled', 'isdisabled', 'visible', 'isvisible', 'submitted', 'issubmitted']);
     if (bindings.length > 0) {
         for (const binding of bindings) {
             const lower = binding.toLowerCase();
+            if (nonTextBindings.has(lower)) continue; // skip non-text state
             if (lower.includes('password')) {
                 lines.push(`    SecureField("Password", text: $${camelCase(binding)})`);
                 lines.push('        .textFieldStyle(.roundedBorder)');
             } else if (lower.includes('email')) {
                 lines.push(`    TextField("Email", text: $${camelCase(binding)})`);
-                lines.push('        .textFieldStyle(.roundedBorder)');
+                lines.push('        #if os(iOS)');
                 lines.push('        .keyboardType(.emailAddress)');
                 lines.push('        .textContentType(.emailAddress)');
                 lines.push('        .textInputAutocapitalization(.never)');
+                lines.push('        #endif');
+                lines.push('        .textFieldStyle(.roundedBorder)');
             } else {
                 lines.push(`    TextField("${humanizeFieldName(binding)}", text: $${camelCase(binding)})`);
                 lines.push('        .textFieldStyle(.roundedBorder)');
@@ -1772,10 +1910,12 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
         }
     } else {
         lines.push('    TextField("Email", text: $email)');
-        lines.push('        .textFieldStyle(.roundedBorder)');
+        lines.push('        #if os(iOS)');
         lines.push('        .keyboardType(.emailAddress)');
         lines.push('        .textContentType(.emailAddress)');
         lines.push('        .textInputAutocapitalization(.never)');
+        lines.push('        #endif');
+        lines.push('        .textFieldStyle(.roundedBorder)');
         lines.push('');
         lines.push('    SecureField("Password", text: $password)');
         lines.push('        .textFieldStyle(.roundedBorder)');
@@ -1821,7 +1961,7 @@ function isCartScreen(screen: Screen): boolean {
  */
 function generateCartLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
     const entity = resolveEntity(screen, model);
-    const entityName = deriveEntityName(screen) ?? 'CartItem';
+    const entityName = deriveEntityName(screen, model) ?? 'CartItem';
     const varName = camelCase(entityName);
     const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
     const actions = screen.actions ?? [];
@@ -1949,7 +2089,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push('    VStack(spacing: 0) {');
     lines.push('        // Cart items');
     lines.push('        List {');
-    lines.push(`            ForEach(${arrayVar}) { (${varName}: ${entityName}) in`);
+    lines.push(`            ${forEachHeader(arrayVar, varName, entityName, model)}`);
     lines.push('                HStack(spacing: 12) {');
 
     // Item image
@@ -2097,15 +2237,16 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
 
     // If we have repeated components or collection data, render a list-like section
     if (repeatedComponents.length > 0 || hasCollectionData) {
-        const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+        const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
         const varName = camelCase(entityName);
 
         if (entity) {
             const roles = categorizeEntityFields(entity);
 
+            const arrayVar = varName.endsWith('s') ? varName : `${varName}s`;
             lines.push('');
             lines.push(`        // ${entityName} list`);
-            lines.push(`        ForEach(${varName}s) { (${varName}: ${entityName}) in`);
+            lines.push(`        ${forEachHeader(arrayVar, varName, entityName, model)}`);
             lines.push('            HStack(spacing: 12) {');
             if (roles.imageField) {
                 lines.push(`                AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
@@ -2441,21 +2582,23 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const rawSource = req.source ?? (req as any).entity;
         if (!rawSource) continue;
         const reqSource = cleanSourceName(rawSource);
-        const entityName = pascalCase(reqSource);
+        const entityName = resolveEntityCasing(pascalCase(reqSource), model);
         const varName = camelCase(reqSource);
 
         if (req.cardinality === 'many' || (req as any).type === 'list') {
             const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
             if (!declaredNames.has(arrayVarName)) {
                 // Only use typed array if the entity exists in the model
-                const entityExists = (model.entities ?? []).some(e => pascalCase(e.name) === entityName);
+                const entityExists = entityExistsInOutput(entityName, model);
                 const arrayType = entityExists ? `[${entityName}]` : '[String]';
                 lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
                 declaredNames.add(arrayVarName);
             }
         } else {
             if (!declaredNames.has(varName)) {
-                lines.push(`    @State private var ${varName}: ${entityName}?`);
+                const entityExists = entityExistsInOutput(entityName, model);
+                const stateType = entityExists ? `${entityName}?` : 'String?';
+                lines.push(`    @State private var ${varName}: ${stateType}`);
                 declaredNames.add(varName);
             }
         }
@@ -2466,7 +2609,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
 
     // Entity-based properties for list/grid/dashboard layouts when no explicit data requirements
-    let derivedEntityName = deriveEntityName(screen);
+    let derivedEntityName = deriveEntityName(screen, model);
     // Also include custom layouts with repeated components or collection data requirements
     const hasRepeatedContent = (screen.components ?? []).some(c => c.count === 'repeated');
     const hasCollectionReq = (screen.dataRequirements ?? []).some(r => r.cardinality === 'many');
@@ -2474,7 +2617,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {
-            lines.push(`    @State private var ${arrayVarName}: [${derivedEntityName}] = []`);
+            const entityExists = entityExistsInOutput(derivedEntityName, model);
+            const arrayType = entityExists ? `[${derivedEntityName}]` : '[String]';
+            lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
             declaredNames.add(arrayVarName);
         }
         // List/grid screens with entity arrays need async data loading
@@ -2489,6 +2634,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         // For dashboard/home screens, always use the entity with the most fields
         // rather than trying to derive from screen name (which gives "Home" → "Home" type)
         const allEntities = (model.entities ?? []).filter(e => {
+            if (isJunkEntity(e)) return false;
             // Skip enum entities (single __enum field)
             if (e.fields.length === 1 && e.fields[0]?.name === '__enum') return false;
             return e.fields.length >= 3;
@@ -2498,7 +2644,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const dashVar = camelCase(dashEntityName);
         const dashArrayVar = dashVar.endsWith('s') ? dashVar : `${dashVar}s`;
         if (!declaredNames.has(dashArrayVar)) {
-            lines.push(`    @State private var ${dashArrayVar}: [${pascalCase(dashEntityName)}] = []`);
+            const dashEntityExists = entityExistsInOutput(pascalCase(dashEntityName), model);
+            const dashArrayType = dashEntityExists ? `[${pascalCase(dashEntityName)}]` : '[String]';
+            lines.push(`    @State private var ${dashArrayVar}: ${dashArrayType} = []`);
             declaredNames.add(dashArrayVar);
         }
     }
@@ -2514,7 +2662,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
         // Try to find the actual entity for this detail screen
         const inferredName = inferEntityFromScreen(screen);
-        const allEntities = (model.entities ?? []).filter(e => !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+        const allEntities = (model.entities ?? []).filter(e => !isJunkEntity(e) && !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
         let matchedEntity = resolveDetailEntity(screen, model);
         const inferredExists = allEntities.some(e => pascalCase(e.name) === pascalCase(inferredName));
         // If no match found and inferred name doesn't match any entity, fall back to
@@ -2629,7 +2777,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // Cart-specific: ensure cart items array state exists and add computed total
     const isCart = isCartScreen(screen);
     if (isCart) {
-        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartEntityName = deriveEntityName(screen, model) ?? 'CartItem';
         const cartVarName = camelCase(cartEntityName);
         const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
         if (!declaredNames.has(cartArrayVar)) {
@@ -2644,7 +2792,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     // Cart-specific: computed total property
     if (isCart) {
-        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartEntityName = deriveEntityName(screen, model) ?? 'CartItem';
         const cartVarName = camelCase(cartEntityName);
         const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
         const cartEntity = resolveEntity(screen, model);
@@ -2738,6 +2886,54 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     lines.push('    }');
 
+    // Generate @ViewBuilder rowContent helper for list layouts with complex rows
+    // (NavigationLink + AsyncImage) to avoid Swift type-checker timeout
+    if (screen.layout === 'list') {
+        const listEntityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
+        const listVarName = camelCase(listEntityName);
+        const listEntity = resolveEntity(screen, model);
+        const listDetailRoute = findDetailRoute(screen, model);
+        if (listDetailRoute && listEntity) {
+            const listRoles = categorizeEntityFields(listEntity);
+            if (listRoles.imageField) {
+                lines.push('');
+                lines.push(`    @ViewBuilder`);
+                lines.push(`    private func rowContent(for ${listVarName}: ${listEntityName}) -> some View {`);
+                lines.push('        HStack(spacing: 12) {');
+                lines.push(`            AsyncImage(url: URL(string: ${imageUrlExpr(`${listVarName}.${camelCase(listRoles.imageField.name)}`, listRoles.imageField)})) { image in`);
+                lines.push('                image.resizable().aspectRatio(contentMode: .fill)');
+                lines.push('            } placeholder: {');
+                lines.push('                Image(systemName: "photo.circle.fill")');
+                lines.push('                    .foregroundStyle(.secondary)');
+                lines.push('            }');
+                lines.push('            .frame(width: 44, height: 44)');
+                lines.push('            .clipShape(RoundedRectangle(cornerRadius: 8))');
+                lines.push('            VStack(alignment: .leading, spacing: 4) {');
+                if (listRoles.titleField) {
+                    lines.push(`                Text(${listVarName}.${camelCase(listRoles.titleField.name)})`);
+                    lines.push('                    .font(.headline)');
+                } else {
+                    lines.push(`                Text(String(describing: ${listVarName}.id))`);
+                    lines.push('                    .font(.headline)');
+                }
+                if (listRoles.subtitleField) {
+                    lines.push(`                Text(${listVarName}.${camelCase(listRoles.subtitleField.name)})`);
+                    lines.push('                    .font(.subheadline)');
+                    lines.push('                    .foregroundStyle(.secondary)');
+                }
+                if (listRoles.priceField) {
+                    lines.push(`                Text(${listVarName}.${camelCase(listRoles.priceField.name)}, format: .currency(code: "USD"))`);
+                    lines.push('                    .font(.subheadline)');
+                    lines.push('                    .fontWeight(.semibold)');
+                }
+                lines.push('            }');
+                lines.push('            Spacer()');
+                lines.push('        }');
+                lines.push('    }');
+            }
+        }
+    }
+
     // Generate loadData function for screens with API data requirements
     if (hasApiData) {
         lines.push('');
@@ -2784,11 +2980,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const reqSource = cleanSourceName(rawReqSource);
                 const varName = camelCase(reqSource);
                 const arrayVarName = (req.cardinality === 'many' || (req as any).type === 'list')
-                    ? (varName.endsWith('s') ? varName : `${varName}s`)
+                    ? (varName.endsWith('s') ? varName : pluralize(varName))
                     : varName;
                 // For many/list cardinality, use plural fetch method name
                 const fetchName = (req.cardinality === 'many' || (req as any).type === 'list')
-                    ? (reqSource.endsWith('s') ? reqSource : `${reqSource}s`)
+                    ? (reqSource.endsWith('s') ? reqSource : pluralize(reqSource))
                     : reqSource;
                 lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
                 hasLoadDataBody = true;
@@ -2799,8 +2995,8 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         // generate a fetch call based on the derived entity name.
         if (!hasLoadDataBody && derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
             const entVar = camelCase(derivedEntityName);
-            const entArrayVar = entVar.endsWith('s') ? entVar : `${entVar}s`;
-            const pluralName = derivedEntityName.endsWith('s') ? derivedEntityName : `${derivedEntityName}s`;
+            const entArrayVar = entVar.endsWith('s') ? entVar : pluralize(entVar);
+            const pluralName = derivedEntityName.endsWith('s') ? derivedEntityName : pluralize(derivedEntityName);
             // Check if the fetch method would exist in the generated API client
             const listEndpoints = model.apiEndpoints ?? [];
             const hasListFetch = listEndpoints.some(ep => {
@@ -2865,7 +3061,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     // Cart-specific helper functions
     if (isCart) {
-        const cartEntityName = deriveEntityName(screen) ?? 'CartItem';
+        const cartEntityName = deriveEntityName(screen, model) ?? 'CartItem';
         const cartVarName = camelCase(cartEntityName);
         const cartArrayVar = cartVarName.endsWith('s') ? cartVarName : `${cartVarName}s`;
         let qtyField = 'quantity';
@@ -2972,7 +3168,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 function generateRowView(screen: Screen, model: SemanticAppModel): GeneratedFile | null {
     if (screen.layout !== 'list') return null;
 
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
     if (!entityName) return null;
 
     // If we inlined the row content (entity was resolved), skip generating a separate row view
@@ -3015,7 +3211,7 @@ function generateRowView(screen: Screen, model: SemanticAppModel): GeneratedFile
 function generateCardView(screen: Screen, model: SemanticAppModel): GeneratedFile | null {
     if (screen.layout !== 'grid' && screen.layout !== 'dashboard') return null;
 
-    const entityName = deriveEntityName(screen) ?? inferEntityFromScreen(screen);
+    const entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
     if (!entityName) return null;
 
     // If we inlined the card content (entity was resolved), skip generating a separate card view
@@ -3105,6 +3301,7 @@ const MARKETING_NAME_PATTERNS: RegExp[] = [
     /^use-cases-/i,        // use-cases-enterprise, use-cases-startup, etc.
     /^use-cases$/i,
     /^for-/i,              // for-journalists, for-vc-analysts, for-teams, etc.
+    /^register-page$/i,    // web-only registration page (not the auth Register form)
     /^careers$/i,
     /^press$/i,
     /^contact$/i,
@@ -3161,9 +3358,12 @@ export function isMarketingScreen(screen: Screen): boolean {
         screen.stateBindings.length === 0 &&
         screen.actions.length === 0;
 
-    // Filter blog content pages — these are articles, not app screens
-    if (kebabName.startsWith('blog-') || (name === 'blog' && isStatic)) return true;
+    // Filter blog content pages — individual articles are not app screens.
+    // Preserve generic blog screens: Blog, BlogView, BlogList, BlogDetail, BlogPost, BlogFeed.
+    const BLOG_GENERIC = /^blog(-?(view|list|detail|post|feed))?$/i;
     if (name.toLowerCase().startsWith('blogindex')) return true;
+    if (kebabName.startsWith('blog-') && !BLOG_GENERIC.test(kebabName)) return true;
+    if (name === 'blog' && isStatic) return true;
 
     return false;
 }
@@ -3195,4 +3395,4 @@ export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
 }
 
 // Re-export helpers for use by other generators
-export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath };
+export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName };

@@ -10,7 +10,7 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { mapTsTypeToSwift, typeDefToSwift, pascalCase, camelCase, indent, relativeSourcePath } from './swiftui-generator';
+import { mapTsTypeToSwift, typeDefToSwift, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName } from './swiftui-generator';
 
 // ---------------------------------------------------------------------------
 // Field type analysis
@@ -184,7 +184,11 @@ function generateEnum(entity: Entity): string {
 
 function generateStruct(entity: Entity, model: SemanticAppModel): string {
     const structName = pascalCase(entity.name);
-    const fields = (entity.fields ?? []).map(analyseField);
+    const fields = (entity.fields ?? [])
+        .filter(f => isValidSwiftFieldName(f.name))
+        .filter(f => !JS_BUILTIN_FIELDS.has(f.name))          // Skip leaked prototype methods
+        .filter(f => !/=>/.test(JSON.stringify(f.type ?? {})))  // Skip fields with arrow fn types
+        .map(analyseField);
     const hasId = fields.some((f) => f.isId);
     const needsCodingKeys = fields.some((f) => f.needsCodingKey);
 
@@ -317,7 +321,7 @@ function formatDefaultValue(value: any, swiftType: string): string {
  * Generate a sensible preview default value for a Swift field based on its
  * name and type.  Used to build `static func preview()` factory methods.
  */
-function previewValue(field: SwiftField, entityName: string): string {
+function previewValue(field: SwiftField, entityName: string, enumNames?: Map<string, string>): string {
     const nameLower = field.name.toLowerCase();
     const baseSwiftType = field.type.replace('?', '');
 
@@ -349,21 +353,33 @@ function previewValue(field: SwiftField, entityName: string): string {
         return '"preview-1"';
     }
 
-    // Name-based heuristics (checked before pure-type heuristics)
+    // Enum type → use first case (checked BEFORE name heuristics so that
+    // fields named "category", "type", etc. get a proper enum case instead
+    // of the String literal "Sample" when their declared type is an enum)
+    if (enumNames) {
+        const firstCase = enumNames.get(baseSwiftType);
+        if (firstCase !== undefined) {
+            return `.${firstCase}`;
+        }
+    }
+
+    // Name-based heuristics (checked before pure-type heuristics).
+    // Each heuristic guards on baseSwiftType to avoid producing a value
+    // that doesn't match the field's declared type.
     if (nameLower === 'name' || nameLower === 'title') return `"Sample ${entityName}"`;
     if (nameLower === 'description' || nameLower === 'desc' || nameLower === 'summary') {
         return `"A sample ${entityName.charAt(0).toLowerCase() + entityName.slice(1)} for previewing"`;
     }
-    if (nameLower === 'price' || nameLower === 'cost' || nameLower === 'amount') return '29.99';
+    if ((nameLower === 'price' || nameLower === 'cost' || nameLower === 'amount') && baseSwiftType === 'Double') return '29.99';
     if (nameLower === 'imageurl' || nameLower === 'image' || nameLower === 'imageurl' || nameLower === 'thumbnailurl' || nameLower === 'thumbnail' || nameLower === 'avatar' || nameLower === 'avatarurl' || nameLower === 'photo' || nameLower === 'photourl') {
         return '"https://picsum.photos/200"';
     }
     if (nameLower === 'email') return '"preview@example.com"';
     if (nameLower === 'url' || nameLower === 'link' || nameLower === 'href' || nameLower === 'website') return '"https://example.com"';
     if (nameLower === 'phone' || nameLower === 'phonenumber') return '"+1 555-0100"';
-    if (nameLower === 'category' || nameLower === 'type' || nameLower === 'kind' || nameLower === 'group') return '"Sample"';
-    if (nameLower === 'rating' || nameLower === 'score') return '4.5';
-    if (nameLower === 'quantity' || nameLower === 'count') return '1';
+    if ((nameLower === 'category' || nameLower === 'type' || nameLower === 'kind' || nameLower === 'group') && baseSwiftType === 'String') return '"Sample"';
+    if ((nameLower === 'rating' || nameLower === 'score') && (baseSwiftType === 'Double' || baseSwiftType === 'Int')) return '4.5';
+    if ((nameLower === 'quantity' || nameLower === 'count') && (baseSwiftType === 'Int' || baseSwiftType === 'Double')) return '1';
 
     // String fallback for remaining String fields
     if (baseSwiftType === 'String') return '"Sample"';
@@ -374,14 +390,14 @@ function previewValue(field: SwiftField, entityName: string): string {
         return `.preview()`;
     }
 
+    // Dictionary — check BEFORE array since both start with '['
+    if (baseSwiftType.startsWith('[') && baseSwiftType.includes(':')) {
+        return '[:]';
+    }
+
     // Array of entities
     if (baseSwiftType.startsWith('[') && baseSwiftType.endsWith(']')) {
         return '[]';
-    }
-
-    // Dictionary
-    if (baseSwiftType.startsWith('[') && baseSwiftType.includes(':')) {
-        return '[:]';
     }
 
     return '""';
@@ -393,8 +409,23 @@ function previewValue(field: SwiftField, entityName: string): string {
  */
 function generatePreviewExtension(entity: Entity, model: SemanticAppModel): string {
     const structName = pascalCase(entity.name);
-    const fields = (entity.fields ?? []).map(analyseField);
+    const fields = (entity.fields ?? [])
+        .filter(f => isValidSwiftFieldName(f.name))
+        .filter(f => !JS_BUILTIN_FIELDS.has(f.name))          // Skip leaked prototype methods
+        .filter(f => !/=>/.test(JSON.stringify(f.type ?? {})))  // Skip fields with arrow fn types
+        .map(analyseField);
     const hasId = fields.some((f) => f.isId);
+
+    // Build enum lookup: PascalCase entity name → first case name
+    const enumNames = new Map<string, string>();
+    for (const e of (model.entities ?? [])) {
+        if (isEnumEntity(e)) {
+            const values = e.fields[0].type.values as string[];
+            if (values.length > 0) {
+                enumNames.set(pascalCase(e.name), enumCaseName(values[0]));
+            }
+        }
+    }
 
     const lines: string[] = [];
     lines.push('#if DEBUG');
@@ -410,7 +441,7 @@ function generatePreviewExtension(entity: Entity, model: SemanticAppModel): stri
     }
 
     for (const field of fields) {
-        const value = previewValue(field, structName);
+        const value = previewValue(field, structName, enumNames);
         initArgs.push(`${field.name}: ${value}`);
     }
 
@@ -473,17 +504,37 @@ const JUNK_ENTITY_NAMES = new Set([
 
 /** JS built-in method names that indicate a leaked prototype, not real data fields */
 const JS_BUILTIN_FIELDS = new Set([
-    'charAt', 'charCodeAt', 'indexOf', 'lastIndexOf', 'slice', 'substring',
-    'toLowerCase', 'toUpperCase', 'trim', 'split', 'replace', 'match',
-    'concat', 'includes', 'startsWith', 'endsWith', 'repeat', 'padStart',
-    'padEnd', 'search', 'toString', 'valueOf', 'localeCompare', 'normalize',
-    'map', 'filter', 'reduce', 'forEach', 'find', 'findIndex', 'some',
-    'every', 'flat', 'flatMap', 'push', 'pop', 'shift', 'unshift',
+    // String prototype
+    'charAt', 'charCodeAt', 'codePointAt', 'indexOf', 'lastIndexOf',
+    'slice', 'substring', 'substr', 'toLowerCase', 'toUpperCase',
+    'toLocaleLowerCase', 'toLocaleUpperCase', 'trim', 'trimStart', 'trimEnd',
+    'split', 'replace', 'replaceAll', 'match', 'matchAll',
+    'concat', 'includes', 'startsWith', 'endsWith', 'repeat',
+    'padStart', 'padEnd', 'search', 'toString', 'valueOf',
+    'localeCompare', 'normalize', 'at',
+    // String HTML methods (deprecated but still on prototype)
+    'anchor', 'big', 'blink', 'bold', 'fixed', 'fontcolor', 'fontsize',
+    'italics', 'link', 'small', 'strike', 'sub', 'sup',
+    // String/Array shared
+    'length',
+    // Array prototype
+    'map', 'filter', 'reduce', 'reduceRight', 'forEach', 'find', 'findIndex',
+    'findLast', 'findLastIndex', 'some', 'every', 'flat', 'flatMap',
+    'push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse',
+    'join', 'keys', 'values', 'entries', 'fill', 'copyWithin',
+    // Promise prototype
     'then', 'catch', 'finally', 'resolve', 'reject', 'all', 'race',
+    'allSettled', 'any',
+    // Function/Object prototype
     'apply', 'call', 'bind', 'constructor', 'prototype', 'hasOwnProperty',
+    'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString',
+    // Iterator protocol
+    'next', 'return', 'throw',
+    // Symbol-adjacent
+    'Symbol', 'iterator', 'toPrimitive', 'toStringTag',
 ]);
 
-function isJunkEntity(entity: Entity): boolean {
+export function isJunkEntity(entity: Entity): boolean {
     const lower = entity.name.toLowerCase();
     if (JUNK_ENTITY_NAMES.has(lower)) return true;
     // Filter entities whose names contain invalid Swift characters (e.g., angle brackets)
@@ -495,8 +546,23 @@ function isJunkEntity(entity: Entity): boolean {
     if (fields.length >= 3) {
         const builtinCount = fields.filter(f => JS_BUILTIN_FIELDS.has(f.name)).length;
         if (builtinCount >= 3 || builtinCount > fields.length * 0.5) return true;
+
+        // Also detect leaked prototypes via arrow function types in field definitions.
+        // Check typeName AND serialized type object — some leaks only show in nested props.
+        const arrowTypeCount = fields.filter(f => {
+            const typeName = f.type.typeName ?? '';
+            if (/=>/.test(typeName)) return true;
+            // Deep check: serialize the full type definition to catch nested arrow syntax
+            try {
+                return /=>/.test(JSON.stringify(f.type));
+            } catch {
+                return false;
+            }
+        }).length;
+        // If 3+ fields have arrow function types, or >30% of fields do, it's a leaked prototype
+        if (arrowTypeCount >= 3 || arrowTypeCount > fields.length * 0.3) return true;
     }
-    // Filter entities with fields containing arrow function types (TS syntax leak)
+    // Single-field arrow type check for smaller entities
     if (fields.some(f => /=>/.test(f.type.typeName ?? ''))) return true;
     return false;
 }

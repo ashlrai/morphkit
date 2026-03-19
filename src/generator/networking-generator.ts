@@ -10,7 +10,8 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase } from './swiftui-generator';
+import { pascalCase, camelCase, isMarketingScreen } from './swiftui-generator';
+import { isJunkEntity } from './model-generator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -520,11 +521,11 @@ function generateAPIClient(model: SemanticAppModel): string {
     lines.push('    }');
 
     // Generated endpoint methods — deduplicate by function signature
+    const generatedFuncNames = new Set<string>();
     if (endpoints.length > 0) {
         lines.push('');
         lines.push('    // MARK: - API Endpoints');
 
-        const generatedFuncNames = new Set<string>();
         for (const endpoint of endpoints) {
             const funcName = camelCase(generateFunctionName(endpoint));
             // Build a signature key including parameter types to allow overloads
@@ -535,6 +536,159 @@ function generateAPIClient(model: SemanticAppModel): string {
 
             lines.push('');
             lines.push(generateEndpointMethod(endpoint, model.entities ?? []));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Generate stub methods for fetch calls that loadData() will emit but no
+    // endpoint covers.  This mirrors the logic in swiftui-generator's loadData().
+    // -----------------------------------------------------------------------
+    const modelEntities = model.entities ?? [];
+    const entityNameSet = new Set(modelEntities.map(e => pascalCase(e.name)));
+    const stubMethods: Map<string, { returnType: string; params: string }> = new Map();
+
+    /** Clean a data-requirement source name the same way swiftui-generator does */
+    function cleanSourceNameForStub(raw: string): string {
+        let source = raw;
+        source = source.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
+        if (source.startsWith('/')) {
+            const segments = source.split('/').filter(s => s && s !== 'api' && !s.startsWith(':') && !s.startsWith('['));
+            source = segments[segments.length - 1] ?? source;
+        }
+        source = source.replace(/[/\\?&#=]/g, '');
+        return source;
+    }
+
+    for (const screen of (model.screens ?? []).filter(s => !isMarketingScreen(s))) {
+        const dataReqs = screen.dataRequirements ?? [];
+        for (const req of dataReqs) {
+            if (req.fetchStrategy !== 'api' && req.fetchStrategy !== 'context') continue;
+            const rawSource = req.source ?? (req as any).entity;
+            if (!rawSource) continue;
+            const reqSource = cleanSourceNameForStub(rawSource);
+            const entityName = pascalCase(reqSource);
+            const isMany = req.cardinality === 'many' || (req as any).type === 'list';
+
+            if (isMany) {
+                const fetchName = reqSource.endsWith('s') ? reqSource : pluralize(reqSource);
+                const funcName = camelCase(`fetch${pascalCase(fetchName)}`);
+                const sigKey = `${funcName}(0)`;
+                if (!generatedFuncNames.has(sigKey)) {
+                    const returnType = entityNameSet.has(entityName) ? `[${entityName}]` : '[String]';
+                    stubMethods.set(funcName, { returnType, params: '' });
+                }
+            } else {
+                const funcName = camelCase(`fetch${entityName}`);
+                // loadData() calls single-entity fetches with no params from the dataReqs loop
+                const sigKey = `${funcName}(0)`;
+                if (!generatedFuncNames.has(sigKey)) {
+                    const returnType = entityNameSet.has(entityName) ? entityName : 'String';
+                    stubMethods.set(funcName, { returnType, params: '' });
+                }
+            }
+        }
+
+        // Detail screens with id loading generate fetch${EntityName}(id:) calls.
+        // Mirror the view generator's isDetailScreen logic: layout=detail OR name ends with
+        // "Detail" OR the route has dynamic params. Also mirror its entity resolution which
+        // falls back to the entity with the most fields, not just dataReqs[0].
+        const isDetail = screen.layout === 'detail' ||
+            screen.name.endsWith('Detail') ||
+            (model.navigation?.routes ?? []).some(r => r.screen === screen.name && r.params.length > 0);
+
+        if (isDetail) {
+            // Try to resolve the detail entity the same way the view generator does
+            let detailEntityName: string | null = null;
+
+            // Strategy 1: from data requirements
+            if (dataReqs.length > 0) {
+                const rawSource = dataReqs[0]?.source ?? (dataReqs[0] as any)?.entity;
+                if (rawSource) {
+                    detailEntityName = pascalCase(cleanSourceNameForStub(rawSource));
+                }
+            }
+
+            // Strategy 2: infer from screen name
+            if (!detailEntityName) {
+                const inferName = screen.name
+                    .replace(/Detail$|Page$|View$|Screen$/i, '')
+                    .replace(/^\/+/, '');
+                if (inferName) detailEntityName = pascalCase(inferName);
+            }
+
+            // Strategy 3: fall back to entity with most fields (mirrors view generator)
+            const allEntities = (model.entities ?? []).filter(e =>
+                !isJunkEntity(e) && !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
+            if (detailEntityName && !entityNameSet.has(detailEntityName) && allEntities.length > 0) {
+                const bestEntity = [...allEntities].sort((a, b) => (b.fields?.length ?? 0) - (a.fields?.length ?? 0))[0];
+                if (bestEntity) detailEntityName = pascalCase(bestEntity.name);
+            }
+
+            if (detailEntityName) {
+                const funcName = camelCase(`fetch${detailEntityName}`);
+                const sigKey = `${funcName}(1)`;
+                if (!generatedFuncNames.has(sigKey)) {
+                    const returnType = entityNameSet.has(detailEntityName) ? detailEntityName : 'String';
+                    stubMethods.set(`${funcName}_id`, { returnType, params: 'id: String' });
+                }
+            }
+        }
+
+        // List/grid screens with derived entity names generate fetch calls with no params
+        if ((screen.layout === 'list' || screen.layout === 'grid') && dataReqs.length === 0) {
+            const firstReq = screen.dataRequirements?.[0];
+            const rawSource = firstReq?.source ?? (firstReq as any)?.entity;
+            if (rawSource) {
+                const reqSource = cleanSourceNameForStub(rawSource);
+                const entityName = pascalCase(reqSource);
+                const pluralName = entityName.endsWith('s') ? entityName : `${entityName}s`;
+                const funcName = camelCase(`fetch${pascalCase(pluralName)}`);
+                const sigKey = `${funcName}(0)`;
+                if (!generatedFuncNames.has(sigKey)) {
+                    const returnType = entityNameSet.has(entityName) ? `[${entityName}]` : '[String]';
+                    stubMethods.set(funcName, { returnType, params: '' });
+                }
+            }
+        }
+    }
+
+    // Generate stubs for store-generated fetch calls. Stores call
+    // apiClient.fetch${PluralName}() but the APIClient may only have
+    // the singular form (e.g., fetchMemory vs fetchMemories).
+    const statePatterns = model.stateManagement ?? [];
+    for (const sp of statePatterns) {
+        // Mirror project-generator's cleanStoreName logic
+        let storeName = sp.name;
+        storeName = storeName.replace(/^[Uu]se/, '');
+        storeName = storeName.replace(/[Ss]tore$/, '');
+        storeName = storeName.charAt(0).toUpperCase() + storeName.slice(1);
+
+        const pluralName = pluralize(storeName);
+        const funcName = camelCase(`fetch${pluralName}`);
+        const sigKey = `${funcName}(0)`;
+        if (!generatedFuncNames.has(sigKey) && !stubMethods.has(funcName)) {
+            const returnType = entityNameSet.has(storeName) ? `[${storeName}]` : '[String]';
+            stubMethods.set(funcName, { returnType, params: '' });
+        }
+    }
+
+    if (stubMethods.size > 0) {
+        lines.push('');
+        lines.push('    // MARK: - Auto-generated Stubs');
+        lines.push('    // These methods are called by views but have no matching API endpoint.');
+        lines.push('    // Replace with real implementations when endpoints are available.');
+
+        for (const [funcName, { returnType, params }] of stubMethods) {
+            // Use the real function name (strip the _id suffix used for Map key dedup)
+            const realFuncName = funcName.replace(/_id$/, '');
+            lines.push('');
+            if (returnType.startsWith('[')) {
+                lines.push(`    func ${realFuncName}(${params}) async throws -> ${returnType} { [] }`);
+            } else {
+                lines.push(`    func ${realFuncName}(${params}) async throws -> ${returnType} {`);
+                lines.push(`        throw NetworkError.notFound`);
+                lines.push('    }');
+            }
         }
     }
 

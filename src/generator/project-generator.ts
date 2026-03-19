@@ -8,7 +8,7 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { generateSwiftUIViews, pascalCase, relativeSourcePath } from './swiftui-generator';
+import { generateSwiftUIViews, pascalCase, relativeSourcePath, isMarketingScreen } from './swiftui-generator';
 import { generateSwiftModels } from './model-generator';
 import { generateNavigation } from './navigation-generator';
 import { generateNetworkingLayer } from './networking-generator';
@@ -220,6 +220,16 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
 // State layer generation
 // ---------------------------------------------------------------------------
 
+/** Naive pluralize — handles common English singular suffixes */
+function pluralize(word: string): string {
+    if (word.endsWith('y') && !/[aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
+    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
+        word.endsWith('sh') || word.endsWith('ch')) {
+        return word + 'es';
+    }
+    return word + 's';
+}
+
 /**
  * Generate the default fetch method lines for a store.
  * Used by both Zustand-derived stores (when no mutations defined) and
@@ -232,7 +242,7 @@ function generateDefaultFetchMethod(storeName: string, model?: SemanticAppModel)
     // Check if a plural fetch method (fetchProducts()) would exist in the generated APIClient
     // The APIClient generates fetchX() from endpoints where X matches the resource path segment
     const endpoints = model?.apiEndpoints ?? [];
-    const pluralName = `${storeName}s`;
+    const pluralName = pluralize(storeName);
     // A plural fetch method exists when there's a GET endpoint whose path ends with the
     // plural resource name (e.g., /products, /api/products) AND has no path params
     // (parameterized endpoints like /posts/:id/comments generate fetchComment(postId:), not fetchComments())
@@ -454,7 +464,7 @@ function resolveArrayTypeFromScreenName(
 
 function generateStateLayer(model: SemanticAppModel): GeneratedFile[] {
     const files: GeneratedFile[] = [];
-    const screens = model.screens ?? [];
+    const screens = (model.screens ?? []).filter((s) => !isMarketingScreen(s));
     const statePatterns = model.stateManagement ?? [];
 
     // Determine which entities have API endpoints and which are sub-types

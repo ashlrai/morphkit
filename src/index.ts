@@ -84,10 +84,18 @@ async function validateApiKey(apiKey: string): Promise<AuthResult> {
       remaining: data.remaining ?? 0,
     };
   } catch (error) {
-    // Network error — allow offline usage with a warning
-    if (error instanceof TypeError || (error as any)?.code === 'ECONNREFUSED') {
+    // Network errors — allow offline usage with a warning
+    const isNetworkError =
+      error instanceof TypeError ||
+      (error as any)?.code === 'ECONNREFUSED' ||
+      (error as any)?.code === 'ENOTFOUND' ||
+      (error instanceof DOMException && error.name === 'TimeoutError') ||
+      (error instanceof DOMException && error.name === 'AbortError');
+
+    if (isNetworkError) {
       return { valid: true, tier: 'free', remaining: -1, error: 'Could not reach Morphkit API — running in offline mode' };
     }
+    // Unexpected errors — still allow offline but log for debugging
     return { valid: true, tier: 'free', remaining: -1, error: 'API validation failed — running in offline mode' };
   }
 }

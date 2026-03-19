@@ -4,7 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://morphkit.dev',
   'Access-Control-Allow-Headers': 'authorization, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
@@ -61,20 +61,6 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  // Revoke the current key
-  const { error: revokeError } = await supabase
-    .from('api_keys')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('id', keyRecord.id)
-
-  if (revokeError) {
-    console.error('Failed to revoke key:', revokeError)
-    return new Response(JSON.stringify({ error: 'Failed to revoke current key' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
   // Generate a new API key: morphkit_sk_ + 32 random hex chars
   const randomBytes = new Uint8Array(16)
   crypto.getRandomValues(randomBytes)
@@ -87,7 +73,7 @@ Deno.serve(async (req: Request) => {
   const newKeyHash = await hashApiKey(newPlaintextKey)
   const keyPrefix = newPlaintextKey.slice(0, 16) // morphkit_sk_xxxx
 
-  // Store the new key
+  // Insert new key FIRST — if this fails, the old key stays valid (no lockout)
   const { error: insertError } = await supabase
     .from('api_keys')
     .insert({
@@ -103,6 +89,17 @@ Deno.serve(async (req: Request) => {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  // Only revoke the old key after the new one is safely stored
+  const { error: revokeError } = await supabase
+    .from('api_keys')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('id', keyRecord.id)
+
+  if (revokeError) {
+    // Non-fatal: new key works, old key is still valid temporarily
+    console.error('Failed to revoke old key:', revokeError)
   }
 
   return new Response(

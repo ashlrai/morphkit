@@ -5,7 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14?target=deno'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://morphkit.dev',
   'Access-Control-Allow-Headers': 'authorization, content-type, stripe-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
@@ -118,6 +118,17 @@ async function handleCheckoutCompleted(
   // Determine tier from the price
   const tier = session.metadata?.tier ?? 'pro'
 
+  // Retrieve the Stripe subscription to get period dates
+  let periodEnd: string | null = null
+  if (subscriptionId) {
+    try {
+      const sub = await stripe.subscriptions.retrieve(subscriptionId)
+      periodEnd = new Date(sub.current_period_end * 1000).toISOString()
+    } catch (err) {
+      console.error('Failed to retrieve subscription period:', err)
+    }
+  }
+
   // Upsert subscription record
   await supabase
     .from('subscriptions')
@@ -129,6 +140,7 @@ async function handleCheckoutCompleted(
         tier,
         status: 'active',
         current_period_start: new Date().toISOString(),
+        current_period_end: periodEnd,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id' },
@@ -201,7 +213,10 @@ function mapStripeStatus(stripeStatus: string): string {
     case 'canceled': return 'canceled'
     case 'trialing': return 'trialing'
     case 'unpaid': return 'past_due'
-    default: return 'active'
+    case 'incomplete': return 'past_due'
+    case 'incomplete_expired': return 'canceled'
+    case 'paused': return 'past_due'
+    default: return 'past_due'
   }
 }
 

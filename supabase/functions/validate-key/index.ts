@@ -4,7 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://morphkit.dev',
   'Access-Control-Allow-Headers': 'authorization, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
@@ -49,29 +49,22 @@ Deno.serve(async (req: Request) => {
   // Hash the API key to match against stored hashes
   const keyHash = await hashApiKey(apiKey)
 
-  // Look up the key
+  // Look up the key — filter out revoked keys at the query level
   const { data: keyRecord, error: keyError } = await supabase
     .from('api_keys')
-    .select('id, user_id, revoked_at')
+    .select('id, user_id')
     .eq('key_hash', keyHash)
+    .is('revoked_at', null)
     .single()
 
   if (keyError || !keyRecord) {
-    return new Response(JSON.stringify({ error: 'Invalid API key' }), {
+    return new Response(JSON.stringify({ error: 'Invalid or revoked API key' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  // Check if key is revoked
-  if (keyRecord.revoked_at) {
-    return new Response(JSON.stringify({ error: 'API key has been revoked' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  // Update last_used_at
+  // Update last_used_at (only reached for valid, non-revoked keys)
   await supabase
     .from('api_keys')
     .update({ last_used_at: new Date().toISOString() })

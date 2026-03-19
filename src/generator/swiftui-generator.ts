@@ -177,6 +177,21 @@ function pluralize(word: string): string {
     return word + 's';
 }
 
+/**
+ * Clean a Zustand/Redux store name for Swift:
+ *   - Strip leading 'Use'/'use' prefix (React hook convention)
+ *   - Strip trailing 'Store'/'store' suffix (will be re-added)
+ *   - Return PascalCase base name
+ * e.g. 'useCartStore' -> 'Cart', 'UseCartStore' -> 'Cart', 'cartStore' -> 'Cart'
+ */
+function cleanStoreName(raw: string): string {
+    let name = raw;
+    name = name.replace(/^[Uu]se/, '');
+    name = name.replace(/[Ss]tore$/, '');
+    if (name.length === 0) name = 'App';
+    return pascalCase(name);
+}
+
 function viewFileName(screenName: string): string {
     return `${pascalCase(screenName)}View.swift`;
 }
@@ -211,6 +226,13 @@ function relativeSourcePath(fullPath: string): string {
  * Sanitize a typeName so that JS/TS types don't leak into generated Swift.
  * Returns the cleaned name, or undefined if the name is not usable.
  */
+/** Swift standard library type names — used to distinguish stdlib types from missing custom types */
+const SWIFT_STDLIB_TYPES = new Set([
+    'String', 'Int', 'Double', 'Bool', 'Date', 'UUID', 'URL', 'Data', 'Any',
+    'Float', 'Int8', 'Int16', 'Int32', 'Int64', 'UInt', 'UInt8', 'UInt16',
+    'UInt32', 'UInt64', 'CGFloat', 'Decimal', 'Color', 'Void',
+]);
+
 /** Browser/DOM/Node types that shouldn't appear in Swift */
 const JS_DOM_TYPES = new Set([
     'File', 'Blob', 'FormData', 'FileList', 'FileReader',
@@ -332,11 +354,6 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
                 // The type is a custom PascalCase name that doesn't exist as a generated
                 // entity or enum (e.g., AccentColor). Fall back to String to avoid
                 // referencing an undefined type.
-                const SWIFT_STDLIB_TYPES = new Set([
-                    'String', 'Int', 'Double', 'Bool', 'Date', 'UUID', 'URL', 'Data', 'Any',
-                    'Float', 'Int8', 'Int16', 'Int32', 'Int64', 'UInt', 'UInt8', 'UInt16',
-                    'UInt32', 'UInt64', 'CGFloat', 'Decimal', 'Color', 'Void',
-                ]);
                 if (!SWIFT_STDLIB_TYPES.has(swiftType) && !entityExistsInOutput(swiftType, model)) {
                     swiftType = 'String';
                     defaultValue = '""';
@@ -1802,6 +1819,7 @@ function generateSettingsLayout(screen: Screen, model: SemanticAppModel, compone
 
 function generateProfileLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
     const entity = resolveEntity(screen, model);
+    const varName = entity ? camelCase(entity.name) : 'profile';
     const lines: string[] = [];
 
     lines.push('ScrollView {');
@@ -1812,7 +1830,7 @@ function generateProfileLayout(screen: Screen, model: SemanticAppModel, componen
     if (entity) {
         const roles = categorizeEntityFields(entity);
         if (roles.imageField) {
-            lines.push(`        AsyncImage(url: URL(string: ${imageUrlExpr(`profile.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
+            lines.push(`        AsyncImage(url: URL(string: ${imageUrlExpr(`${varName}.${camelCase(roles.imageField.name)}`, roles.imageField)})) { image in`);
             lines.push('            image.resizable().aspectRatio(contentMode: .fill)');
             lines.push('        } placeholder: {');
             lines.push('            Image(systemName: "person.circle.fill")');
@@ -1828,12 +1846,12 @@ function generateProfileLayout(screen: Screen, model: SemanticAppModel, componen
             lines.push('            .foregroundStyle(.secondary)');
         }
         if (roles.titleField) {
-            lines.push(`        Text(profile.${camelCase(roles.titleField.name)})`);
+            lines.push(`        Text(${varName}.${camelCase(roles.titleField.name)})`);
             lines.push('            .font(.title2)');
             lines.push('            .fontWeight(.bold)');
         }
         if (roles.subtitleField) {
-            lines.push(`        Text(profile.${camelCase(roles.subtitleField.name)})`);
+            lines.push(`        Text(${varName}.${camelCase(roles.subtitleField.name)})`);
             lines.push('            .font(.subheadline)');
             lines.push('            .foregroundStyle(.secondary)');
         }
@@ -2875,7 +2893,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             lines.push(indent('    }', 2));
             lines.push(indent('}', 2));
         }
-        lines.push(indent('.alert("Error", isPresented: .constant(errorMessage != nil)) {', 2));
+        lines.push(indent('.alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {', 2));
         lines.push(indent('    Button("OK") { errorMessage = nil }', 2));
         lines.push(indent('} message: {', 2));
         lines.push(indent('    if let errorMessage {', 2));
@@ -3098,10 +3116,6 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('        } else {');
         lines.push(`            ${cartArrayVar}.remove(at: index)`);
         lines.push('        }');
-        lines.push('    }');
-        lines.push('');
-        lines.push(`    private func removeItems(at offsets: IndexSet) {`);
-        lines.push(`        ${cartArrayVar}.remove(atOffsets: offsets)`);
         lines.push('    }');
         lines.push('');
         lines.push('    private func checkout() {');
@@ -3395,4 +3409,4 @@ export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
 }
 
 // Re-export helpers for use by other generators
-export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName };
+export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName, pluralize, cleanSourceName, cleanStoreName };

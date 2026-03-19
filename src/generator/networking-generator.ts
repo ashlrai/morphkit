@@ -10,8 +10,9 @@ import type {
 } from '../semantic/model';
 
 import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase, isMarketingScreen } from './swiftui-generator';
+import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName } from './swiftui-generator';
 import { isJunkEntity } from './model-generator';
+import { cleanStoreName } from './swiftui-generator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -547,25 +548,13 @@ function generateAPIClient(model: SemanticAppModel): string {
     const entityNameSet = new Set(modelEntities.map(e => pascalCase(e.name)));
     const stubMethods: Map<string, { returnType: string; params: string }> = new Map();
 
-    /** Clean a data-requirement source name the same way swiftui-generator does */
-    function cleanSourceNameForStub(raw: string): string {
-        let source = raw;
-        source = source.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/i, '');
-        if (source.startsWith('/')) {
-            const segments = source.split('/').filter(s => s && s !== 'api' && !s.startsWith(':') && !s.startsWith('['));
-            source = segments[segments.length - 1] ?? source;
-        }
-        source = source.replace(/[/\\?&#=]/g, '');
-        return source;
-    }
-
     for (const screen of (model.screens ?? []).filter(s => !isMarketingScreen(s))) {
         const dataReqs = screen.dataRequirements ?? [];
         for (const req of dataReqs) {
             if (req.fetchStrategy !== 'api' && req.fetchStrategy !== 'context') continue;
             const rawSource = req.source ?? (req as any).entity;
             if (!rawSource) continue;
-            const reqSource = cleanSourceNameForStub(rawSource);
+            const reqSource = cleanSourceName(rawSource);
             const entityName = pascalCase(reqSource);
             const isMany = req.cardinality === 'many' || (req as any).type === 'list';
 
@@ -604,7 +593,7 @@ function generateAPIClient(model: SemanticAppModel): string {
             if (dataReqs.length > 0) {
                 const rawSource = dataReqs[0]?.source ?? (dataReqs[0] as any)?.entity;
                 if (rawSource) {
-                    detailEntityName = pascalCase(cleanSourceNameForStub(rawSource));
+                    detailEntityName = pascalCase(cleanSourceName(rawSource));
                 }
             }
 
@@ -634,22 +623,6 @@ function generateAPIClient(model: SemanticAppModel): string {
             }
         }
 
-        // List/grid screens with derived entity names generate fetch calls with no params
-        if ((screen.layout === 'list' || screen.layout === 'grid') && dataReqs.length === 0) {
-            const firstReq = screen.dataRequirements?.[0];
-            const rawSource = firstReq?.source ?? (firstReq as any)?.entity;
-            if (rawSource) {
-                const reqSource = cleanSourceNameForStub(rawSource);
-                const entityName = pascalCase(reqSource);
-                const pluralName = entityName.endsWith('s') ? entityName : `${entityName}s`;
-                const funcName = camelCase(`fetch${pascalCase(pluralName)}`);
-                const sigKey = `${funcName}(0)`;
-                if (!generatedFuncNames.has(sigKey)) {
-                    const returnType = entityNameSet.has(entityName) ? `[${entityName}]` : '[String]';
-                    stubMethods.set(funcName, { returnType, params: '' });
-                }
-            }
-        }
     }
 
     // Generate stubs for store-generated fetch calls. Stores call
@@ -657,11 +630,7 @@ function generateAPIClient(model: SemanticAppModel): string {
     // the singular form (e.g., fetchMemory vs fetchMemories).
     const statePatterns = model.stateManagement ?? [];
     for (const sp of statePatterns) {
-        // Mirror project-generator's cleanStoreName logic
-        let storeName = sp.name;
-        storeName = storeName.replace(/^[Uu]se/, '');
-        storeName = storeName.replace(/[Ss]tore$/, '');
-        storeName = storeName.charAt(0).toUpperCase() + storeName.slice(1);
+        const storeName = cleanStoreName(sp.name);
 
         const pluralName = pluralize(storeName);
         const funcName = camelCase(`fetch${pluralName}`);
@@ -849,16 +818,6 @@ function singularize(word: string): string {
     }
     if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
     return word;
-}
-
-/** Naive pluralize — handles common English singular suffixes */
-function pluralize(word: string): string {
-    if (word.endsWith('y') && !/[aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
-    if (word.endsWith('s') || word.endsWith('x') || word.endsWith('z') ||
-        word.endsWith('sh') || word.endsWith('ch')) {
-        return word + 'es';
-    }
-    return word + 's';
 }
 
 /**

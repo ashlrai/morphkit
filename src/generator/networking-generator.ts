@@ -744,10 +744,13 @@ function inferReturnTypeFromEntities(
     const entityLookup = new Map<string, string>();
     for (const entity of entities) {
         const name = entity.name;
-        entityLookup.set(name.toLowerCase(), name);
-        // Also store singular and plural variants
-        entityLookup.set(singularize(name.toLowerCase()), name);
-        entityLookup.set(pluralize(name.toLowerCase()), name);
+        // Exact name takes priority — don't overwrite with plural/singular collisions
+        const lower = name.toLowerCase();
+        if (!entityLookup.has(lower)) entityLookup.set(lower, name);
+        const sing = singularize(lower);
+        if (!entityLookup.has(sing)) entityLookup.set(sing, name);
+        const plur = pluralize(lower);
+        if (!entityLookup.has(plur)) entityLookup.set(plur, name);
     }
 
     // Try to match the resource segment to an entity

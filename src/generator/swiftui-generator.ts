@@ -869,7 +869,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
 
     // Wrap row content in NavigationLink when a detail route exists
     if (detailRoute) {
-        lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${varName}.id)) {`);
+        lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
     }
 
     // Extra indentation when wrapped in NavigationLink
@@ -1013,7 +1013,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
 
     // Wrap grid item in NavigationLink when a detail route exists
     if (detailRoute) {
-        lines.push(`            NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${varName}.id)) {`);
+        lines.push(`            NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
     }
 
     const gi = detailRoute ? '    ' : '';
@@ -3057,6 +3057,35 @@ function generateCardView(screen: Screen, model: SemanticAppModel): GeneratedFil
         confidence: 'medium',
         warnings: [`Entity "${entityName}" not found in model — generated minimal card view`],
     };
+}
+
+// ---------------------------------------------------------------------------
+// Shared entity resolution helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the best entity from the model for a given context. Filters out enum
+ * entities, optionally applies a minimum field count, and returns the entity
+ * with the most fields. If `currentMatch` is provided and a significantly
+ * better entity exists (1.5x more fields), prefers the better one.
+ */
+function findBestEntity(
+    model: SemanticAppModel,
+    currentMatch?: Entity | null,
+    minFields = 0,
+): Entity | null {
+    const candidates = (model.entities ?? []).filter(e => {
+        if (e.fields.length === 1 && e.fields[0]?.name === '__enum') return false;
+        return e.fields.length >= minFields;
+    });
+    if (candidates.length === 0) return currentMatch ?? null;
+    const best = [...candidates].sort((a, b) => b.fields.length - a.fields.length)[0];
+    if (!currentMatch) return best;
+    // Prefer the better entity only if significantly larger
+    if (best.name !== currentMatch.name && best.fields.length > currentMatch.fields.length * 1.5) {
+        return best;
+    }
+    return currentMatch;
 }
 
 // ---------------------------------------------------------------------------

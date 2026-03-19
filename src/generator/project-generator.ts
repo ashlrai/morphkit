@@ -238,10 +238,11 @@ function generateDefaultFetchMethod(storeName: string, model?: SemanticAppModel)
     // (parameterized endpoints like /posts/:id/comments generate fetchComment(postId:), not fetchComments())
     const hasFetchMethod = endpoints.some(ep => {
         if ((ep.method ?? 'GET') !== 'GET') return false;
-        const url = ep.url?.toLowerCase() ?? '';
-        // Skip endpoints with path parameters — they generate methods with args
-        if (url.includes(':') || url.includes('{')) return false;
-        const lastSegment = url.split('/').filter(s => s).pop() ?? '';
+        // Clean the URL: strip template literals, backticks, ${VAR} prefixes
+        let url = (ep.url ?? '').replace(/`/g, '').replace(/\$\{[^}]+\}/g, '').toLowerCase();
+        // Skip endpoints with path parameters
+        if (url.includes(':') || url.includes('{') || url.includes('[')) return false;
+        const lastSegment = url.split('/').filter(s => s && s !== 'api').pop() ?? '';
         return lastSegment === varName + 's' || lastSegment === varName;
     });
 

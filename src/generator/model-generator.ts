@@ -137,7 +137,14 @@ function enumCaseName(value: string): string {
     // Ensure the first character is lowercase (valid Swift enum case)
     result = result.charAt(0).toLowerCase() + result.slice(1);
     // If the result starts with a digit or is a Swift keyword, prefix with backticks
-    if (/^\d/.test(result)) {
+    const SWIFT_KEYWORDS = new Set([
+        'default', 'case', 'return', 'class', 'struct', 'enum', 'func',
+        'var', 'let', 'for', 'in', 'if', 'else', 'switch', 'true', 'false',
+        'nil', 'do', 'try', 'catch', 'throw', 'import', 'self', 'super',
+        'init', 'deinit', 'guard', 'where', 'while', 'repeat', 'break',
+        'continue', 'type', 'protocol', 'extension', 'as', 'is', 'get', 'set',
+    ]);
+    if (/^\d/.test(result) || SWIFT_KEYWORDS.has(result)) {
         result = '`' + result + '`';
     }
     return result;

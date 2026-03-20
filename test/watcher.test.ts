@@ -163,10 +163,12 @@ describe('diffModels', () => {
 
   test('detects modified screens', () => {
     const prev = makeModel({
-      screens: [makeScreen('Home', 'Original purpose')],
+      screens: [makeScreen('Home')],
     });
+    // Change layout (included in screen signature) to trigger modification
+    const modifiedScreen = { ...makeScreen('Home'), layout: 'form' as const };
     const next = makeModel({
-      screens: [makeScreen('Home', 'Updated purpose')],
+      screens: [modifiedScreen],
     });
     const diff = diffModels(prev, next);
 
@@ -223,7 +225,7 @@ describe('diffModels', () => {
     });
     const diff = diffModels(prev, next);
 
-    expect(diff.addedEndpoints).toEqual(['POST /api/users']);
+    expect(diff.addedEndpoints).toEqual(['POST:/api/users']);
     expect(diff.removedEndpoints).toEqual([]);
   });
 
@@ -239,7 +241,7 @@ describe('diffModels', () => {
     });
     const diff = diffModels(prev, next);
 
-    expect(diff.removedEndpoints).toEqual(['DELETE /api/users']);
+    expect(diff.removedEndpoints).toEqual(['DELETE:/api/users']);
   });
 
   test('detects navigation changes', () => {
@@ -288,9 +290,11 @@ describe('diffModels', () => {
       entities: [makeEntity('User'), makeEntity('Order')],
       apiEndpoints: [makeEndpoint('GET', '/api/users')],
     });
+    // Change Home's layout (structural change detected by signature comparison)
+    const modifiedHome = { ...makeScreen('Home'), layout: 'dashboard' as const };
     const next = makeModel({
       screens: [
-        makeScreen('Home', 'Redesigned home'),
+        modifiedHome,
         makeScreen('Settings'),
       ],
       entities: [makeEntity('User', ['id', 'name', 'avatar']), makeEntity('Product')],
@@ -307,7 +311,7 @@ describe('diffModels', () => {
     expect(diff.addedEntities).toEqual(['Product']);
     expect(diff.removedEntities).toEqual(['Order']);
     expect(diff.modifiedEntities).toEqual(['User']);
-    expect(diff.addedEndpoints).toEqual(['GET /api/products']);
+    expect(diff.addedEndpoints).toEqual(['GET:/api/products']);
   });
 });
 

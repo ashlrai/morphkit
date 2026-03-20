@@ -6,12 +6,11 @@ import type {
     ApiEndpoint,
     TypeDefinition,
     Entity,
-    ConfidenceLevel,
-} from '../semantic/model';
+} from '../semantic/model.js';
 
-import { isJunkEntity } from './model-generator';
-import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName , cleanStoreName } from './swiftui-generator';
+import { isJunkEntity } from './model-generator.js';
+import type { GeneratedFile } from './swiftui-generator.js';
+import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName, cleanStoreName } from './swiftui-generator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -82,21 +81,14 @@ function typeDefToSwift(td: TypeDefinition): string {
 }
 
 /**
- * Sanitize a raw typeName from the analyzer — map leaked JS/TS types to their
- * Swift equivalents or return undefined if the name is not usable.
+ * Sanitize a raw typeName from the analyzer — map leaked JS/TS capitalized
+ * type names to undefined so the kind-based default is used instead.
  */
 function sanitizeTypeName(name: string | undefined): string | undefined {
     if (!name) return undefined;
 
-    // Map capitalized JS types to Swift equivalents
-    if (name === 'Number') return undefined;   // handled by kind='number' → Double
-    if (name === 'Boolean') return undefined;   // handled by kind='boolean' → Bool
-
-    // Reject names containing TS syntax (Promise<...>, unions, arrow fns, object literals)
-    if (/[<>|{}]|=>/.test(name)) return undefined;
-
-    // Reject function signature types
-    if (/\(.*\)\s*=>/.test(name)) return undefined;
+    // Capitalized JS types should fall through to kind-based defaults (Double, Bool)
+    if (name === 'Number' || name === 'Boolean') return undefined;
 
     return name;
 }
@@ -1144,19 +1136,17 @@ function generateEndpointMethod(endpoint: ApiEndpoint, entities: Entity[] = []):
 
     const hasBody = method !== 'GET' && endpoint.requestBody != null;
 
+    // Build the function signature based on return type and HTTP method
+    const funcSignature = `    func ${functionName}(${params.join(', ')}) async throws`;
+
     if (effectiveReturnType && effectiveReturnType !== 'Void') {
-        lines.push(`    func ${functionName}(${params.join(', ')}) async throws -> ${effectiveReturnType} {`);
-    } else if (method === 'DELETE') {
-        // DELETE endpoints don't return a value
-        lines.push(`    func ${functionName}(${params.join(', ')}) async throws {`);
-    } else if (method === 'GET' && !effectiveReturnType) {
-        // GET endpoints should always return something — use [String] as placeholder
-        lines.push(`    func ${functionName}(${params.join(', ')}) async throws -> [String] {`);
-    } else if ((method === 'POST' || method === 'PUT' || method === 'PATCH') && !effectiveReturnType) {
-        // Mutation endpoints without known return type — return void
-        lines.push(`    func ${functionName}(${params.join(', ')}) async throws {`);
+        lines.push(`${funcSignature} -> ${effectiveReturnType} {`);
+    } else if (method === 'DELETE' || method === 'POST' || method === 'PUT' || method === 'PATCH') {
+        // Mutation/delete endpoints without known return type — return void
+        lines.push(`${funcSignature} {`);
     } else {
-        lines.push(`    func ${functionName}(${params.join(', ')}) async throws -> ${effectiveReturnType ?? '[String]'} {`);
+        // GET or other methods without known return type — use [String] as placeholder
+        lines.push(`${funcSignature} -> [String] {`);
     }
 
     // Build query items for list endpoints with pagination

@@ -8,7 +8,7 @@
  * Designed to be used both from the CLI and programmatically.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join, relative, dirname } from 'node:path';
 
@@ -19,7 +19,7 @@ import { adaptForPlatform } from '../semantic/adapter.js';
 import { buildSemanticModel } from '../semantic/builder.js';
 import type { SemanticAppModel } from '../semantic/model.js';
 
-import { diffModels, isDiffEmpty } from './model-diff.js';
+import { diffModels } from './model-diff.js';
 import type { ModelDiff } from './model-diff.js';
 import { generateBranchName, createSyncPR, generatePRBody } from './pr-generator.js';
 
@@ -157,7 +157,7 @@ export async function syncRepos(options: SyncOptions): Promise<SyncResult> {
   rmSync(tempDir, { recursive: true, force: true });
 
   const branchName = generateBranchName();
-  const hasChanges = changedFiles.length > 0 || removedFiles.length > 0;
+  const hasChanges = changedFiles.length > 0;
 
   if (!hasChanges) {
     return {
@@ -354,7 +354,6 @@ function isManuallyEdited(content: string): boolean {
  * Recursively list all files in a directory.
  */
 function readdirRecursive(dirPath: string): string[] {
-  const { readdirSync, statSync } = require('node:fs') as typeof import('node:fs');
   const results: string[] = [];
 
   try {
@@ -368,7 +367,7 @@ function readdirRecursive(dirPath: string): string[] {
       }
     }
   } catch {
-    // Ignore errors
+    // Ignore errors (e.g. permission denied)
   }
 
   return results;

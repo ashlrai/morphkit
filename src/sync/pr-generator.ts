@@ -181,6 +181,15 @@ export function generatePRBody(options: {
 export async function createSyncPR(options: PROptions): Promise<PRResult> {
   const git: SimpleGit = simpleGit(options.targetRepo);
 
+  // Guard: refuse to sync into a dirty working tree
+  const status = await git.status();
+  if (!status.isClean()) {
+    throw new Error(
+      'Target repo has uncommitted changes. Please commit or stash before syncing.\n' +
+      `  Modified: ${status.modified.length}, Staged: ${status.staged.length}, Untracked: ${status.not_added.length}`,
+    );
+  }
+
   // Ensure we start from the base branch
   await git.checkout(options.baseBranch);
   await git.pull('origin', options.baseBranch).catch(() => {
@@ -260,11 +269,6 @@ function isGhCliAvailable(): boolean {
     return false;
   }
 }
-
-function escapeShell(s: string): string {
-  return s.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
-}
-
 function buildManualInstructions(options: PROptions): string {
   return [
     `Branch "${options.branchName}" has been pushed.`,

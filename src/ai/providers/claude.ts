@@ -28,7 +28,7 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const TIMEOUT_MS = 30_000;

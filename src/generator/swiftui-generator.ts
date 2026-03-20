@@ -104,6 +104,10 @@ function safeComponentCall(rawName: string): string {
     if (name === 'Link') {
         return `Text("Link") // TODO: Map React Link to SwiftUI NavigationLink`;
     }
+    // SwiftUI Button requires (label, action:) arguments — emit placeholder
+    if (name === 'Button') {
+        return `Text("Button") // TODO: Map React Button to SwiftUI Button with action`;
+    }
     // Only emit raw SwiftUI view calls for views in the explicit known set.
     // Don't use isKnownSwiftUIView here — its suffix-based pattern (e.g., *Row, *Cell)
     // would incorrectly match React components like HeatmapRow that aren't generated views.
@@ -310,6 +314,49 @@ interface StateBinding {
  * Resolve state bindings by looking up the actual StatePattern from the model
  * to determine proper Swift types instead of defaulting to `Any`.
  */
+/** Web-only state names that should not be declared as @State in mobile views */
+const WEB_ONLY_STATE_NAMES = new Set([
+    // Hover / pointer states (no mouse on mobile)
+    'ishovering', 'ishovered', 'hover', 'hovered', 'hovering',
+    'ishoveredindex', 'hoveredindex', 'hovereditem',
+    // Tooltip states (web-only pattern)
+    'tooltipvisible', 'showtooltip', 'tooltiptext', 'tooltipposition',
+    'tooltipopen', 'istooltipvisible',
+    // Dropdown states (use native Picker/Menu on mobile)
+    'showdropdown', 'dropdownopen', 'isdropdownopen', 'dropdownvisible',
+    // Mouse/cursor states
+    'cursorposition', 'mouseposition', 'isdragging',
+    'clientx', 'clienty', 'pagex', 'pagey',
+    // CSS/DOM states
+    'classname', 'style', 'innerhtml', 'outerhtml',
+    'scrolltop', 'scrollleft', 'offsetwidth', 'offsetheight',
+    'innerwidth', 'innerheight',
+    // Focus ring / web accessibility states
+    'isfocusvisible', 'focusvisible',
+    // Responsive breakpoint states (handled by SwiftUI layout system)
+    'ismobile', 'isdesktop', 'istablet', 'screenwidth', 'screenheight',
+    'windowwidth', 'windowheight', 'breakpoint',
+    // Sidebar/drawer (web layout, handled differently on mobile)
+    'issidebaropen', 'sidebaropen', 'issidebarcollapsed',
+    'sidebarcollapsed', 'showsidebar',
+    // Context menu (native on iOS)
+    'contextmenuposition', 'showcontextmenu', 'contextmenuopen',
+    // Clipboard (different API on iOS)
+    'iscopied', 'copied', 'clipboardtext',
+    // Ref-based state (React internals)
+    'ref', 'inputref', 'containerref', 'scrollref',
+]);
+
+function isWebOnlyState(name: string): boolean {
+    const lower = name.toLowerCase();
+    if (WEB_ONLY_STATE_NAMES.has(lower)) return true;
+    // Pattern-based filters
+    if (lower.startsWith('hover') || lower.endsWith('hovered')) return true;
+    if (lower.startsWith('tooltip')) return true;
+    if (lower.endsWith('ref') && lower.length > 3) return true;
+    return false;
+}
+
 function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBinding[] {
     const bindings: StateBinding[] = [];
 
@@ -318,6 +365,8 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
     const statePatterns = model.stateManagement ?? [];
 
     for (const bindingName of screen.stateBindings) {
+        // Phase 5: Filter web-only state that doesn't apply to mobile
+        if (isWebOnlyState(bindingName)) continue;
         const pattern = statePatterns.find((sp) => sp.name === bindingName);
         let swiftType = 'Any';
         let defaultValue = '.init()';
@@ -359,6 +408,23 @@ function generateStateBindings(screen: Screen, model: SemanticAppModel): StateBi
                     defaultValue = '""';
                 }
             }
+        }
+
+        // Safety: if the resolved type references an entity that won't exist in generated
+        // output (filtered by isJunkEntity or stdlib conflicts), fall back to String/[String]
+        const arrayTypeMatch = swiftType.match(/^\[(.+)\]$/);
+        if (arrayTypeMatch) {
+            const innerType = arrayTypeMatch[1];
+            if (!SWIFT_STDLIB_TYPES.has(innerType) && !entityExistsInOutput(innerType, model)) {
+                swiftType = '[String]';
+                defaultValue = '[]';
+            }
+        } else if (!swiftType.endsWith('?') && !SWIFT_STDLIB_TYPES.has(swiftType) &&
+                   swiftType !== 'Bool' && swiftType !== 'Int' && swiftType !== 'Double' &&
+                   swiftType !== 'Date' && swiftType !== 'Any' &&
+                   !entityExistsInOutput(swiftType, model)) {
+            swiftType = 'String';
+            defaultValue = '""';
         }
 
         if (pattern && pattern.type === 'global') {
@@ -579,7 +645,8 @@ function forEachHeader(arrayExpr: string, varName: string, entityName: string, m
     if (entityExistsInOutput(entityName, model)) {
         return `ForEach(${arrayExpr}) { (${varName}: ${entityName}) in`;
     }
-    return `ForEach(${arrayExpr}) { ${varName} in`;
+    // When entity doesn't exist, the array is [String] — use id: \.self
+    return `ForEach(${arrayExpr}, id: \\.self) { ${varName} in`;
 }
 
 function resolveEntityCasing(name: string, model: SemanticAppModel): string {
@@ -914,6 +981,7 @@ function generateActionButtons(screen: Screen, indentLevel: number): string[] {
             lines.push(`NavigationLink("${label}") {`);
             lines.push(`    ${pascalCase(effectTarget)}View()`);
             lines.push('}');
+            lines.push(`.accessibilityHint("Navigates to ${humanizeFieldName(effectTarget)}")`);
         } else {
             if (isDestructive) {
                 lines.push(`Button("${label}", role: .destructive) {`);
@@ -922,10 +990,55 @@ function generateActionButtons(screen: Screen, indentLevel: number): string[] {
             }
             lines.push(`    ${camelCase(effectTarget)}()`);
             lines.push('}');
+            lines.push(`.accessibilityLabel("${label}")`);
         }
     }
 
     return lines.map((l) => indent(l, indentLevel));
+}
+
+/**
+ * Find an API endpoint that matches a user action's target.
+ * Looks for endpoint URLs containing the action target name.
+ */
+function findEndpointForAction(action: UserAction, model: SemanticAppModel): import('../semantic/model').ApiEndpoint | null {
+    const endpoints = model.apiEndpoints ?? [];
+    const target = (action.effect?.target ?? action.label ?? '').toLowerCase();
+    if (!target) return null;
+
+    // Direct match on endpoint URL containing the target name
+    for (const ep of endpoints) {
+        const urlLower = ep.url.toLowerCase();
+        if (urlLower.includes(target)) return ep;
+    }
+
+    // Fuzzy match: split camelCase target and check URL segments
+    const words = target.replace(/([A-Z])/g, ' $1').toLowerCase().split(/\s+/);
+    for (const ep of endpoints) {
+        const urlLower = ep.url.toLowerCase();
+        if (words.some(w => w.length > 3 && urlLower.includes(w))) return ep;
+    }
+
+    return null;
+}
+
+/**
+ * Format a TypeDefinition as a compact shape string for TODO comments.
+ */
+function formatActionTypeShape(td: TypeDefinition): string {
+    if (td.kind === 'object' && td.fields && td.fields.length > 0) {
+        const fieldStrs = td.fields.slice(0, 6).map(f => {
+            const type = td.kind === 'string' ? 'String' :
+                         td.kind === 'number' ? 'Number' :
+                         td.kind === 'boolean' ? 'Bool' :
+                         f.type.typeName ?? f.type.kind;
+            return `${f.name}: ${type}`;
+        });
+        const suffix = td.fields.length > 6 ? ', ...' : '';
+        return `{ ${fieldStrs.join(', ')}${suffix} }`;
+    }
+    if (td.typeName) return td.typeName;
+    return td.kind;
 }
 
 function humanizeActionTarget(target: string): string {
@@ -1004,11 +1117,15 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
     const roles = entity ? categorizeEntityFields(entity) : null;
     const needsRowHelper = detailRoute && entity && roles?.imageField;
 
+    // Determine the id accessor based on whether entity exists
+    const entityInOutput = entityExistsInOutput(entityName, model);
+    const idAccessor = entityInOutput ? `String(describing: ${varName}.id)` : varName;
+
     lines.push('List {');
     if (needsRowHelper) {
         // Use extracted helper to keep ForEach closure simple for Swift type checker
         lines.push(`    ${forEachHeader(arrayVar, varName, entityName, model)}`);
-        lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
+        lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${idAccessor})) {`);
         lines.push(`            rowContent(for: ${varName})`);
         lines.push('        }');
         lines.push('    }');
@@ -1017,7 +1134,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
 
         // Wrap row content in NavigationLink when a detail route exists
         if (detailRoute) {
-            lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: String(describing: ${varName}.id))) {`);
+            lines.push(`        NavigationLink(value: AppRoute.${detailRoute.routeCaseName}(id: ${idAccessor})) {`);
         }
 
         // Extra indentation when wrapped in NavigationLink
@@ -1034,6 +1151,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
                 lines.push(`            ${ri}}`);
                 lines.push(`            ${ri}.frame(width: 44, height: 44)`);
                 lines.push(`            ${ri}.clipShape(RoundedRectangle(cornerRadius: 8))`);
+                lines.push(`            ${ri}.accessibilityLabel("${humanizeFieldName(roles.imageField.name)}")`);
             }
             lines.push(`            ${ri}VStack(alignment: .leading, spacing: 4) {`);
             if (roles.titleField) {
@@ -1056,6 +1174,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
             lines.push(`            ${ri}}`);
             lines.push(`            ${ri}Spacer()`);
             lines.push(`        ${ri}}`);
+            lines.push(`        ${ri}.accessibilityElement(children: .combine)`);
         } else {
             // No entity resolved — try to find it by name for a basic inline row
             const fallbackEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);
@@ -1075,8 +1194,15 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
                 }
                 lines.push(`        ${ri}}`);
             } else {
-                lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
-                lines.push(`            ${ri}.font(.headline)`);
+                // No entity found — array is [String], display the string directly
+                const entityInOutput = entityExistsInOutput(entityName, model);
+                if (entityInOutput) {
+                    lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
+                    lines.push(`            ${ri}.font(.headline)`);
+                } else {
+                    lines.push(`        ${ri}Text(${varName})`);
+                    lines.push(`            ${ri}.font(.headline)`);
+                }
             }
         }
 
@@ -1764,55 +1890,225 @@ function inferSfSymbol(screen: Screen): string {
     return 'square.grid.2x2.fill';
 }
 
+/** Settings field categories for semantic grouping */
+const SETTINGS_CATEGORIES: Record<string, { label: string; icon: string; patterns: string[] }> = {
+    profile: {
+        label: 'Profile',
+        icon: 'person.circle',
+        patterns: ['name', 'fullname', 'firstname', 'lastname', 'email', 'username', 'displayname', 'bio', 'avatar', 'photo', 'phone'],
+    },
+    security: {
+        label: 'Security',
+        icon: 'lock.shield',
+        patterns: ['password', 'mfa', 'twofactor', '2fa', 'totp', 'pin', 'security', 'session', 'token', 'apikey'],
+    },
+    notifications: {
+        label: 'Notifications',
+        icon: 'bell',
+        patterns: ['notification', 'alert', 'digest', 'subscribe', 'unsubscribe', 'push', 'emailnotif'],
+    },
+    appearance: {
+        label: 'Appearance',
+        icon: 'paintbrush',
+        patterns: ['theme', 'darkmode', 'lightmode', 'accent', 'color', 'font', 'language', 'locale', 'timezone'],
+    },
+    privacy: {
+        label: 'Privacy',
+        icon: 'hand.raised',
+        patterns: ['privacy', 'tracking', 'analytics', 'cookie', 'consent', 'gdpr', 'data'],
+    },
+    integrations: {
+        label: 'Integrations',
+        icon: 'puzzle.piece',
+        patterns: ['integration', 'slack', 'discord', 'webhook', 'connect', 'oauth', 'sync'],
+    },
+};
+
+/** Internal state that should be skipped in settings UI */
+const SETTINGS_INTERNAL_STATE = new Set([
+    'loading', 'isloading', 'issaving', 'issubmitting', 'saving', 'submitting',
+    'error', 'errormessage', 'success', 'successmessage', 'iserror', 'issuccess',
+    'showmodal', 'showdialog', 'showconfirm', 'showdelete', 'modalopen',
+    'activemodal', 'activetab', 'activesection',
+    'validationerror', 'formerror', 'formvalid', 'isvalid',
+    'isdirty', 'haschanges', 'modified',
+]);
+
+function categorizeSettingsBinding(name: string): string {
+    const lower = name.toLowerCase();
+    for (const [category, config] of Object.entries(SETTINGS_CATEGORIES)) {
+        if (config.patterns.some(p => lower.includes(p))) return category;
+    }
+    return 'general';
+}
+
 function generateSettingsLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
     const lines: string[] = [];
+    const bindings = (screen.stateBindings ?? []).filter(b => {
+        const lower = b.toLowerCase();
+        // Skip internal state and web-only state
+        if (SETTINGS_INTERNAL_STATE.has(lower)) return false;
+        if (isWebOnlyState(b)) return false;
+        // Skip state that's clearly internal (loading/saving/submitting variants)
+        if (lower.includes('loading') || lower.includes('saving') || lower.includes('submitting')) return false;
+        if (lower.includes('deleting') || lower.includes('testing')) return false;
+        return true;
+    });
 
     lines.push('Form {');
 
-    // Generate from state bindings
-    const bindings = screen.stateBindings ?? [];
     if (bindings.length > 0) {
-        lines.push('    Section("Preferences") {');
+        // Build a map of binding name → resolved Swift type to avoid type mismatches
+        // Use the same resolution logic as generateStateBindings for accuracy
+        const resolvedBindings = generateStateBindings(screen, model);
+        const bindingTypes = new Map<string, string>();
+        for (const rb of resolvedBindings) {
+            bindingTypes.set(rb.name, rb.type);
+        }
+        // Fallback: infer from name for bindings not in resolved set
         for (const binding of bindings) {
-            const lower = binding.toLowerCase();
-            if (lower.startsWith('is') || lower.startsWith('enable') || lower.startsWith('show')) {
-                lines.push(`        Toggle("${humanizeFieldName(binding)}", isOn: $${camelCase(binding)})`);
-            } else {
-                lines.push(`        LabeledContent("${humanizeFieldName(binding)}") {`);
-                lines.push(`            Text(String(describing: ${camelCase(binding)}))`);
-                lines.push('        }');
+            const name = camelCase(binding);
+            if (!bindingTypes.has(name)) {
+                bindingTypes.set(name, inferTypeFromName(binding));
             }
         }
-        lines.push('    }');
+
+        // Group bindings by semantic category
+        const groups = new Map<string, string[]>();
+        for (const binding of bindings) {
+            const category = categorizeSettingsBinding(binding);
+            if (!groups.has(category)) groups.set(category, []);
+            groups.get(category)!.push(binding);
+        }
+
+        // Emit each category as a Form Section
+        for (const [category, categoryBindings] of groups) {
+            const config = SETTINGS_CATEGORIES[category];
+            const sectionLabel = config?.label ?? 'General';
+            const sectionIcon = config?.icon ?? 'gear';
+
+            lines.push(`    Section {`);
+            for (const binding of categoryBindings) {
+                const lower = binding.toLowerCase();
+                const varName = camelCase(binding);
+                const label = humanizeFieldName(binding);
+                const inferredType = bindingTypes.get(varName) ?? 'String';
+
+                // Skip non-String/non-Bool types — show as read-only label instead
+                // This prevents type mismatches (e.g., TextField with Binding<DepthType>)
+                const isStringType = inferredType === 'String';
+                const isOptionalString = inferredType === 'String?';
+                const isBoolType = inferredType === 'Bool';
+                if (!isStringType && !isOptionalString && !isBoolType) {
+                    lines.push(`        LabeledContent("${label}") {`);
+                    lines.push(`            Text(String(describing: ${varName}))`);
+                    lines.push('        }');
+                    continue;
+                }
+                // Optional strings need read-only display (TextField doesn't support optional bindings)
+                if (isOptionalString) {
+                    lines.push(`        LabeledContent("${label}") {`);
+                    lines.push(`            Text(${varName} ?? "—")`);
+                    lines.push('        }');
+                    continue;
+                }
+
+                // Choose the right control based on field semantics AND actual type
+                if (inferredType === 'Bool' || lower.startsWith('is') || lower.startsWith('enable') || lower.startsWith('show') ||
+                    lower.startsWith('has') || lower.startsWith('allow') || lower.startsWith('should')) {
+                    // Boolean → Toggle
+                    lines.push(`        Toggle("${label}", isOn: $${varName})`);
+                } else if (lower.includes('password')) {
+                    // Password → SecureField
+                    lines.push(`        SecureField("${label}", text: $${varName})`);
+                } else if (lower.includes('email')) {
+                    // Email → TextField with keyboard type
+                    lines.push(`        TextField("${label}", text: $${varName})`);
+                    lines.push('            #if os(iOS)');
+                    lines.push('            .keyboardType(.emailAddress)');
+                    lines.push('            .textContentType(.emailAddress)');
+                    lines.push('            .textInputAutocapitalization(.never)');
+                    lines.push('            #endif');
+                } else if (lower.includes('theme') || lower.includes('mode') || lower.includes('locale') ||
+                           lower.includes('timezone') || lower.includes('language') || lower.includes('accent') ||
+                           lower.includes('frequency') || lower.includes('digest') || lower.includes('depth') ||
+                           lower.includes('type') || lower.includes('sort') || lower.includes('order')) {
+                    // Enum-like → Picker
+                    lines.push(`        // TODO: Replace with actual options from your API`);
+                    lines.push(`        Picker("${label}", selection: $${varName}) {`);
+                    lines.push(`            Text("Default").tag("")`);
+                    lines.push('        }');
+                } else if (lower.includes('phone') || lower.includes('number')) {
+                    lines.push(`        TextField("${label}", text: $${varName})`);
+                    lines.push('            #if os(iOS)');
+                    lines.push('            .keyboardType(.phonePad)');
+                    lines.push('            #endif');
+                } else if (lower.includes('bio') || lower.includes('description') || lower.includes('about')) {
+                    // Multi-line text → TextEditor
+                    lines.push(`        LabeledContent("${label}") {`);
+                    lines.push(`            TextEditor(text: $${varName})`);
+                    lines.push('                .frame(minHeight: 60)');
+                    lines.push('        }');
+                } else {
+                    // Default → TextField (only for String types)
+                    lines.push(`        TextField("${label}", text: $${varName})`);
+                }
+            }
+            lines.push(`    } header: {`);
+            lines.push(`        Label("${sectionLabel}", systemImage: "${sectionIcon}")`);
+            lines.push('    }');
+        }
     } else {
         lines.push('    Section("General") {');
         lines.push('        // Settings will be populated from app configuration');
         lines.push('    }');
     }
 
-    // Action buttons
-    const actions = screen.actions ?? [];
+    // Action buttons — grouped in a section
+    const actions = (screen.actions ?? []).filter(a => (a.label ?? '') !== 'inline');
     if (actions.length > 0) {
-        lines.push('    Section {');
-        for (const action of actions) {
-            if ((action.label ?? '') !== 'inline') {
-                const isDestructive = action.destructive;
+        // Separate destructive actions
+        const normalActions = actions.filter(a => !a.destructive);
+        const destructiveActions = actions.filter(a => a.destructive);
+
+        if (normalActions.length > 0) {
+            lines.push('    Section {');
+            for (const action of normalActions) {
                 const actionLabel = capitalise(action.label ?? 'Action');
                 const target = action.effect?.target ?? action.label ?? 'action';
-                if (isDestructive) {
-                    lines.push(`        Button("${actionLabel}", role: .destructive) {`);
-                } else {
-                    lines.push(`        Button("${actionLabel}") {`);
-                }
+                lines.push(`        Button("${actionLabel}") {`);
                 lines.push(`            ${camelCase(target)}()`);
                 lines.push('        }');
             }
+            lines.push('    }');
         }
-        lines.push('    }');
+
+        if (destructiveActions.length > 0) {
+            lines.push('    Section {');
+            for (const action of destructiveActions) {
+                const actionLabel = capitalise(action.label ?? 'Action');
+                const target = action.effect?.target ?? action.label ?? 'action';
+                lines.push(`        Button("${actionLabel}", role: .destructive) {`);
+                lines.push(`            ${camelCase(target)}()`);
+                lines.push('        }');
+            }
+            lines.push('    }');
+        }
     }
 
     lines.push('}');
     lines.push(`.navigationTitle("${screen.name}")`);
+
+    // Find settings save endpoint for TODO
+    const saveEndpoint = (model.apiEndpoints ?? []).find(ep => {
+        const url = ep.url.toLowerCase();
+        return (url.includes('settings') || url.includes('profile') || url.includes('preferences')) &&
+               (ep.method === 'PUT' || ep.method === 'PATCH' || ep.method === 'POST');
+    });
+    if (saveEndpoint) {
+        const url = saveEndpoint.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param');
+        lines.push(`// TODO: Save settings via ${saveEndpoint.method} ${url}`);
+    }
 
     return indent(lines.join('\n'), indentLevel);
 }
@@ -1883,82 +2179,238 @@ function generateProfileLayout(screen: Screen, model: SemanticAppModel, componen
     return indent(lines.join('\n'), indentLevel);
 }
 
+/**
+ * Determine whether an auth screen is a registration/signup screen.
+ * Falls back to login if the screen name doesn't clearly indicate registration.
+ */
+function isRegisterAuthScreen(screen: Screen): boolean {
+    const lower = screen.name.toLowerCase();
+    return lower.includes('register') || lower.includes('signup') || lower.includes('sign-up')
+        || lower.includes('create-account') || lower.includes('createaccount');
+}
+
 function generateAuthLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
+    const isRegister = isRegisterAuthScreen(screen);
+    return isRegister
+        ? generateRegisterAuthLayout(screen, model, components, indentLevel)
+        : generateLoginAuthLayout(screen, model, components, indentLevel);
+}
+
+function generateLoginAuthLayout(screen: Screen, _model: SemanticAppModel, _components: ComponentRef[], indentLevel: number): string {
     const lines: string[] = [];
 
-    lines.push('VStack(spacing: 24) {');
-    lines.push('    Spacer()');
+    lines.push('NavigationStack {');
+    lines.push('    VStack(spacing: 24) {');
+    lines.push('        // App logo/title area');
+    lines.push('        VStack(spacing: 8) {');
+    lines.push('            Image(systemName: "person.circle.fill")');
+    lines.push('                .font(.system(size: 60))');
+    lines.push('                .foregroundStyle(.tint)');
+    lines.push('                .accessibilityLabel("App logo")');
+    lines.push('            Text("Welcome Back")');
+    lines.push('                .font(.title.bold())');
+    lines.push('        }');
+    lines.push('        .padding(.top, 40)');
     lines.push('');
-
-    // Logo / branding area
-    lines.push('    // Branding');
-    lines.push('    Image(systemName: "person.circle.fill")');
-    lines.push('        .resizable()');
-    lines.push('        .frame(width: 80, height: 80)');
-    lines.push('        .tint(.accentColor)');
+    lines.push('        // Form fields');
+    lines.push('        VStack(spacing: 16) {');
+    lines.push('            TextField("Email", text: $email)');
+    lines.push('                .textContentType(.emailAddress)');
+    lines.push('                #if os(iOS)');
+    lines.push('                .keyboardType(.emailAddress)');
+    lines.push('                .textInputAutocapitalization(.never)');
+    lines.push('                #endif');
+    lines.push('                .autocorrectionDisabled()');
+    lines.push('                .padding()');
+    lines.push('                .background(.quaternary)');
+    lines.push('                .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('                .accessibilityLabel("Email address")');
     lines.push('');
-    lines.push(`    Text("${screen.name}")`);
-    lines.push('        .font(.title)');
-    lines.push('        .fontWeight(.bold)');
+    lines.push('            HStack {');
+    lines.push('                if showPassword {');
+    lines.push('                    TextField("Password", text: $password)');
+    lines.push('                        .textContentType(.password)');
+    lines.push('                } else {');
+    lines.push('                    SecureField("Password", text: $password)');
+    lines.push('                        .textContentType(.password)');
+    lines.push('                }');
+    lines.push('                Button {');
+    lines.push('                    showPassword.toggle()');
+    lines.push('                } label: {');
+    lines.push('                    Image(systemName: showPassword ? "eye.slash" : "eye")');
+    lines.push('                        .foregroundStyle(.secondary)');
+    lines.push('                }');
+    lines.push('                .accessibilityLabel(showPassword ? "Hide password" : "Show password")');
+    lines.push('            }');
+    lines.push('            .padding()');
+    lines.push('            .background(.quaternary)');
+    lines.push('            .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('        }');
     lines.push('');
-
-    // Form fields from state bindings
-    const bindings = screen.stateBindings ?? [];
-    // Non-text bindings that should not become TextFields (booleans, status flags, arrays, etc.)
-    const nonTextBindings = new Set(['loading', 'isloading', 'error', 'success', 'showpassword', 'issubmitting', 'iserror', 'issuccess', 'disabled', 'isdisabled', 'visible', 'isvisible', 'submitted', 'issubmitted']);
-    if (bindings.length > 0) {
-        for (const binding of bindings) {
-            const lower = binding.toLowerCase();
-            if (nonTextBindings.has(lower)) continue; // skip non-text state
-            if (lower.includes('password')) {
-                lines.push(`    SecureField("Password", text: $${camelCase(binding)})`);
-                lines.push('        .textFieldStyle(.roundedBorder)');
-            } else if (lower.includes('email')) {
-                lines.push(`    TextField("Email", text: $${camelCase(binding)})`);
-                lines.push('        #if os(iOS)');
-                lines.push('        .keyboardType(.emailAddress)');
-                lines.push('        .textContentType(.emailAddress)');
-                lines.push('        .textInputAutocapitalization(.never)');
-                lines.push('        #endif');
-                lines.push('        .textFieldStyle(.roundedBorder)');
-            } else {
-                lines.push(`    TextField("${humanizeFieldName(binding)}", text: $${camelCase(binding)})`);
-                lines.push('        .textFieldStyle(.roundedBorder)');
-            }
-        }
-    } else {
-        lines.push('    TextField("Email", text: $email)');
-        lines.push('        #if os(iOS)');
-        lines.push('        .keyboardType(.emailAddress)');
-        lines.push('        .textContentType(.emailAddress)');
-        lines.push('        .textInputAutocapitalization(.never)');
-        lines.push('        #endif');
-        lines.push('        .textFieldStyle(.roundedBorder)');
-        lines.push('');
-        lines.push('    SecureField("Password", text: $password)');
-        lines.push('        .textFieldStyle(.roundedBorder)');
-    }
-
+    lines.push('        // Error message');
+    lines.push('        if let errorMessage {');
+    lines.push('            Text(errorMessage)');
+    lines.push('                .foregroundStyle(.red)');
+    lines.push('                .font(.caption)');
+    lines.push('                .accessibilityLabel("Error: \\(errorMessage)")');
+    lines.push('        }');
     lines.push('');
-
-    // Submit button
-    const submitAction = (screen.actions ?? []).find(
-        (a) => a.trigger === 'submit' || (a.label ?? '').toLowerCase().includes('login') || (a.label ?? '').toLowerCase().includes('sign'),
-    );
-    const submitLabel = submitAction
-        ? ((submitAction.label && submitAction.label !== 'inline') ? capitalise(submitAction.label) : 'Sign In')
-        : 'Sign In';
-    lines.push(`    Button("${submitLabel}") {`);
-    const authActionName = submitAction ? camelCase(submitAction.effect?.target ?? 'signIn') : 'signIn';
-    lines.push(`        ${authActionName}()`);
+    lines.push('        // Login button');
+    lines.push('        Button {');
+    lines.push('            Task { await login() }');
+    lines.push('        } label: {');
+    lines.push('            if isLoading {');
+    lines.push('                ProgressView()');
+    lines.push('                    .frame(maxWidth: .infinity)');
+    lines.push('                    .accessibilityLabel("Signing in")');
+    lines.push('            } else {');
+    lines.push('                Text("Sign In")');
+    lines.push('                    .frame(maxWidth: .infinity)');
+    lines.push('            }');
+    lines.push('        }');
+    lines.push('        .buttonStyle(.borderedProminent)');
+    lines.push('        .controlSize(.large)');
+    lines.push('        .disabled(email.isEmpty || password.isEmpty || isLoading)');
+    lines.push('        .accessibilityLabel("Sign in")');
+    lines.push('        .accessibilityHint("Double tap to sign in with your email and password")');
+    lines.push('');
+    lines.push('        // Navigation to register');
+    lines.push('        HStack {');
+    lines.push(`            Text("Don't have an account?")`);
+    lines.push('                .foregroundStyle(.secondary)');
+    lines.push('            NavigationLink("Sign Up") {');
+    lines.push('                RegisterView()');
+    lines.push('            }');
+    lines.push('            .accessibilityHint("Navigates to registration screen")');
+    lines.push('        }');
+    lines.push('        .font(.subheadline)');
+    lines.push('');
+    lines.push('        Spacer()');
     lines.push('    }');
-    lines.push('    .buttonStyle(.borderedProminent)');
-    lines.push('    .controlSize(.large)');
-
-    lines.push('');
-    lines.push('    Spacer()');
+    lines.push('    .padding(.horizontal, 24)');
     lines.push('}');
-    lines.push('.padding()');
+
+    return indent(lines.join('\n'), indentLevel);
+}
+
+function generateRegisterAuthLayout(screen: Screen, _model: SemanticAppModel, _components: ComponentRef[], indentLevel: number): string {
+    const lines: string[] = [];
+
+    lines.push('NavigationStack {');
+    lines.push('    ScrollView {');
+    lines.push('        VStack(spacing: 24) {');
+    lines.push('            // App logo/title area');
+    lines.push('            VStack(spacing: 8) {');
+    lines.push('                Image(systemName: "person.badge.plus")');
+    lines.push('                    .font(.system(size: 60))');
+    lines.push('                    .foregroundStyle(.tint)');
+    lines.push('                    .accessibilityLabel("Create account")');
+    lines.push('                Text("Create Account")');
+    lines.push('                    .font(.title.bold())');
+    lines.push('            }');
+    lines.push('            .padding(.top, 40)');
+    lines.push('');
+    lines.push('            // Form fields');
+    lines.push('            VStack(spacing: 16) {');
+    lines.push('                TextField("Full Name", text: $name)');
+    lines.push('                    .textContentType(.name)');
+    lines.push('                    .autocorrectionDisabled()');
+    lines.push('                    .padding()');
+    lines.push('                    .background(.quaternary)');
+    lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('                    .accessibilityLabel("Full name")');
+    lines.push('');
+    lines.push('                TextField("Email", text: $email)');
+    lines.push('                    .textContentType(.emailAddress)');
+    lines.push('                    #if os(iOS)');
+    lines.push('                    .keyboardType(.emailAddress)');
+    lines.push('                    .textInputAutocapitalization(.never)');
+    lines.push('                    #endif');
+    lines.push('                    .autocorrectionDisabled()');
+    lines.push('                    .padding()');
+    lines.push('                    .background(.quaternary)');
+    lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('                    .accessibilityLabel("Email address")');
+    lines.push('');
+    lines.push('                HStack {');
+    lines.push('                    if showPassword {');
+    lines.push('                        TextField("Password", text: $password)');
+    lines.push('                            .textContentType(.newPassword)');
+    lines.push('                    } else {');
+    lines.push('                        SecureField("Password", text: $password)');
+    lines.push('                            .textContentType(.newPassword)');
+    lines.push('                    }');
+    lines.push('                    Button {');
+    lines.push('                        showPassword.toggle()');
+    lines.push('                    } label: {');
+    lines.push('                        Image(systemName: showPassword ? "eye.slash" : "eye")');
+    lines.push('                            .foregroundStyle(.secondary)');
+    lines.push('                    }');
+    lines.push('                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")');
+    lines.push('                }');
+    lines.push('                .padding()');
+    lines.push('                .background(.quaternary)');
+    lines.push('                .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('');
+    lines.push('                SecureField("Confirm Password", text: $confirmPassword)');
+    lines.push('                    .textContentType(.newPassword)');
+    lines.push('                    .padding()');
+    lines.push('                    .background(.quaternary)');
+    lines.push('                    .clipShape(RoundedRectangle(cornerRadius: 12))');
+    lines.push('                    .accessibilityLabel("Confirm password")');
+    lines.push('            }');
+    lines.push('');
+    lines.push('            // Password mismatch warning');
+    lines.push('            if !confirmPassword.isEmpty && password != confirmPassword {');
+    lines.push('                Text("Passwords do not match")');
+    lines.push('                    .foregroundStyle(.red)');
+    lines.push('                    .font(.caption)');
+    lines.push('                    .accessibilityLabel("Error: Passwords do not match")');
+    lines.push('            }');
+    lines.push('');
+    lines.push('            // Error message');
+    lines.push('            if let errorMessage {');
+    lines.push('                Text(errorMessage)');
+    lines.push('                    .foregroundStyle(.red)');
+    lines.push('                    .font(.caption)');
+    lines.push('                    .accessibilityLabel("Error: \\(errorMessage)")');
+    lines.push('            }');
+    lines.push('');
+    lines.push('            // Register button');
+    lines.push('            Button {');
+    lines.push('                Task { await register() }');
+    lines.push('            } label: {');
+    lines.push('                if isLoading {');
+    lines.push('                    ProgressView()');
+    lines.push('                        .frame(maxWidth: .infinity)');
+    lines.push('                        .accessibilityLabel("Creating account")');
+    lines.push('                } else {');
+    lines.push('                    Text("Create Account")');
+    lines.push('                        .frame(maxWidth: .infinity)');
+    lines.push('                }');
+    lines.push('            }');
+    lines.push('            .buttonStyle(.borderedProminent)');
+    lines.push('            .controlSize(.large)');
+    lines.push('            .disabled(name.isEmpty || email.isEmpty || password.isEmpty || password != confirmPassword || isLoading)');
+    lines.push('            .accessibilityLabel("Create account")');
+    lines.push('            .accessibilityHint("Double tap to create your account")');
+    lines.push('');
+    lines.push('            // Navigation to login');
+    lines.push('            HStack {');
+    lines.push('                Text("Already have an account?")');
+    lines.push('                    .foregroundStyle(.secondary)');
+    lines.push('                NavigationLink("Sign In") {');
+    lines.push('                    LoginView()');
+    lines.push('                }');
+    lines.push('                .accessibilityHint("Navigates to sign in screen")');
+    lines.push('            }');
+    lines.push('            .font(.subheadline)');
+    lines.push('');
+    lines.push('            Spacer()');
+    lines.push('        }');
+    lines.push('        .padding(.horizontal, 24)');
+    lines.push('    }');
+    lines.push('}');
 
     return indent(lines.join('\n'), indentLevel);
 }
@@ -2335,6 +2787,7 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
         lines.push('');
         for (const action of meaningfulActions) {
             const effectTarget = action.effect?.target ?? action.label ?? 'action';
+            const effectType = action.effect?.type;
             const label = action.label && action.label !== 'inline'
                 ? capitalise(action.label)
                 : humanizeActionTarget(effectTarget);
@@ -2345,6 +2798,11 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
             }
             lines.push(`            ${camelCase(effectTarget)}()`);
             lines.push('        }');
+            if (effectType === 'navigate') {
+                lines.push(`        .accessibilityHint("Navigates to ${humanizeFieldName(effectTarget)}")`);
+            } else {
+                lines.push(`        .accessibilityLabel("${label}")`);
+            }
         }
     }
 
@@ -2560,6 +3018,39 @@ function isDetailScreen(screen: Screen, model: SemanticAppModel): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Reference implementation scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Score screens to determine which should get reference implementations.
+ * Higher score = better candidate for a fully-wired reference screen.
+ * Criteria: entity field count, API data requirements, action count.
+ */
+function scoreScreenForReference(screen: Screen, model: SemanticAppModel): number {
+    const entity = resolveEntity(screen, model);
+    const fieldCount = entity?.fields?.filter(f => isValidSwiftFieldName(f.name))?.length ?? 0;
+    const apiReqs = (screen.dataRequirements ?? []).filter(r => r.fetchStrategy === 'api').length;
+    const actionCount = (screen.actions ?? []).filter(a => (a.label ?? '') !== 'inline').length;
+    // Prefer list/detail screens as they show the most common patterns
+    const layoutBonus = ['list', 'detail', 'dashboard'].includes(screen.layout ?? '') ? 3 : 0;
+    return fieldCount * 2 + apiReqs * 3 + actionCount + layoutBonus;
+}
+
+/**
+ * Get the set of screen names that should be reference implementations.
+ * Returns the top 2 screens by score (minimum score threshold of 3).
+ */
+function getReferenceScreenNames(model: SemanticAppModel): Set<string> {
+    const screens = (model.screens ?? []).filter(s => !isMarketingScreen(s));
+    const scored = screens.map(s => ({
+        name: s.name,
+        score: scoreScreenForReference(s, model),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return new Set(scored.slice(0, 2).filter(s => s.score > 3).map(s => s.name));
+}
+
+// ---------------------------------------------------------------------------
 // Main view generation
 // ---------------------------------------------------------------------------
 
@@ -2568,11 +3059,21 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     const fileName = viewFileName(screen.name);
     const bindings = generateStateBindings(screen, model);
     const warnings: string[] = [];
+    const isReference = getReferenceScreenNames(model).has(screen.name);
 
     const lines: string[] = [];
 
     // Header
-    lines.push(`// Generated by Morphkit from: ${relativeSourcePath(screen.sourceFile ?? 'unknown')}`);
+    if (isReference) {
+        lines.push(`// Generated by Morphkit from: ${relativeSourcePath(screen.sourceFile ?? 'unknown')}`);
+        lines.push('// ┌─────────────────────────────────────────────────────────────┐');
+        lines.push('// │  REFERENCE IMPLEMENTATION — Study this as the canonical     │');
+        lines.push('// │  pattern for data loading, error handling, and actions.     │');
+        lines.push('// │  Other views follow the same architecture with TODO stubs.  │');
+        lines.push('// └─────────────────────────────────────────────────────────────┘');
+    } else {
+        lines.push(`// Generated by Morphkit from: ${relativeSourcePath(screen.sourceFile ?? 'unknown')}`);
+    }
     lines.push('');
     lines.push('import SwiftUI');
     lines.push('');
@@ -2594,6 +3095,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // Data requirement-driven state properties
     const dataReqs = screen.dataRequirements ?? [];
     const declaredNames = new Set(bindings.map((b) => b.name));
+    const declaredTypes = new Map<string, string>(); // Track declared types for loadData compat checks
+    for (const b of bindings) {
+        declaredTypes.set(b.name, b.type);
+    }
+    const dataReqDeclaredNames = new Set<string>(); // Track vars from data reqs (vs state bindings)
     let hasApiData = false;
 
     for (const req of dataReqs) {
@@ -2611,6 +3117,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const arrayType = entityExists ? `[${entityName}]` : '[String]';
                 lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
                 declaredNames.add(arrayVarName);
+                dataReqDeclaredNames.add(arrayVarName);
             }
         } else {
             if (!declaredNames.has(varName)) {
@@ -2618,6 +3125,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const stateType = entityExists ? `${entityName}?` : 'String?';
                 lines.push(`    @State private var ${varName}: ${stateType}`);
                 declaredNames.add(varName);
+                dataReqDeclaredNames.add(varName);
             }
         }
 
@@ -2639,6 +3147,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             const arrayType = entityExists ? `[${derivedEntityName}]` : '[String]';
             lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
             declaredNames.add(arrayVarName);
+            dataReqDeclaredNames.add(arrayVarName);
         }
         // List/grid screens with entity arrays need async data loading
         if (!hasApiData) {
@@ -2780,7 +3289,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
-    // Auth layout state — ensure email/password are declared for auth screens
+    // Auth layout state — ensure all auth-related state properties are declared
     if (screen.layout === 'auth') {
         if (!declaredNames.has('email')) {
             lines.push('    @State private var email = ""');
@@ -2789,6 +3298,30 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (!declaredNames.has('password')) {
             lines.push('    @State private var password = ""');
             declaredNames.add('password');
+        }
+        if (!declaredNames.has('isLoading')) {
+            lines.push('    @State private var isLoading = false');
+            declaredNames.add('isLoading');
+        }
+        if (!declaredNames.has('errorMessage')) {
+            lines.push('    @State private var errorMessage: String?');
+            declaredNames.add('errorMessage');
+        }
+        if (!declaredNames.has('showPassword')) {
+            lines.push('    @State private var showPassword = false');
+            declaredNames.add('showPassword');
+        }
+        // Registration-specific fields
+        const isRegister = isRegisterAuthScreen(screen);
+        if (isRegister) {
+            if (!declaredNames.has('name')) {
+                lines.push('    @State private var name = ""');
+                declaredNames.add('name');
+            }
+            if (!declaredNames.has('confirmPassword')) {
+                lines.push('    @State private var confirmPassword = ""');
+                declaredNames.add('confirmPassword');
+            }
         }
     }
 
@@ -2871,8 +3404,13 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push(generateLayoutBody(screen, model, 4));
         lines.push(indent('    } else if isLoading {', 2));
         lines.push(indent('        ProgressView()', 2));
+        lines.push(indent('            .accessibilityLabel("Loading content")', 2));
+        lines.push(indent('    } else if let errorMessage {', 2));
+        lines.push(indent('        EmptyStateView(title: "Error", description: errorMessage, systemImage: "exclamationmark.triangle") {', 2));
+        lines.push(indent('            await loadData()', 2));
+        lines.push(indent('        }', 2));
         lines.push(indent('    } else {', 2));
-        lines.push(indent('        ContentUnavailableView("Not Found", systemImage: "exclamationmark.triangle")', 2));
+        lines.push(indent('        EmptyStateView(title: "Not Found", systemImage: "exclamationmark.triangle")', 2));
         lines.push(indent('    }', 2));
         lines.push(indent('}', 2));
     } else {
@@ -2885,19 +3423,33 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push(indent('    await loadData()', 2));
         lines.push(indent('}', 2));
 
-        // For non-detail views, add overlay spinner and error alert
+        // All screens with API data get pull-to-refresh wired to loadData()
+        if (!isDetailWithIdLoading) {
+            lines.push(indent('.refreshable { await loadData() }', 2));
+        }
+
+        // For non-detail views, add overlay spinner
         if (!isDetailWithIdLoading) {
             lines.push(indent('.overlay {', 2));
             lines.push(indent('    if isLoading {', 2));
             lines.push(indent('        ProgressView()', 2));
+            lines.push(indent('            .accessibilityLabel("Loading content")', 2));
             lines.push(indent('    }', 2));
             lines.push(indent('}', 2));
         }
-        lines.push(indent('.alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {', 2));
-        lines.push(indent('    Button("OK") { errorMessage = nil }', 2));
-        lines.push(indent('} message: {', 2));
+
+        // Error banner overlay — uses ErrorBannerView component
+        lines.push(indent('.overlay(alignment: .top) {', 2));
         lines.push(indent('    if let errorMessage {', 2));
-        lines.push(indent('        Text(errorMessage)', 2));
+        lines.push(indent('        VStack(spacing: 12) {', 2));
+        lines.push(indent('            ErrorBannerView(message: errorMessage) {', 2));
+        lines.push(indent('                self.errorMessage = nil', 2));
+        lines.push(indent('            }', 2));
+        lines.push(indent('            RetryButton {', 2));
+        lines.push(indent('                await loadData()', 2));
+        lines.push(indent('            }', 2));
+        lines.push(indent('        }', 2));
+        lines.push(indent('        .padding(.top, 8)', 2));
         lines.push(indent('    }', 2));
         lines.push(indent('}', 2));
     }
@@ -3004,7 +3556,42 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const fetchName = (req.cardinality === 'many' || (req as any).type === 'list')
                     ? (reqSource.endsWith('s') ? reqSource : pluralize(reqSource))
                     : reqSource;
-                lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                // Only assign if the target variable was declared as a data-requirement state
+                // (not from state bindings, which might have incompatible types).
+                // Data-requirement state vars use array types for "many" cardinality.
+                const isArrayReq = req.cardinality === 'many' || (req as any).type === 'list';
+
+                if (dataReqDeclaredNames.has(arrayVarName) || declaredNames.has(arrayVarName)) {
+                    // Check universal type compatibility before any assignment
+                    const declaredType = declaredTypes.get(arrayVarName) ?? '';
+                    const declaredIsArray = declaredType.startsWith('[');
+                    const declaredIsScalar = /^(String\??|Bool\??|Int\??|Double\??|Float\??|Date\??|UUID\??)$/.test(declaredType);
+                    const fetchReturnsArray = fetchName.endsWith('s') || isArrayReq;
+
+                    // Mismatch 1: scalar state but API returns array (e.g., referrals: String? ← fetchReferrals(): [String])
+                    if (fetchReturnsArray && declaredIsScalar) {
+                        lines.push(`            // TODO: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}() — declared as ${declaredType}, API returns array`);
+                    // Mismatch 2: typed array but API returns different type (e.g., [SavedTemplate] but fetch returns [String])
+                    } else if (declaredIsArray && declaredType !== '[String]') {
+                        // Extract the element type from [TypeName]
+                        const elementType = declaredType.slice(1, -1);
+                        const entityExists = entityExistsInOutput(elementType, model);
+                        if (!entityExists) {
+                            // The declared type references an entity the API client doesn't know about
+                            lines.push(`            // TODO: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}() — declared as ${declaredType}, but ${elementType} may not match API return type`);
+                        } else {
+                            lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                        }
+                    // Mismatch 3: non-array state but fetch returns array (broader check than just scalars)
+                    } else if (fetchReturnsArray && !declaredIsArray) {
+                        lines.push(`            // TODO: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}() — declared as ${declaredType}, needs array type`);
+                    } else {
+                        lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                    }
+                } else {
+                    // Variable not declared — emit as TODO
+                    lines.push(`            // TODO: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                }
                 hasLoadDataBody = true;
             }
         }
@@ -3032,13 +3619,22 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             }
         }
 
-        lines.push('        } catch {');
-        lines.push('            errorMessage = error.localizedDescription');
-        lines.push('        }');
+        if (isReference) {
+            // Reference implementations: robust error handling with retry guidance
+            lines.push('        } catch let error as URLError where error.code == .notConnectedToInternet {');
+            lines.push('            errorMessage = "No internet connection. Pull to refresh to try again."');
+            lines.push('        } catch {');
+            lines.push('            errorMessage = error.localizedDescription');
+            lines.push('        }');
+        } else {
+            lines.push('        } catch {');
+            lines.push('            errorMessage = error.localizedDescription');
+            lines.push('        }');
+        }
         lines.push('    }');
     }
 
-    // Generate action stubs for meaningful actions
+    // Generate action stubs for meaningful actions — with endpoint-specific TODOs
     const meaningfulActions = (screen.actions ?? []).filter(
         (a) => (a.label ?? '') !== 'inline' || (a.effect?.target ?? '') !== 'inline',
     );
@@ -3054,25 +3650,108 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             generatedFunctions.add(funcName);
 
             lines.push('');
-            lines.push(`    private func ${funcName}() {`);
-            lines.push(`        print("${humanizeActionTarget(target)}")`);
-            lines.push('    }');
+
+            // Find matching API endpoint for this action
+            const actionEndpoint = findEndpointForAction(action, model);
+
+            if (action.effect?.type === 'apiCall' && actionEndpoint) {
+                const method = actionEndpoint.method ?? 'POST';
+                const url = actionEndpoint.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param');
+
+                if (isReference) {
+                    // Reference implementation: fully wired action with async pattern
+                    lines.push(`    private func ${funcName}() {`);
+                    lines.push(`        // ${method} ${url}`);
+                    lines.push('        Task {');
+                    lines.push('            do {');
+                    if (actionEndpoint.requestBody) {
+                        const shape = formatActionTypeShape(actionEndpoint.requestBody);
+                        lines.push(`                // TODO: Build request body: ${shape}`);
+                    }
+                    lines.push(`                // TODO: let result = try await APIClient.shared.${funcName}(...)`);
+                    if (actionEndpoint.auth) {
+                        lines.push('                // Auth token is auto-attached by APIClient');
+                    }
+                    lines.push('                await loadData() // Refresh data after action');
+                    lines.push('            } catch {');
+                    lines.push('                errorMessage = error.localizedDescription');
+                    lines.push('            }');
+                    lines.push('        }');
+                    lines.push('    }');
+                } else {
+                    // Non-reference: actionable TODO
+                    lines.push(`    private func ${funcName}() {`);
+                    lines.push(`        // TODO: Call ${method} ${url}`);
+                    if (actionEndpoint.requestBody) {
+                        const shape = formatActionTypeShape(actionEndpoint.requestBody);
+                        lines.push(`        // Request body: ${shape}`);
+                    }
+                    if (actionEndpoint.auth) {
+                        lines.push('        // Requires auth token — use APIClient.shared (auto-attaches token)');
+                    }
+                    lines.push('        // See loadData() above for the async call pattern');
+                    lines.push(`        print("${humanizeActionTarget(target)}")`);
+                    lines.push('    }');
+                }
+            } else if (action.effect?.type === 'mutate') {
+                lines.push(`    private func ${funcName}() {`);
+                if (isReference) {
+                    lines.push(`        // Update ${action.effect.target} state`);
+                    if (action.effect.payload && Object.keys(action.effect.payload).length > 0) {
+                        lines.push(`        // Payload: ${JSON.stringify(action.effect.payload)}`);
+                    }
+                } else {
+                    lines.push(`        // TODO: Update ${action.effect.target} state`);
+                    if (action.effect.payload && Object.keys(action.effect.payload).length > 0) {
+                        lines.push(`        // Payload: ${JSON.stringify(action.effect.payload)}`);
+                    }
+                }
+                lines.push(`        print("${humanizeActionTarget(target)}")`);
+                lines.push('    }');
+            } else if (action.effect?.type === 'navigate') {
+                lines.push(`    private func ${funcName}() {`);
+                lines.push(`        // TODO: Navigate to ${pascalCase(action.effect.target)}View`);
+                lines.push(`        // Use: router.navigate(to: .${camelCase(action.effect.target)})`);
+                lines.push(`        print("${humanizeActionTarget(target)}")`);
+                lines.push('    }');
+            } else {
+                lines.push(`    private func ${funcName}() {`);
+                lines.push(`        print("${humanizeActionTarget(target)}")`);
+                lines.push('    }');
+            }
         }
     }
 
-    // Auth layout: ensure the signIn action stub exists
+    // Auth layout: generate working login/register async methods
     if (screen.layout === 'auth') {
-        const existingFuncs = new Set(
-            meaningfulActions.map(a => camelCase(a.effect?.target ?? a.label ?? '')),
-        );
-        if (!existingFuncs.has('signIn')) {
-            if (meaningfulActions.length === 0) {
-                lines.push('');
-                lines.push('    // MARK: - Actions');
-            }
+        const isRegister = isRegisterAuthScreen(screen);
+        if (meaningfulActions.length === 0) {
             lines.push('');
-            lines.push('    private func signIn() {');
-            lines.push('        print("Sign in tapped")');
+            lines.push('    // MARK: - Actions');
+        }
+        lines.push('');
+
+        if (isRegister) {
+            lines.push('    private func register() async {');
+            lines.push('        isLoading = true');
+            lines.push('        defer { isLoading = false }');
+            lines.push('        errorMessage = nil');
+            lines.push('        do {');
+            lines.push('            try await AuthManager.shared.register(name: name, email: email, password: password)');
+            lines.push('        } catch {');
+            lines.push('            errorMessage = error.localizedDescription');
+            lines.push('        }');
+            lines.push('    }');
+        } else {
+            lines.push('    private func login() async {');
+            lines.push('        isLoading = true');
+            lines.push('        defer { isLoading = false }');
+            lines.push('        errorMessage = nil');
+            lines.push('        do {');
+            lines.push('            try await AuthManager.shared.login(email: email, password: password)');
+            lines.push('        } catch {');
+            lines.push('            errorMessage = error.localizedDescription');
+            lines.push('        }');
             lines.push('    }');
         }
     }
@@ -3209,6 +3888,7 @@ function generateRowView(screen: Screen, model: SemanticAppModel): GeneratedFile
     lines.push(`            Text(String(describing: ${varName}.id))`);
     lines.push('                .font(.headline)');
     lines.push('        }');
+    lines.push('        .accessibilityElement(children: .combine)');
     lines.push('    }');
     lines.push('}');
     lines.push('');
@@ -3256,6 +3936,7 @@ function generateCardView(screen: Screen, model: SemanticAppModel): GeneratedFil
     lines.push('        .background(Color.clear)');
     lines.push('        .clipShape(RoundedRectangle(cornerRadius: 12))');
     lines.push('        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)');
+    lines.push('        .accessibilityElement(children: .combine)');
     lines.push('    }');
     lines.push('}');
     lines.push('');
@@ -3383,6 +4064,235 @@ export function isMarketingScreen(screen: Screen): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Error UI Components (generated in Components/ directory)
+// ---------------------------------------------------------------------------
+
+export function generateErrorUIComponents(): GeneratedFile[] {
+    const files: GeneratedFile[] = [];
+
+    // ErrorBannerView — dismissible red banner for API errors
+    files.push({
+        path: 'Components/ErrorBannerView.swift',
+        content: `// Generated by Morphkit
+
+import SwiftUI
+
+/// A dismissible error banner that slides in from the top.
+struct ErrorBannerView: View {
+    let message: String
+    var onDismiss: (() -> Void)? = nil
+
+    @State private var isVisible = true
+
+    var body: some View {
+        if isVisible {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.white)
+                    .font(.body)
+
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isVisible = false
+                    }
+                    onDismiss?()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white.opacity(0.8))
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.red.gradient)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: .red.opacity(0.3), radius: 8, y: 4)
+            .padding(.horizontal)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
+
+#Preview {
+    VStack {
+        ErrorBannerView(message: "Failed to load data. Please check your connection and try again.")
+        Spacer()
+    }
+}
+`,
+        sourceMapping: 'morphkit:components',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // RetryButton — a button that calls a retry closure
+    files.push({
+        path: 'Components/RetryButton.swift',
+        content: `// Generated by Morphkit
+
+import SwiftUI
+
+/// A styled retry button for error recovery.
+struct RetryButton: View {
+    let action: () async -> Void
+    var label: String = "Try Again"
+
+    @State private var isRetrying = false
+
+    var body: some View {
+        Button {
+            guard !isRetrying else { return }
+            isRetrying = true
+            Task {
+                await action()
+                isRetrying = false
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isRetrying {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                }
+                Text(isRetrying ? "Retrying..." : label)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(Color.accentColor.gradient)
+            .clipShape(Capsule())
+        }
+        .disabled(isRetrying)
+    }
+}
+
+#Preview {
+    RetryButton {
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+    }
+}
+`,
+        sourceMapping: 'morphkit:components',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // EmptyStateView — ContentUnavailableView wrapper for empty lists
+    files.push({
+        path: 'Components/EmptyStateView.swift',
+        content: `// Generated by Morphkit
+
+import SwiftUI
+
+/// A reusable empty state view wrapping ContentUnavailableView.
+struct EmptyStateView: View {
+    let title: String
+    var description: String? = nil
+    var systemImage: String = "tray"
+    var action: (() async -> Void)? = nil
+    var actionLabel: String = "Refresh"
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: systemImage)
+        } description: {
+            if let description {
+                Text(description)
+            }
+        } actions: {
+            if let action {
+                RetryButton(action: action, label: actionLabel)
+            }
+        }
+    }
+}
+
+#Preview {
+    EmptyStateView(
+        title: "No Items",
+        description: "Your collection is empty. Pull to refresh or add some items.",
+        systemImage: "tray",
+        action: {}
+    )
+}
+`,
+        sourceMapping: 'morphkit:components',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // OfflineBannerView — yellow banner for network connectivity issues
+    files.push({
+        path: 'Components/OfflineBannerView.swift',
+        content: `// Generated by Morphkit
+
+import SwiftUI
+import Network
+
+/// A yellow banner that appears when the device is offline.
+struct OfflineBannerView: View {
+    @State private var isConnected = true
+    private let monitor = NWPathMonitor()
+
+    var body: some View {
+        if !isConnected {
+            HStack(spacing: 10) {
+                Image(systemName: "wifi.slash")
+                    .font(.body)
+
+                Text("You're offline. Some features may be unavailable.")
+                    .font(.subheadline)
+                    .lineLimit(2)
+
+                Spacer()
+            }
+            .foregroundStyle(.black.opacity(0.8))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.yellow.gradient)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    func startMonitoring() -> Self {
+        monitor.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isConnected = path.status == .satisfied
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
+        return self
+    }
+}
+
+#Preview {
+    OfflineBannerView()
+}
+`,
+        sourceMapping: 'morphkit:components',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    return files;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -3409,4 +4319,4 @@ export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
 }
 
 // Re-export helpers for use by other generators
-export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName, pluralize, cleanSourceName, cleanStoreName };
+export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName, pluralize, cleanSourceName, cleanStoreName, getReferenceScreenNames, isWebOnlyState };

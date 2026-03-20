@@ -9,6 +9,8 @@ import { analyzeRepo } from './analyzer/index.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import { adaptForPlatform } from './semantic/adapter.js';
 import { generateProject } from './generator/index.js';
+import { startWatchMode } from './watcher.js';
+import { syncRepos } from './sync/index.js';
 import type { SemanticAppModel } from './semantic/model.js';
 
 // ---------------------------------------------------------------------------
@@ -239,12 +241,23 @@ program
   )
   .version(VERSION, '-V, --version', 'Output the current version')
   .option('--no-ai', 'Disable AI-enhanced analysis (use heuristics only)')
+  .option('--ai-provider <provider>', 'AI provider to use (claude, grok, openai, none)', undefined)
+  .option('--ai-model <model>', 'Override the default AI model for the chosen provider', undefined)
   .hook('preAction', () => {
-    // Set MORPHKIT_NO_AI env var when --no-ai flag is passed so the builder
-    // uses heuristic analysis instead of calling the xAI API.
     const opts = program.opts();
+    // --no-ai flag disables all AI
     if (opts.ai === false) {
       process.env.MORPHKIT_NO_AI = '1';
+    }
+    // --ai-provider none is equivalent to --no-ai
+    if (opts.aiProvider === 'none') {
+      process.env.MORPHKIT_NO_AI = '1';
+    } else if (opts.aiProvider) {
+      process.env.MORPHKIT_AI_PROVIDER = opts.aiProvider;
+    }
+    // --ai-model passes through to the builder via env var
+    if (opts.aiModel) {
+      process.env.MORPHKIT_AI_MODEL = opts.aiModel;
     }
   });
 
@@ -432,8 +445,19 @@ program
       console.log(
         chalk.dim(`Generated ${project.stats.totalFiles} files in ${elapsed}`),
       );
+      // Next steps guidance
       console.log('');
-      console.log(chalk.green(`Open in Xcode: open ${outputPath}/Package.swift`));
+      console.log(chalk.bold('Next Steps'));
+      console.log(chalk.dim('─'.repeat(40)));
+      console.log(`  1. ${chalk.cyan(`open ${outputPath}/Package.swift`)}  — Open in Xcode`);
+      console.log(`  2. ${chalk.cyan(`swift build`)}  — Verify compilation`);
+      console.log(`  3. Set API URL in ${chalk.dim('Networking/APIConfiguration.swift')}`);
+      console.log(`  4. Study the ${chalk.green('REFERENCE IMPL')} views for the canonical data loading pattern`);
+      console.log(`  5. Wire remaining screens by following the reference pattern`);
+      console.log(`  6. Read ${chalk.dim('CLAUDE.md')} for full architecture and API contract docs`);
+      console.log('');
+      console.log(chalk.dim('Tip: Use Claude Code or another AI assistant with the generated CLAUDE.md'));
+      console.log(chalk.dim('for the fastest path to a complete app.'));
     } catch (error) {
       spinner.fail('Generation failed');
       if (apiKey) {
@@ -501,6 +525,189 @@ program
       }
     } catch (error) {
       spinner.fail('Preview failed');
+      console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('watch')
+  .description(
+    'Watch a web app for changes and incrementally regenerate the SwiftUI project.\n\n' +
+    'Runs the full pipeline on startup, then watches for file changes and\n' +
+    'rebuilds only what changed.\n\n' +
+    'Examples:\n' +
+    '  $ morphkit watch ./my-nextjs-app\n' +
+    '  $ morphkit watch ./app -o ./ios -n ShopKit\n' +
+    '  $ morphkit watch ./app --debounce 2000',
+  )
+  .argument('<path>', 'Path to the web app repository')
+  .option('-o, --output <dir>', 'Output directory for the iOS project', './ios-app')
+  .option('-n, --name <name>', 'App name (defaults to package.json name)')
+  .option('--debounce <ms>', 'Debounce delay in milliseconds', '1000')
+  .action(async (repoPath: string, options: { output: string; name?: string; debounce: string }) => {
+    const absolutePath = resolve(repoPath);
+    const outputPath = resolve(options.output);
+    const debounceMs = parseInt(options.debounce, 10);
+
+    // Validate inputs
+    validateDirectoryExists(absolutePath);
+    validateProjectRoot(absolutePath);
+    if (options.name) {
+      validateAppName(options.name);
+    }
+    if (isNaN(debounceMs) || debounceMs < 0) {
+      console.error(chalk.red('Error: --debounce must be a positive number of milliseconds'));
+      process.exit(1);
+    }
+
+    // Show banner
+    console.log(BANNER);
+
+    let cleanup: (() => void) | null = null;
+
+    // Graceful shutdown handler
+    function handleShutdown(): void {
+      if (cleanup) {
+        cleanup();
+        cleanup = null;
+      }
+      process.exit(0);
+    }
+
+    process.on('SIGINT', handleShutdown);
+    process.on('SIGTERM', handleShutdown);
+
+    try {
+      cleanup = await startWatchMode({
+        sourcePath: absolutePath,
+        outputPath,
+        appName: options.name,
+        debounceMs,
+      });
+    } catch (error) {
+      console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('sync')
+  .description(
+    'Sync a web app\'s changes to an existing iOS project via Git.\n\n' +
+    'Analyzes the web app, diffs the semantic model against the previous\n' +
+    'sync, regenerates only changed files, and creates a Git branch\n' +
+    '(optionally with a GitHub PR).\n\n' +
+    'Examples:\n' +
+    '  $ morphkit sync ./my-nextjs-app ./ios-app\n' +
+    '  $ morphkit sync ./app ./ios --no-pr --dry-run\n' +
+    '  $ morphkit sync ./app ./ios --base-branch develop',
+  )
+  .argument('<source-path>', 'Path to the web app repository')
+  .argument('<target-path>', 'Path to the iOS project repository')
+  .option('--base-branch <branch>', 'Base branch for the PR', 'main')
+  .option('--no-pr', 'Commit changes without creating a GitHub PR')
+  .option('--dry-run', 'Show what would change without committing', false)
+  .option('-n, --name <name>', 'App name override (PascalCase)')
+  .option('--pr-title <title>', 'Custom PR title')
+  .action(async (sourcePath: string, targetPath: string, options: {
+    baseBranch: string;
+    pr: boolean;
+    dryRun: boolean;
+    name?: string;
+    prTitle?: string;
+  }) => {
+    const absSource = resolve(sourcePath);
+    const absTarget = resolve(targetPath);
+
+    // Validate inputs
+    validateDirectoryExists(absSource);
+    validateDirectoryExists(absTarget);
+    validateProjectRoot(absSource);
+    if (options.name) {
+      validateAppName(options.name);
+    }
+
+    // Show banner
+    console.log(BANNER);
+
+    const startTime = performance.now();
+    const spinner = ora('Starting sync...').start();
+
+    try {
+      spinner.text = 'Analyzing source repo and diffing models...';
+
+      const result = await syncRepos({
+        sourceRepo: absSource,
+        targetRepo: absTarget,
+        appName: options.name,
+        baseBranch: options.baseBranch,
+        createPR: options.pr,
+        prTitle: options.prTitle,
+        dryRun: options.dryRun,
+      });
+
+      const elapsed = formatElapsed(Math.round(performance.now() - startTime));
+
+      if (!result.hasChanges) {
+        spinner.succeed(`No changes detected (${elapsed})`);
+        console.log(chalk.dim('\nThe iOS project is already up to date with the web app.'));
+        return;
+      }
+
+      if (options.dryRun) {
+        spinner.succeed(`Dry run complete (${elapsed})`);
+      } else {
+        spinner.succeed(`Sync complete (${elapsed})`);
+      }
+
+      // Print summary
+      console.log('');
+      console.log(chalk.bold('Sync Summary'));
+      console.log(chalk.dim('\u2500'.repeat(50)));
+      console.log(`  ${chalk.cyan('Model diff:')}  ${result.modelDiff.summary}`);
+      console.log(`  ${chalk.green('Added:')}       ${result.addedFiles.length} file(s)`);
+      console.log(`  ${chalk.yellow('Modified:')}    ${result.changedFiles.length - result.addedFiles.length} file(s)`);
+      console.log(`  ${chalk.red('Removed:')}     ${result.removedFiles.length} file(s) (flagged, not deleted)`);
+      if (result.conflictFiles.length > 0) {
+        console.log(`  ${chalk.magenta('Conflicts:')}   ${result.conflictFiles.length} file(s) with manual edits (preserved)`);
+      }
+
+      if (!options.dryRun) {
+        console.log(`  ${chalk.dim('Branch:')}      ${result.branchName}`);
+      }
+
+      if (result.prUrl) {
+        console.log('');
+        console.log(chalk.green(`PR created: ${result.prUrl}`));
+      }
+      if (result.manualInstructions) {
+        console.log('');
+        console.log(chalk.yellow(result.manualInstructions));
+      }
+
+      if (options.dryRun) {
+        console.log('');
+        console.log(chalk.dim('This was a dry run. No files were written or committed.'));
+        console.log(chalk.dim('Remove --dry-run to apply changes.'));
+      }
+
+      // List changed files if not too many
+      if (result.changedFiles.length > 0 && result.changedFiles.length <= 20) {
+        console.log('');
+        console.log(chalk.bold('Changed Files:'));
+        for (const f of result.changedFiles) {
+          const prefix = result.addedFiles.includes(f) ? chalk.green('+ ') : chalk.yellow('~ ');
+          console.log(`  ${prefix}${f}`);
+        }
+      }
+      if (result.removedFiles.length > 0 && result.removedFiles.length <= 10) {
+        for (const f of result.removedFiles) {
+          console.log(`  ${chalk.red('- ')}${f}`);
+        }
+      }
+    } catch (error) {
+      spinner.fail('Sync failed');
       console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
       process.exit(1);
     }

@@ -23,6 +23,7 @@ interface SwiftField {
     isOptional: boolean;
     isArray: boolean;
     isId: boolean;
+    isPrimaryKey: boolean;
     needsCodingKey: boolean;
     defaultValue?: string;
     comment?: string;
@@ -87,6 +88,7 @@ function analyseField(field: Field): SwiftField {
     }
 
     const isId = name === 'id' || field.isPrimaryKey === true;
+    const isPrimaryKey = field.isPrimaryKey === true;
 
     return {
         name,
@@ -95,6 +97,7 @@ function analyseField(field: Field): SwiftField {
         isOptional,
         isArray,
         isId,
+        isPrimaryKey,
         needsCodingKey,
         comment: field.description,
     };
@@ -540,9 +543,25 @@ const JS_BUILTIN_FIELDS = new Set([
     'Symbol', 'iterator', 'toPrimitive', 'toStringTag',
 ]);
 
+/** Swift standard library and framework type names that would cause conflicts */
+const SWIFT_STDLIB_CONFLICTS = new Set([
+    // Swift stdlib
+    'collection', 'error', 'type', 'result', 'optional', 'array',
+    'dictionary', 'set', 'range', 'sequence', 'iterator',
+    'encoder', 'decoder', 'mirror', 'index', 'element',
+    'string', 'int', 'double', 'float', 'bool', 'date', 'url', 'data', 'uuid',
+    // SwiftUI/UIKit types
+    'color', 'accentcolor', 'image', 'text', 'button', 'view', 'font',
+    'navigationpath', 'state', 'binding', 'environment', 'observable',
+    // Foundation
+    'notification', 'timer', 'locale', 'calendar', 'timezone',
+]);
+
 export function isJunkEntity(entity: Entity): boolean {
     const lower = entity.name.toLowerCase();
     if (JUNK_ENTITY_NAMES.has(lower)) return true;
+    // Filter entities whose names conflict with Swift stdlib types
+    if (SWIFT_STDLIB_CONFLICTS.has(lower)) return true;
     // Filter entities whose names contain invalid Swift characters (e.g., angle brackets)
     if (/[<>(){}[\]]/.test(entity.name)) return true;
     // Filter entities with all-unknown typed fields (no useful type information)
@@ -571,6 +590,202 @@ export function isJunkEntity(entity: Entity): boolean {
     // Single-field arrow type check for smaller entities
     if (fields.some(f => /=>/.test(f.type.typeName ?? ''))) return true;
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// SwiftData eligibility
+// ---------------------------------------------------------------------------
+
+export function isSwiftDataEligible(entity: Entity): boolean {
+    if (isJunkEntity(entity)) return false;
+    if (isEnumEntity(entity)) return false;
+    const confidence = entity.confidence ?? 'medium';
+    if (confidence === 'low') return false;
+    const validFields = filterSwiftFields(entity.fields ?? []);
+    if (validFields.length < 2) return false;
+    const nonIdFields = validFields.filter(f => f.name !== 'id' && f.name !== '__enum');
+    if (nonIdFields.length === 0) return false;
+    return true;
+}
+
+export function getSwiftDataEligibleEntities(model: SemanticAppModel): Entity[] {
+    return (model.entities ?? []).filter(isSwiftDataEligible);
+}
+
+// ---------------------------------------------------------------------------
+// SwiftData model generation
+// ---------------------------------------------------------------------------
+
+function swiftDataFieldType(swiftType: string): string {
+    const base = swiftType.replace('?', '');
+    const isOpt = swiftType.endsWith('?');
+    const nativeTypes = new Set(['String', 'Int', 'Double', 'Float', 'Bool', 'Date', 'UUID', 'Data', 'URL']);
+    if (nativeTypes.has(base)) return swiftType;
+    if (base.startsWith('[') && base.endsWith(']')) {
+        const elementType = base.slice(1, -1);
+        if (nativeTypes.has(elementType)) return swiftType;
+        return isOpt ? 'Data?' : 'Data';
+    }
+    if (base.startsWith('[') && base.includes(':')) return isOpt ? 'Data?' : 'Data';
+    return isOpt ? 'String?' : 'String';
+}
+
+function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string {
+    const structName = pascalCase(entity.name);
+    const storeName = `${structName}Store`;
+    const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
+    const hasId = fields.some((f) => f.isId);
+    const relationships = entity.relationships ?? [];
+    const relationshipFieldNames = new Set(relationships.map(r => camelCase(r.fieldName)));
+    const lines: string[] = [];
+
+    lines.push('@Model');
+    lines.push(`final class ${storeName} {`);
+    if (!hasId) { lines.push('    var id: UUID'); lines.push(''); }
+
+    for (const field of fields) {
+        if (field.isPrimaryKey || field.isId) lines.push('    @Attribute(.unique)');
+        if (relationshipFieldNames.has(field.name)) {
+            const rel = relationships.find(r => camelCase(r.fieldName) === field.name);
+            if (rel) {
+                const targetStore = `${pascalCase(rel.targetEntity)}Store`;
+                if (rel.type === 'one-to-many' || rel.type === 'many-to-many') {
+                    lines.push(`    @Relationship var ${field.name}: [${targetStore}]`);
+                } else {
+                    lines.push(`    @Relationship var ${field.name}: ${targetStore}?`);
+                }
+                continue;
+            }
+        }
+        lines.push(`    var ${field.name}: ${swiftDataFieldType(field.type)}`);
+    }
+
+    // Init
+    lines.push('');
+    const initParams: string[] = [];
+    if (!hasId) initParams.push('id: UUID = UUID()');
+    for (const field of fields) {
+        if (relationshipFieldNames.has(field.name)) continue;
+        const sdType = swiftDataFieldType(field.type);
+        if (field.isOptional) initParams.push(`${field.name}: ${sdType} = nil`);
+        else if (field.isId && sdType === 'UUID') initParams.push(`${field.name}: ${sdType} = UUID()`);
+        else initParams.push(`${field.name}: ${sdType}`);
+    }
+    lines.push(`    init(${initParams.join(', ')}) {`);
+    if (!hasId) lines.push('        self.id = id');
+    for (const field of fields) {
+        if (relationshipFieldNames.has(field.name)) continue;
+        lines.push(`        self.${field.name} = ${field.name}`);
+    }
+    lines.push('    }');
+
+    // Convenience init from Codable
+    lines.push('');
+    lines.push(`    convenience init(from model: ${structName}) {`);
+    const convArgs: string[] = [];
+    if (!hasId) convArgs.push('id: model.id');
+    for (const field of fields) {
+        if (relationshipFieldNames.has(field.name)) continue;
+        convArgs.push(`${field.name}: model.${field.name}`);
+    }
+    lines.push(`        self.init(${convArgs.join(', ')})`);
+    lines.push('    }');
+
+    // toModel()
+    lines.push('');
+    lines.push(`    func toModel() -> ${structName} {`);
+    const modelArgs: string[] = [];
+    if (!hasId) modelArgs.push('id: id');
+    for (const field of fields) {
+        if (relationshipFieldNames.has(field.name)) continue;
+        modelArgs.push(`${field.name}: ${field.name}`);
+    }
+    lines.push(`        ${structName}(${modelArgs.join(', ')})`);
+    lines.push('    }');
+    lines.push('}');
+
+    return lines.join('\n');
+}
+
+export function generateSwiftDataModels(model: SemanticAppModel): GeneratedFile[] {
+    const files: GeneratedFile[] = [];
+    const eligible = getSwiftDataEligibleEntities(model);
+    if (eligible.length === 0) return files;
+
+    const groups = groupEntities(eligible);
+    for (const [groupKey, groupEntities] of groups) {
+        const lines: string[] = [];
+        const groupFileName = groupEntities.length === 1
+            ? `${pascalCase(groupEntities[0].name)}Store.swift`
+            : `${pascalCase(groupKey)}Stores.swift`;
+        const sourceRef = groupEntities[0]?.sourceFile ? relativeSourcePath(groupEntities[0].sourceFile) : groupKey;
+        lines.push(`// Generated by Morphkit`);
+        lines.push(`// SwiftData persistence models from: ${sourceRef}`);
+        lines.push('');
+        lines.push('import Foundation');
+        lines.push('import SwiftData');
+        lines.push('');
+        for (const entity of groupEntities) { lines.push(generateSwiftDataModel(entity, model)); lines.push(''); }
+        files.push({ path: `Models/${groupFileName}`, content: lines.join('\n'), sourceMapping: groupKey, confidence: 'high', warnings: [] });
+    }
+    return files;
+}
+
+export function generateDataManager(model: SemanticAppModel): GeneratedFile | null {
+    const eligible = getSwiftDataEligibleEntities(model);
+    if (eligible.length === 0) return null;
+
+    const lines: string[] = [];
+    lines.push('// Generated by Morphkit');
+    lines.push('');
+    lines.push('import SwiftData');
+    lines.push('import Foundation');
+    lines.push('');
+    lines.push('@Observable');
+    lines.push('final class DataManager {');
+    lines.push('    static let shared = DataManager()');
+    lines.push('');
+    lines.push('    private var modelContext: ModelContext?');
+    lines.push('');
+    lines.push('    func configure(with context: ModelContext) {');
+    lines.push('        self.modelContext = context');
+    lines.push('    }');
+
+    for (const entity of eligible) {
+        const structName = pascalCase(entity.name);
+        const storeName = `${structName}Store`;
+        const varName = camelCase(entity.name);
+        const pluralVar = varName.endsWith('s') ? varName : `${varName}s`;
+        lines.push('');
+        lines.push(`    // MARK: - ${structName}`);
+        lines.push('');
+        lines.push(`    func save${structName}s(_ ${pluralVar}: [${structName}]) throws {`);
+        lines.push('        guard let context = modelContext else { return }');
+        lines.push(`        for item in ${pluralVar} { context.insert(${storeName}(from: item)) }`);
+        lines.push('        try context.save()');
+        lines.push('    }');
+        lines.push('');
+        lines.push(`    func save${structName}(_ ${varName}: ${structName}) throws {`);
+        lines.push('        guard let context = modelContext else { return }');
+        lines.push(`        context.insert(${storeName}(from: ${varName}))`);
+        lines.push('        try context.save()');
+        lines.push('    }');
+        lines.push('');
+        lines.push(`    func fetchCached${structName}s() throws -> [${structName}] {`);
+        lines.push('        guard let context = modelContext else { return [] }');
+        lines.push(`        return try context.fetch(FetchDescriptor<${storeName}>()).map { $0.toModel() }`);
+        lines.push('    }');
+        lines.push('');
+        lines.push(`    func deleteAll${structName}s() throws {`);
+        lines.push('        guard let context = modelContext else { return }');
+        lines.push(`        try context.delete(model: ${storeName}.self)`);
+        lines.push('        try context.save()');
+        lines.push('    }');
+    }
+
+    lines.push('}');
+    lines.push('');
+    return { path: 'State/DataManager.swift', content: lines.join('\n'), sourceMapping: 'morphkit:persistence', confidence: 'high', warnings: [] };
 }
 
 export function generateSwiftModels(model: SemanticAppModel): GeneratedFile[] {

@@ -105,6 +105,38 @@ bun run src/index.ts preview ./app          # Preview without writing files
 - Free tier: 20 conversions/month, Pro: unlimited
 - Dashboard: `site/dashboard.html` — usage tracking, API key management, Stripe checkout
 
+## Key Subsystems
+
+### AI Provider System (`src/ai/provider.ts`, `src/ai/providers/`)
+- Provider-agnostic abstraction: `AIProvider` interface with `analyzeIntent`, `mapComponent`, `suggestStateArchitecture`, `generateCode` methods
+- Three implementations: `src/ai/providers/claude.ts`, `src/ai/providers/grok.ts`, `src/ai/providers/openai.ts`
+- Factory function `createProvider(config)` auto-detects the best available provider from environment variables
+- CLI flags: `--ai-provider <name>` to force a provider, `--no-ai` to disable entirely
+- All responses validated with Zod schemas (`AIIntentResultSchema`, `AIComponentMapResultSchema`, etc.)
+
+### SwiftData Generation (`src/generator/model-generator.ts`)
+- Converts semantic `Entity` objects into Swift `@Model` classes for SwiftData persistence
+- Also generates `DataManager` with cache-first loading patterns
+- Produces both `Codable` structs (for networking) and `@Model` classes (for persistence)
+- Field type mapping uses `mapTsTypeToSwift()` and `typeDefToSwift()` from `swiftui-generator.ts`
+
+### React Route Extraction (`src/analyzer/route-extractor.ts`)
+- Handles Next.js App Router file-based routing (primary) and React Router detection (secondary)
+- App Router: scans `app/` directory for `page.tsx`, `layout.tsx`, `loading.tsx` conventions
+- Dynamic routes (`[id]`, `[...slug]`) mapped to parameterized `NavigationStack` destinations
+- Route groups `(group)` are recognized and flattened
+- React Router: detected via `react-router-dom` dependency in `package.json`
+
+### Watch Mode (`src/watcher.ts`)
+- File system watcher for iterative development workflow
+- Monitors source TypeScript/React files for changes and re-runs generation
+- Invoked via CLI with `--watch` flag on the `generate` command
+
+### Linting
+- ESLint with `@typescript-eslint/recommended` — config in `.eslintrc.json`
+- `no-explicit-any` is set to `warn` (not error) due to existing `as any` casts
+- Run: `bun run lint`
+
 ## Important Notes
 
 - The `AnalysisResult` type in `builder.ts` must match what `analyzeRepo()` returns from `analyzer/index.ts`

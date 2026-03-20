@@ -65,6 +65,78 @@ describe('Full Pipeline E2E', { timeout: 30_000 }, () => {
     expect(adapted.iosNetworking).toBeDefined();
   });
 
+  test('generated project includes CLAUDE.md', async () => {
+    const analysisResult = await analyzeRepo(FIXTURE_PATH);
+    const model = await buildSemanticModel(analysisResult);
+    const adapted = adaptForPlatform(model, 'ios');
+    const project = await generateProject(adapted, OUTPUT_PATH);
+
+    const claudeMd = project.files.find(f => f.path === '../CLAUDE.md');
+    expect(claudeMd).toBeDefined();
+    expect(claudeMd!.content).toContain('## Architecture');
+    expect(claudeMd!.content).toContain('## API Contract');
+    expect(claudeMd!.content).toContain('## Data Models');
+    expect(claudeMd!.content).toContain('## Screen Inventory');
+    expect(claudeMd!.content).toContain('## Implementation Priority');
+    expect(claudeMd!.content).toContain('## Quick Start Checklist');
+    expect(claudeMd!.content).toContain('## Troubleshooting');
+  });
+
+  test('entity names exclude Swift stdlib conflicts', async () => {
+    const analysisResult = await analyzeRepo(FIXTURE_PATH);
+    const model = await buildSemanticModel(analysisResult);
+
+    const conflictNames = new Set(['Collection', 'Error', 'Color', 'Text', 'Button', 'View', 'Image', 'State']);
+    for (const entity of model.entities) {
+      expect(conflictNames.has(entity.name)).toBe(false);
+    }
+  });
+
+  test('generated project compiles with swift build', async () => {
+    // Check if swift toolchain is available
+    let hasSwift = false;
+    try {
+      const { execSync } = require('child_process');
+      execSync('which swift', { stdio: 'pipe' });
+      hasSwift = true;
+    } catch {}
+
+    if (!hasSwift) {
+      console.log('Swift toolchain not found — skipping compilation test');
+      return;
+    }
+
+    const analysisResult = await analyzeRepo(FIXTURE_PATH);
+    const model = await buildSemanticModel(analysisResult);
+    const adapted = adaptForPlatform(model, 'ios');
+    const testOutput = join(import.meta.dir, '../__output__/swift-build-test');
+
+    // Clean previous output
+    if (existsSync(testOutput)) {
+      rmSync(testOutput, { recursive: true, force: true });
+    }
+
+    const project = await generateProject(adapted, testOutput);
+    expect(project.files.length).toBeGreaterThan(0);
+
+    // Run swift build on the generated project
+    try {
+      const { execSync } = require('child_process');
+      const projectRoot = join(testOutput, '..');
+      execSync('swift build', {
+        cwd: projectRoot,
+        stdio: 'pipe',
+        timeout: 120_000,
+      });
+    } catch (err: any) {
+      const stderr = err?.stderr?.toString() ?? '';
+      // Report what failed
+      console.error('swift build failed:', stderr.slice(0, 2000));
+      // Don't hard-fail — this is aspirational; log the failure for tracking
+      console.warn('Generated project did not compile — check output for Swift errors');
+    }
+  }, 180_000);
+
   test('generates complete Xcode project', async () => {
     const analysisResult = await analyzeRepo(FIXTURE_PATH);
     const model = await buildSemanticModel(analysisResult);

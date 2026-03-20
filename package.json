@@ -13,7 +13,8 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "morphkit": "./dist/index.js",
-    "morphkit-cli": "./dist/index.js"
+    "morphkit-cli": "./dist/index.js",
+    "morphkit-mcp": "./dist/mcp/server.js"
   },
   "files": [
     "dist",
@@ -29,20 +30,28 @@
     "typecheck": "tsc --noEmit",
     "analyze": "bun run src/index.ts analyze",
     "generate": "bun run src/index.ts generate",
+    "mcp": "bun run src/mcp/server.ts",
+    "lint": "eslint src/ test/ --ext .ts",
     "prepublishOnly": "bun build src/index.ts --outdir dist --target node --minify"
   },
   "dependencies": {
-    "openai": "^4.0.0",
-    "ts-morph": "^24.0.0",
-    "commander": "^13.0.0",
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.4.0",
+    "commander": "^13.0.0",
+    "fast-glob": "^3.3.0",
+    "openai": "^4.0.0",
     "ora": "^8.0.0",
     "simple-git": "^3.27.0",
-    "fast-glob": "^3.3.0",
+    "ts-morph": "^24.0.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.31.0",
     "typescript": "^5.7.0"
   },
   "keywords": [

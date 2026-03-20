@@ -26,6 +26,7 @@ export type FrameworkKind =
   | 'nextjs-app-router'
   | 'nextjs-pages-router'
   | 'react'
+  | 'remix'
   | 'unknown';
 
 export interface RepoScanResult {
@@ -181,28 +182,43 @@ export async function scanRepo(repoPath: string): Promise<RepoScanResult> {
   const hasAppDir = allFiles.some((f) => f.relativePath.startsWith('app/') || f.relativePath.startsWith('src/app/'));
   const hasPagesDir = allFiles.some((f) => f.relativePath.startsWith('pages/') || f.relativePath.startsWith('src/pages/'));
   const hasNextConfig = allFiles.some((f) => /^next\.config\.(ts|js|mjs|cjs)$/.test(path.basename(f.relativePath)));
+  const hasViteConfig = allFiles.some((f) => /^vite\.config\.(ts|js|mjs|cjs)$/.test(path.basename(f.relativePath)));
+
+  // Read package.json once for dependency detection
+  let pkgDeps: Record<string, string> = {};
+  try {
+    const pkgPath = path.join(resolvedRoot, 'package.json');
+    const pkgContent = fs.readFileSync(pkgPath, 'utf-8');
+    const pkg = JSON.parse(pkgContent) as Record<string, unknown>;
+    pkgDeps = {
+      ...(pkg.dependencies as Record<string, string> | undefined),
+      ...(pkg.devDependencies as Record<string, string> | undefined),
+    };
+  } catch {
+    // no package.json
+  }
+
+  const hasNextDep = 'next' in pkgDeps;
+  const hasReactRouterDep = 'react-router-dom' in pkgDeps || 'react-router' in pkgDeps;
+  const hasRemixDep = '@remix-run/react' in pkgDeps || '@remix-run/node' in pkgDeps;
+  const hasReactDep = 'react' in pkgDeps;
 
   let framework: FrameworkKind = 'unknown';
-  if (hasNextConfig || hasAppDir || hasPagesDir) {
-    framework = hasAppDir ? 'nextjs-app-router' : hasPagesDir ? 'nextjs-pages-router' : 'react';
-  } else {
-    // Check package.json for next dependency
-    const pkgPath = path.join(resolvedRoot, 'package.json');
-    try {
-      const pkgContent = fs.readFileSync(pkgPath, 'utf-8');
-      const pkg = JSON.parse(pkgContent) as Record<string, unknown>;
-      const deps = {
-        ...(pkg.dependencies as Record<string, string> | undefined),
-        ...(pkg.devDependencies as Record<string, string> | undefined),
-      };
-      if ('next' in deps) {
-        framework = hasAppDir ? 'nextjs-app-router' : 'nextjs-pages-router';
-      } else if ('react' in deps) {
-        framework = 'react';
-      }
-    } catch {
-      // no package.json — leave as unknown
-    }
+
+  if (hasNextConfig || hasNextDep) {
+    // Next.js — determine app vs pages router
+    framework = hasAppDir ? 'nextjs-app-router' : 'nextjs-pages-router';
+  } else if (hasAppDir && !hasViteConfig) {
+    // Has app/ directory without Next.js — still treat as app router convention
+    framework = 'nextjs-app-router';
+  } else if (hasRemixDep) {
+    framework = 'remix';
+  } else if (hasReactRouterDep && hasReactDep) {
+    framework = 'react';
+  } else if (hasViteConfig && hasReactDep) {
+    framework = 'react';
+  } else if (hasReactDep) {
+    framework = 'react';
   }
 
   console.log(`[morphkit] Detected framework: ${framework}`);

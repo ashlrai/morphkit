@@ -1,11 +1,33 @@
 /**
  * @module ai
  *
- * Morphkit AI integration — re-exports the Grok client, all structured
- * output schemas/types, and prompt utilities.
+ * Morphkit AI integration — re-exports the provider-agnostic interface,
+ * individual providers, the legacy Grok client, all structured output
+ * schemas/types, and prompt utilities.
  */
 
-// Client
+// Provider-agnostic interface & factory
+export { createAIProvider } from "./provider.js";
+export {
+  AIIntentResultSchema,
+  AIComponentMapResultSchema,
+  AIStateArchitectureResultSchema,
+  AIEntityFieldsResultSchema,
+} from "./provider.js";
+export type {
+  AIProvider,
+  AIProviderConfig,
+  AIProviderName,
+  AIComponentInput,
+  AIMapComponentInput,
+  AIEntityContext,
+  AIIntentResult,
+  AIComponentMapResult,
+  AIStateArchitectureResult,
+  AIEntityFieldsResult,
+} from "./provider.js";
+
+// Legacy Grok client (still used internally by builder for backward compat)
 export { GrokClient } from "./grok-client.js";
 export type {
   GrokClientConfig,

@@ -318,11 +318,33 @@ bunx morphkit preview ./my-app --screen Products
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `XAI_API_KEY` | No | xAI API key for AI-enhanced analysis. When set, Morphkit uses Grok (`grok-4-1-fast-reasoning`) for deeper intent extraction, component mapping, navigation planning, and state architecture recommendations. Without it, Morphkit falls back to heuristic-based analysis. |
+| `ANTHROPIC_API_KEY` | No | Anthropic API key for Claude-powered analysis (recommended) |
+| `OPENAI_API_KEY` | No | OpenAI API key for GPT-powered analysis |
+| `XAI_API_KEY` | No | xAI API key for Grok-powered analysis |
+| `MORPHKIT_API_KEY` | No | Morphkit API key for cloud features and usage metering |
 
-### AI Enhancement (Optional)
+### AI Provider Configuration
 
-When `XAI_API_KEY` is set, Morphkit can use xAI Grok to:
+Morphkit supports multiple AI providers for enhanced analysis. The AI layer is fully optional — all core functionality works without it using heuristic-based analysis.
+
+```bash
+# Use Claude (recommended)
+export ANTHROPIC_API_KEY=sk-ant-...
+morphkit generate ./app --ai-provider claude
+
+# Use OpenAI
+export OPENAI_API_KEY=sk-...
+morphkit generate ./app --ai-provider openai
+
+# Use Grok
+export XAI_API_KEY=xai-...
+morphkit generate ./app --ai-provider grok
+
+# Disable AI (heuristics only)
+morphkit generate ./app --no-ai
+```
+
+When an AI provider is configured, Morphkit uses it to:
 
 - **Analyze intent** — understand *why* a component exists, not just what it renders
 - **Map components** — intelligently match React patterns to SwiftUI equivalents
@@ -330,7 +352,7 @@ When `XAI_API_KEY` is set, Morphkit can use xAI Grok to:
 - **Architect state** — recommend `@Observable` store structure based on your Zustand/Redux/Context patterns
 - **Generate code** — produce more nuanced SwiftUI for complex screen layouts
 
-The AI layer is fully optional. All core functionality works without it.
+If multiple API keys are set, Morphkit auto-detects the best available provider. You can override with `--ai-provider`.
 
 ---
 
@@ -495,6 +517,40 @@ bun run typecheck # Type checking
 
 ---
 
+## Limitations & Unsupported Patterns
+
+- **Frameworks:** Only Next.js App Router and plain React + Vite are currently supported. Next.js Pages Router has partial support (route detection only).
+- **CSS-in-JS:** Styled-components, Emotion, and other CSS-in-JS libraries are not extracted. Tailwind CSS utility classes and plain CSS are supported.
+- **GraphQL:** GraphQL schemas and queries are detected in analysis but do not produce generated networking code. REST/fetch patterns are fully supported.
+- **Monorepo:** Monorepo project structures (Turborepo, Nx, Lerna) are untested and may not resolve cross-package imports correctly.
+- **Real-time data:** WebSocket connections and real-time data subscriptions (e.g., Supabase Realtime, Socket.io) are not supported. These are surfaced as TODOs in generated code.
+- **Server Components:** React Server Components are analyzed for route structure but their server-side data fetching is mapped to client-side `async/await` patterns.
+
+---
+
+## Troubleshooting
+
+**"No components found"**
+Ensure you are pointing Morphkit at the project root directory that contains `package.json`. Morphkit uses `package.json` to detect the framework and find source files.
+
+**"Swift syntax error" warnings after generation**
+Check the warning details in the CLI output. Common causes:
+- Type mismatches where a scalar was assigned an array value (these are emitted as TODOs)
+- Missing entity definitions for referenced types
+- Complex generic types that don't have a direct Swift equivalent
+
+These warnings are non-fatal — the generated project is still usable but may need manual fixes in the flagged files.
+
+**Stack trace or crash on error**
+Report the issue at [github.com/ashlrai/morphkit/issues](https://github.com/ashlrai/morphkit/issues) with the full error output and your framework/version info.
+
+**AI provider not working**
+- Verify your API key is set correctly: `echo $ANTHROPIC_API_KEY`
+- Try with `--no-ai` to confirm the issue is AI-specific
+- Check that your API key has sufficient quota/credits
+
+---
+
 ## Roadmap
 
 - [x] Next.js App Router (full support)
@@ -502,7 +558,7 @@ bun run typecheck # Type checking
 - [x] Zustand/Redux state → @Observable stores
 - [x] API routes → URLSession client
 - [ ] Next.js Pages Router
-- [ ] React + Vite
+- [x] React + Vite
 - [ ] Remix
 - [ ] Vue.js / Nuxt
 - [ ] Android (Jetpack Compose) output

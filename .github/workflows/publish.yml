@@ -3,10 +3,53 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  pull_request:
+    branches: [main]
 
 jobs:
+  # Dry-run publish on PRs to catch packaging errors early
+  dry-run:
+    name: Publish Dry Run
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Dry-run publish
+        run: npm publish --access public --dry-run
+
   publish:
     name: Build & Publish
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
 
     permissions:
@@ -27,8 +70,28 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Validate version matches git tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: package.json=$PKG_VERSION, git tag=$TAG_VERSION"
+            exit 1
+          fi
+          echo "Version validated: $PKG_VERSION"
 
       - name: Build
         run: bun run build

@@ -36,6 +36,9 @@ import type {
   TypeDefinition,
 } from './model.js';
 import { GrokClient, getGrokClient as getClient } from '../ai/index.js';
+import { createAIProvider } from '../ai/provider.js';
+import type { AIProvider } from '../ai/provider.js';
+import type { AIProviderConfig, AIProviderName } from '../ai/provider.js';
 import type { ExtractedComponentInfo } from '../ai/prompts/component-mapping.js';
 import type { SwiftUIMapping } from '../ai/structured-output.js';
 
@@ -74,23 +77,77 @@ export interface AnalysisResult {
 function getGrokClientSafe(): GrokClient | null {
   // Allow explicit opt-out via environment variable
   if (process.env.MORPHKIT_NO_AI === '1' || process.env.MORPHKIT_NO_AI === 'true') {
-    console.log('[morphkit] Using heuristic analysis (AI disabled via --no-ai)');
     return null;
   }
 
   // Only attempt AI if the API key is configured
   if (!process.env.XAI_API_KEY) {
-    console.log('[morphkit] Using heuristic analysis (set XAI_API_KEY for AI-enhanced results)');
     return null;
   }
 
   try {
     const client = getClient();
-    console.log('[morphkit] AI-enhanced analysis enabled');
     return client;
   } catch (_err) {
-    // Unexpected error during client creation — degrade gracefully
-    console.log('[morphkit] Using heuristic analysis (AI client initialization failed)');
+    return null;
+  }
+}
+
+/**
+ * Detect and create an AIProvider from environment variables.
+ * Checks for an explicit provider setting first, then auto-detects
+ * from available API keys (Claude > OpenAI > Grok).
+ *
+ * Returns null if AI is disabled or no API keys are available.
+ */
+async function getAIProviderSafe(): Promise<AIProvider | null> {
+  // Allow explicit opt-out
+  if (process.env.MORPHKIT_NO_AI === '1' || process.env.MORPHKIT_NO_AI === 'true') {
+    console.log('[morphkit] Using heuristic analysis (AI disabled via --no-ai)');
+    return null;
+  }
+
+  // Check for explicit provider setting
+  const explicitProvider = process.env.MORPHKIT_AI_PROVIDER as AIProviderName | undefined;
+  const explicitModel = process.env.MORPHKIT_AI_MODEL;
+
+  // Build config from explicit setting or auto-detect
+  let config: AIProviderConfig | null = null;
+
+  if (explicitProvider && explicitProvider !== 'none' as any) {
+    const keyMap: Record<AIProviderName, string | undefined> = {
+      claude: process.env.ANTHROPIC_API_KEY,
+      grok: process.env.XAI_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+    };
+    const apiKey = keyMap[explicitProvider];
+    if (!apiKey) {
+      console.log(`[morphkit] Using heuristic analysis (${explicitProvider} provider selected but no API key found)`);
+      return null;
+    }
+    config = { provider: explicitProvider, apiKey, model: explicitModel };
+  } else {
+    // Auto-detect: check keys in priority order
+    if (process.env.ANTHROPIC_API_KEY) {
+      config = { provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY, model: explicitModel };
+    } else if (process.env.OPENAI_API_KEY) {
+      config = { provider: 'openai', apiKey: process.env.OPENAI_API_KEY, model: explicitModel };
+    } else if (process.env.XAI_API_KEY) {
+      config = { provider: 'grok', apiKey: process.env.XAI_API_KEY, model: explicitModel };
+    }
+  }
+
+  if (!config) {
+    console.log('[morphkit] Using heuristic analysis (set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY for AI-enhanced results)');
+    return null;
+  }
+
+  try {
+    const provider = await createAIProvider(config);
+    console.log(`[morphkit] AI-enhanced analysis enabled (provider: ${provider.name}${explicitModel ? `, model: ${explicitModel}` : ''})`);
+    return provider;
+  } catch (err) {
+    console.log(`[morphkit] Using heuristic analysis (AI provider initialization failed: ${sanitizeErrorMessage(err)})`);
     return null;
   }
 }
@@ -177,7 +234,7 @@ function routeHasDynamicParams(routePath: string): boolean {
 /**
  * Infer a layout type from component structure, route path, and state bindings.
  * Uses multiple signal sources to avoid defaulting everything to 'custom'.
- * When AI is available and heuristics return 'custom', tries Grok for a better answer.
+ * When AI is available and heuristics return 'custom', tries the AI provider for a better answer.
  */
 async function inferLayout(
   component: ExtractedComponent,
@@ -185,6 +242,7 @@ async function inferLayout(
   statePatterns?: ExtractedState[],
   aiClient?: GrokClient | null,
   appName?: string,
+  aiProvider?: AIProvider | null,
 ): Promise<LayoutType> {
   const children = component.children.map((c) => c.name).join(' ').toLowerCase();
   const name = component.name.toLowerCase();
@@ -247,7 +305,29 @@ async function inferLayout(
   if (hookNames.includes('useform')) return 'form';
 
   // --- 7. AI fallback for ambiguous components ---
-  if (aiClient) {
+  // Prefer the new provider-agnostic interface; fall back to legacy GrokClient
+  if (aiProvider) {
+    try {
+      const context = `App: ${appName ?? 'App'}. Route: ${routePath ?? 'none'}. Determine the most appropriate iOS layout type.`;
+      const intent = await withAITimeout(aiProvider.analyzeIntent(
+        {
+          name: component.name,
+          props: component.props.map((p) => p.name),
+          children: component.children.map((c) => c.name),
+          hooks: component.hooks.map((h) => h.hookName),
+        },
+        context,
+      ));
+      if (intent) {
+        const aiLayout = mapPurposeToLayout(intent.purpose);
+        if (aiLayout !== 'custom') {
+          return aiLayout;
+        }
+      }
+    } catch (err) {
+      console.warn('[morphkit] AI layout inference failed, using heuristic fallback:', sanitizeErrorMessage(err));
+    }
+  } else if (aiClient) {
     try {
       const intent = await withAITimeout(aiClient.analyzeIntent({
         code: `// Component: ${component.name}\n// Props: ${component.props.map((p) => p.name).join(', ')}\n// Children: ${component.children.map((c) => c.name).join(', ')}`,
@@ -288,6 +368,25 @@ function mapSuggestedPatternToLayout(pattern: string): LayoutType {
   if (lower.includes('profile') || lower.includes('account')) return 'profile';
   if (lower.includes('login') || lower.includes('auth') || lower.includes('sign')) return 'auth';
   if (lower.includes('onboard') || lower.includes('welcome')) return 'onboarding';
+  return 'custom';
+}
+
+/**
+ * Map an AI-generated purpose description to a LayoutType.
+ * Used with the provider-agnostic AIProvider.analyzeIntent which returns
+ * a purpose string rather than the Grok-specific suggestedIOSPattern.
+ */
+function mapPurposeToLayout(purpose: string): LayoutType {
+  const lower = purpose.toLowerCase();
+  if (lower.includes('list') || lower.includes('catalog') || lower.includes('browse') || lower.includes('feed')) return 'list';
+  if (lower.includes('form') || lower.includes('edit') || lower.includes('create') || lower.includes('input')) return 'form';
+  if (lower.includes('grid') || lower.includes('gallery')) return 'grid';
+  if (lower.includes('detail') || lower.includes('view ') || lower.includes('single')) return 'detail';
+  if (lower.includes('dashboard') || lower.includes('overview') || lower.includes('summary')) return 'dashboard';
+  if (lower.includes('setting') || lower.includes('preference') || lower.includes('configuration')) return 'settings';
+  if (lower.includes('profile') || lower.includes('account')) return 'profile';
+  if (lower.includes('login') || lower.includes('auth') || lower.includes('sign')) return 'auth';
+  if (lower.includes('onboard') || lower.includes('welcome') || lower.includes('intro')) return 'onboarding';
   return 'custom';
 }
 
@@ -728,6 +827,7 @@ async function buildScreens(
   apis: ExtractedApi[],
   aiClient: GrokClient | null,
   appName?: string,
+  aiProvider?: AIProvider | null,
 ): Promise<Screen[]> {
   const componentByFile = new Map<string, ExtractedComponent>();
   for (const comp of components) {
@@ -754,6 +854,7 @@ async function buildScreens(
       apis,
       aiClient,
       appName,
+      aiProvider,
     );
     screens.push(screen);
   }
@@ -763,7 +864,7 @@ async function buildScreens(
     if (processedComponents.has(comp.name)) continue;
     if (comp.category !== 'page') continue;
 
-    const screen = await buildScreenFromComponent(comp, statePatterns, apis, aiClient, appName);
+    const screen = await buildScreenFromComponent(comp, statePatterns, apis, aiClient, appName, aiProvider);
     screens.push(screen);
   }
 
@@ -794,9 +895,10 @@ async function buildScreenFromRouteAndComponent(
   apis: ExtractedApi[],
   aiClient?: GrokClient | null,
   appName?: string,
+  aiProvider?: AIProvider | null,
 ): Promise<Screen> {
   const screenName = routePathToScreenName(route.urlPath);
-  const layout = await inferLayout(component, route.urlPath, statePatterns, aiClient, appName);
+  const layout = await inferLayout(component, route.urlPath, statePatterns, aiClient, appName, aiProvider);
 
   // Find state patterns related to this component
   const stateBindings = statePatterns
@@ -924,8 +1026,52 @@ async function buildScreenFromRouteAndComponent(
     confidence: 'medium',
   };
 
-  // Enhance with AI intent analysis when available
-  if (aiClient) {
+  // Enhance with AI — prefer provider-agnostic interface, fall back to legacy GrokClient
+  if (aiProvider) {
+    // 1. Intent analysis via provider-agnostic interface
+    try {
+      const context = `App: ${appName ?? 'App'}. Route: ${route.urlPath}. Analyze this component's purpose and data needs.`;
+      const intent = await withAITimeout(aiProvider.analyzeIntent(
+        {
+          name: component.name,
+          props: component.props.map((p) => p.name),
+          children: component.children.map((c) => c.name),
+          hooks: component.hooks.map((h) => h.hookName),
+        },
+        context,
+      ));
+      if (intent) {
+        screen.purpose = intent.purpose;
+        screen.description = intent.purpose;
+        if (screen.layout === 'custom') {
+          const aiLayout = mapPurposeToLayout(intent.purpose);
+          if (aiLayout !== 'custom') {
+            screen.layout = aiLayout;
+          }
+        }
+        screen.confidence = 'high';
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI intent analysis failed for ${screenName}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+
+    // 2. Component mapping via provider-agnostic interface
+    try {
+      const mapResult = await withAITimeout(aiProvider.mapComponent(
+        {
+          name: component.name,
+          jsxElements: component.children.map((c) => c.name),
+          props: component.props.map((p) => p.name),
+        },
+        'ios',
+      ));
+      if (mapResult && screen.components.length > 0) {
+        screen.components[0]!.suggestedSwiftUI = mapResult.swiftUIView;
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI component mapping failed for ${screenName}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+  } else if (aiClient) {
     const componentCode = await readComponentSource(component.filePath);
 
     // 1. Intent analysis — understand what the component does and why
@@ -941,7 +1087,6 @@ async function buildScreenFromRouteAndComponent(
       if (intent) {
         screen.purpose = intent.purpose;
         screen.description = intent.purpose;
-        // Use AI's suggested iOS pattern to refine layout if it was 'custom'
         if (screen.layout === 'custom') {
           const aiLayout = mapSuggestedPatternToLayout(intent.suggestedIOSPattern);
           if (aiLayout !== 'custom') {
@@ -957,7 +1102,6 @@ async function buildScreenFromRouteAndComponent(
     // 2. Component mapping — get SwiftUI mapping suggestions
     const mapping = await aiMapComponent(aiClient, component, componentCode);
     if (mapping) {
-      // Enrich the primary component ref with the AI-suggested SwiftUI mapping
       if (screen.components.length > 0) {
         screen.components[0]!.suggestedSwiftUI = mapping.swiftUIComponent;
       }
@@ -988,8 +1132,9 @@ async function buildScreenFromComponent(
   apis: ExtractedApi[],
   aiClient?: GrokClient | null,
   appName?: string,
+  aiProvider?: AIProvider | null,
 ): Promise<Screen> {
-  const layout = await inferLayout(component, undefined, statePatterns, aiClient, appName);
+  const layout = await inferLayout(component, undefined, statePatterns, aiClient, appName, aiProvider);
   const stateBindings = statePatterns
     .filter((sp) => sp.ownerName === component.name)
     .map((sp) => getStateName(sp));
@@ -1057,8 +1202,50 @@ async function buildScreenFromComponent(
     confidence: 'low',
   };
 
-  // Enhance with AI when available
-  if (aiClient) {
+  // Enhance with AI — prefer provider-agnostic interface, fall back to legacy GrokClient
+  if (aiProvider) {
+    try {
+      const context = `App: ${appName ?? 'App'}. Analyze this standalone component's purpose and data needs.`;
+      const intent = await withAITimeout(aiProvider.analyzeIntent(
+        {
+          name: component.name,
+          props: component.props.map((p) => p.name),
+          children: component.children.map((c) => c.name),
+          hooks: component.hooks.map((h) => h.hookName),
+        },
+        context,
+      ));
+      if (intent) {
+        screen.purpose = intent.purpose;
+        screen.description = intent.purpose;
+        if (screen.layout === 'custom') {
+          const aiLayout = mapPurposeToLayout(intent.purpose);
+          if (aiLayout !== 'custom') {
+            screen.layout = aiLayout;
+          }
+        }
+        screen.confidence = 'medium';
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI intent analysis failed for ${component.name}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+
+    try {
+      const mapResult = await withAITimeout(aiProvider.mapComponent(
+        {
+          name: component.name,
+          jsxElements: component.children.map((c) => c.name),
+          props: component.props.map((p) => p.name),
+        },
+        'ios',
+      ));
+      if (mapResult && screen.components.length > 0) {
+        screen.components[0]!.suggestedSwiftUI = mapResult.swiftUIView;
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI component mapping failed for ${component.name}, using heuristics:`, sanitizeErrorMessage(err));
+    }
+  } else if (aiClient) {
     const componentCode = await readComponentSource(component.filePath);
 
     // 1. Intent analysis
@@ -1079,7 +1266,7 @@ async function buildScreenFromComponent(
             screen.layout = aiLayout;
           }
         }
-        screen.confidence = 'medium'; // Upgrade from 'low' since AI provided insight
+        screen.confidence = 'medium';
       }
     } catch (err) {
       console.warn(`[morphkit] AI intent analysis failed for ${component.name}, using heuristics:`, sanitizeErrorMessage(err));
@@ -1518,7 +1705,9 @@ function inferEntities(
     }
   }
 
-  // Extract entities from useState with array types that reference PascalCase models
+  // Extract entities from useState with array types that reference PascalCase models.
+  // Only create a new entity if no TS interface entity already exists with that name.
+  // If a TS interface entity exists (even with few fields), prefer it over an empty placeholder.
   for (const sp of statePatterns) {
     if (!sp.useState) continue;
     const typeStr = sp.useState.type || '';
@@ -1526,37 +1715,52 @@ function inferEntities(
       const elementType = typeStr.endsWith('[]')
         ? typeStr.slice(0, -2)
         : typeStr.slice(6, -1);
-      if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType) && !entityMap.has(elementType)) {
-        entityMap.set(elementType, {
-          name: elementType,
-          description: `Data entity inferred from useState type "${typeStr}" in ${sp.ownerName}`,
-          fields: [],
-          sourceFile: sp.filePath,
-          relationships: [],
-          confidence: 'low',
-        });
+      if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType)) {
+        // Only create if no entity with this name already exists
+        // (an existing entity from TS interfaces already has proper fields)
+        if (!entityMap.has(elementType)) {
+          // Also check case-insensitive match against existing entities
+          const existingMatch = [...entityMap.keys()].find(k => k.toLowerCase() === elementType.toLowerCase());
+          if (!existingMatch) {
+            entityMap.set(elementType, {
+              name: elementType,
+              description: `Data entity inferred from useState type "${typeStr}" in ${sp.ownerName}`,
+              fields: [],
+              sourceFile: sp.filePath,
+              relationships: [],
+              confidence: 'low',
+            });
+          }
+        }
       }
     }
   }
 
-  // Extract entities from API response type hints (all API kinds, not just fetch)
+  // Extract entities from API response type hints (all API kinds, not just fetch).
+  // Same merge-first approach: only create empty placeholders if no TS interface exists.
   for (const api of apis) {
     if (api.responseType) {
       const entityName = api.responseType.replace(/\[\]$/, '').replace(/^Array</, '').replace(/>$/, '');
-      if (entityName && !entityMap.has(entityName) && /^[A-Z]/.test(entityName) && !isStateVariableName(entityName)) {
-        entityMap.set(entityName, {
-          name: entityName,
-          description: `Data entity inferred from API response at ${getApiUrlAndMethod(api).url}`,
-          fields: [],
-          sourceFile: api.filePath,
-          relationships: [],
-          confidence: 'low',
-        });
+      if (entityName && /^[A-Z]/.test(entityName) && !isStateVariableName(entityName)) {
+        if (!entityMap.has(entityName)) {
+          const existingMatch = [...entityMap.keys()].find(k => k.toLowerCase() === entityName.toLowerCase());
+          if (!existingMatch) {
+            entityMap.set(entityName, {
+              name: entityName,
+              description: `Data entity inferred from API response at ${getApiUrlAndMethod(api).url}`,
+              fields: [],
+              sourceFile: api.filePath,
+              relationships: [],
+              confidence: 'low',
+            });
+          }
+        }
       }
     }
   }
 
-  // Extract entities from component prop types (PascalCase array/object props)
+  // Extract entities from component prop types (PascalCase array/object props).
+  // Same approach — don't create empty placeholders when a real entity exists.
   for (const comp of components) {
     for (const prop of comp.props) {
       const typeStr = prop.type || '';
@@ -1564,27 +1768,74 @@ function inferEntities(
         const elementType = typeStr.endsWith('[]')
           ? typeStr.slice(0, -2)
           : typeStr.slice(6, -1);
-        if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType) && !entityMap.has(elementType)) {
-          entityMap.set(elementType, {
-            name: elementType,
-            description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
-            fields: [],
-            sourceFile: comp.filePath,
-            relationships: [],
-            confidence: 'low',
-          });
+        if (elementType && /^[A-Z]/.test(elementType) && !isStateVariableName(elementType)) {
+          if (!entityMap.has(elementType)) {
+            const existingMatch = [...entityMap.keys()].find(k => k.toLowerCase() === elementType.toLowerCase());
+            if (!existingMatch) {
+              entityMap.set(elementType, {
+                name: elementType,
+                description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
+                fields: [],
+                sourceFile: comp.filePath,
+                relationships: [],
+                confidence: 'low',
+              });
+            }
+          }
         }
-      } else if (/^[A-Z][a-zA-Z]+$/.test(typeStr) && !isStateVariableName(typeStr) && !entityMap.has(typeStr)) {
-        entityMap.set(typeStr, {
-          name: typeStr,
-          description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
-          fields: [],
-          sourceFile: comp.filePath,
-          relationships: [],
-          confidence: 'low',
-        });
+      } else if (/^[A-Z][a-zA-Z]+$/.test(typeStr) && !isStateVariableName(typeStr)) {
+        if (!entityMap.has(typeStr)) {
+          const existingMatch = [...entityMap.keys()].find(k => k.toLowerCase() === typeStr.toLowerCase());
+          if (!existingMatch) {
+            entityMap.set(typeStr, {
+              name: typeStr,
+              description: `Data entity inferred from prop "${prop.name}" on component ${comp.name}`,
+              fields: [],
+              sourceFile: comp.filePath,
+              relationships: [],
+              confidence: 'low',
+            });
+          }
+        }
       }
     }
+  }
+
+  // Back-fill pass: enrich entities that only have a synthetic `id` field
+  // by looking up their name against ALL type definitions (including non-exported
+  // and types with < 2 properties that were skipped by entitiesFromTypeDefinitions).
+  const allTypeDefs = new Map<string, { properties: TypeProperty[], sourceFile: string }>();
+  for (const pf of parsedFiles) {
+    for (const td of pf.types) {
+      if (td.properties.length >= 1) {
+        allTypeDefs.set(td.name.toLowerCase(), { properties: td.properties, sourceFile: pf.filePath });
+      }
+    }
+  }
+
+  for (const [, entity] of entityMap) {
+    // Only back-fill entities with 0-1 fields (empty or just synthetic id)
+    const hasOnlySyntheticId = entity.fields.length === 0 ||
+      (entity.fields.length === 1 && entity.fields[0].name === 'id' && entity.confidence === 'low');
+    if (!hasOnlySyntheticId) continue;
+
+    const match = allTypeDefs.get(entity.name.toLowerCase());
+    if (!match || match.properties.length < 2) continue;
+
+    const fields = match.properties.map((prop: TypeProperty) => {
+      const { typeDef, isOptionalFromUnion } = tsTypeStringToTypeDef(prop.type);
+      return {
+        name: prop.name,
+        type: typeDef,
+        optional: prop.isOptional || isOptionalFromUnion,
+        description: '',
+        isPrimaryKey: prop.name === 'id',
+      };
+    });
+
+    entity.fields = deduplicateFields(fields);
+    entity.confidence = 'medium';
+    if (match.sourceFile) entity.sourceFile = match.sourceFile;
   }
 
   // Filter out junk entities: generic type names, entities with angle brackets, empty-field entities
@@ -1595,16 +1846,35 @@ function inferEntities(
     return true;
   });
 
-  // Remove entities where ALL non-id fields have type 'unknown' (Any) — these are
-  // low-quality state-inferred entities (e.g. Zustand stores) that duplicate
-  // better-typed entities derived from explicit TypeScript interfaces.
+  // Remove low-quality entities:
+  // 1. Entities with zero fields (empty placeholders that couldn't be resolved)
+  // 2. Entities where ALL non-id fields have type 'unknown' (poorly-typed state inferences)
+  // 3. Entities whose names conflict with Swift standard library types
+  const SWIFT_STDLIB_CONFLICTS = new Set([
+    'Collection', 'Error', 'Type', 'Result', 'Optional', 'Array',
+    'Dictionary', 'Set', 'Range', 'Sequence', 'Iterator',
+    'Encoder', 'Decoder', 'Mirror', 'Index', 'Element',
+    'Color', 'AccentColor', 'Image', 'Text', 'Button', 'View', 'Font',
+    'NavigationPath', 'State', 'Binding', 'Environment', 'Observable',
+    'Notification', 'Timer', 'Locale', 'Calendar', 'TimeZone',
+  ]);
+
   return allEntities.filter((e) => {
     // Don't filter enum entities
     if (e.fields.length === 1 && e.fields[0].name === '__enum') return true;
-    // Keep entities with no fields (they may be placeholders)
-    if (e.fields.length === 0) return true;
+    // Keep entities with zero fields but add a synthetic id field so they compile.
+    // These are placeholders that the developer/AI needs to fill in.
+    if (e.fields.length === 0) {
+      e.fields = [{ name: 'id', type: { kind: 'string' }, optional: false, description: 'Auto-generated placeholder — add real fields', isPrimaryKey: true }];
+      e.confidence = 'low';
+      return true;
+    }
+    // Reject entities whose names conflict with Swift stdlib types
+    if (SWIFT_STDLIB_CONFLICTS.has(e.name)) return false;
+    // Keep entities that have at least one non-id field
     const nonIdFields = e.fields.filter((f) => f.name !== 'id' && !f.isPrimaryKey);
-    if (nonIdFields.length === 0) return true;
+    if (nonIdFields.length === 0) return true; // id-only entities from TS interfaces are fine
+    // Reject entities where ALL non-id fields are unknown type
     const allUnknown = nonIdFields.every((f) =>
       f.type.kind === 'unknown' ||
       (f.type.kind === 'object' && f.type.typeName === 'unknown'),
@@ -1640,14 +1910,15 @@ export async function buildSemanticModel(
 ): Promise<SemanticAppModel> {
   const { scanResult: scan, parsedFiles, components, routes, statePatterns, apiEndpoints } = analysisResult;
 
-  // Optionally wire up AI client for intent extraction
-  const aiClient = getGrokClientSafe();
+  // Wire up AI: try provider-agnostic interface first, fall back to legacy GrokClient
+  const aiProvider = await getAIProviderSafe();
+  const aiClient = aiProvider ? null : getGrokClientSafe();
 
   // 8. Determine app name from scan result (needed early for AI context)
   const appName = inferAppName(scan);
 
   // 1. Build screens by merging component + route data
-  const screens = await buildScreens(components, routes, statePatterns, apiEndpoints, aiClient, appName);
+  const screens = await buildScreens(components, routes, statePatterns, apiEndpoints, aiClient, appName, aiProvider);
 
   // 2. Build navigation structure from routes
   const navigation = buildNavigation(routes, screens);
@@ -1666,6 +1937,11 @@ export async function buildSemanticModel(
 
   // 7. Infer data entities
   const entities = inferEntities(components, statePatterns, apiEndpoints, parsedFiles);
+
+  // 7b. AI entity field enhancement — enrich incomplete entities (<=1 field)
+  if (aiProvider) {
+    await enhanceEntitiesWithAI(entities, aiProvider, components, apiEndpoints, statePatterns);
+  }
 
   // 9. Calculate overall confidence
   const confidence = calculateOverallConfidence(screens, stateManagement, apiEndpointModels);
@@ -1695,6 +1971,93 @@ export async function buildSemanticModel(
   };
 
   return model;
+}
+
+/**
+ * Enhance incomplete entities (those with <=1 field) by using AI to infer
+ * fields from usage context — component props, API endpoints, state shapes.
+ *
+ * Modifies entities in-place. All calls are wrapped in try/catch with timeout
+ * so failures never break the pipeline.
+ */
+async function enhanceEntitiesWithAI(
+  entities: Entity[],
+  aiProvider: AIProvider,
+  components: ExtractedComponent[],
+  apis: ExtractedApi[],
+  statePatterns: ExtractedState[],
+): Promise<void> {
+  // Only enhance entities that are incomplete (placeholder with <=1 field)
+  const incompleteEntities = entities.filter((e) => {
+    // Skip enum entities
+    if (e.fields.length === 1 && e.fields[0].name === '__enum') return false;
+    return e.fields.length <= 1;
+  });
+
+  if (incompleteEntities.length === 0) return;
+
+  // Process up to 10 entities to avoid excessive API calls
+  const toEnhance = incompleteEntities.slice(0, 10);
+
+  for (const entity of toEnhance) {
+    try {
+      // Build usage context for the AI
+      const nameLower = entity.name.toLowerCase();
+
+      // Find components that reference this entity (via props, state, or children)
+      const usages = components
+        .filter((c) => {
+          const propsStr = c.props.map((p) => `${p.name}:${p.type || ''}`).join(' ').toLowerCase();
+          return propsStr.includes(nameLower);
+        })
+        .map((c) => `Component ${c.name} uses ${entity.name} in props`);
+
+      // Find API endpoints that reference this entity
+      const apiEndpoints = apis
+        .filter((a) => {
+          const responseType = (a.responseType || '').toLowerCase();
+          return responseType.includes(nameLower);
+        })
+        .map((a) => {
+          const { method, url } = getApiUrlAndMethod(a);
+          return `${method} ${url} (response: ${a.responseType || 'unknown'})`;
+        });
+
+      // Find state patterns that reference this entity
+      const stateShapes = statePatterns
+        .filter((sp) => {
+          if (sp.useState) {
+            return (sp.useState.type || '').toLowerCase().includes(nameLower);
+          }
+          return false;
+        })
+        .map((sp) => `State: ${getStateName(sp)} (type: ${sp.useState?.type || 'unknown'})`);
+
+      const result = await withAITimeout(aiProvider.enhanceEntityFields(
+        entity.name,
+        { usages, apiEndpoints, stateShapes },
+      ));
+
+      if (result && result.fields.length > 0) {
+        // Convert AI-returned fields to the entity field format
+        entity.fields = deduplicateFields(
+          result.fields.map((f) => ({
+            name: f.name,
+            type: typeFromString(f.type),
+            optional: f.optional,
+            description: '',
+            isPrimaryKey: f.name === 'id',
+          })),
+        );
+        // Upgrade confidence since AI enriched the entity
+        if (entity.confidence === 'low') {
+          entity.confidence = 'medium';
+        }
+      }
+    } catch (err) {
+      console.warn(`[morphkit] AI entity enhancement failed for ${entity.name}, keeping heuristic fields:`, sanitizeErrorMessage(err));
+    }
+  }
 }
 
 /** Infer the app name from the repository scan result.

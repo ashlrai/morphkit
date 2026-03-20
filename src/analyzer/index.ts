@@ -41,6 +41,10 @@ export {
 } from './route-extractor.js';
 
 export {
+  extractReactRoutes,
+} from './react-route-extractor.js';
+
+export {
   extractStatePatterns,
   type ExtractedState,
   type StatePatternKind,
@@ -101,6 +105,8 @@ import { scanRepo } from './repo-scanner.js';
 import { createProject, parseFile } from './ast-parser.js';
 import { extractComponents } from './component-extractor.js';
 import { extractRoutes } from './route-extractor.js';
+import { extractReactRoutes } from './react-route-extractor.js';
+import { extractPagesRoutes } from './pages-route-extractor.js';
 import { extractStatePatterns } from './state-extractor.js';
 import { extractApiEndpoints } from './api-extractor.js';
 
@@ -173,8 +179,15 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
   ];
   const components = extractComponents(project, componentFilePaths);
 
-  // Step 5: Extract routes
-  const routes = extractRoutes(scan.repoPath, scan, project);
+  // Step 5: Extract routes (framework-aware)
+  let routes: ExtractedRoute[];
+  if (scan.framework === 'react') {
+    routes = extractReactRoutes(scan.repoPath, scan, project);
+  } else if (scan.framework === 'nextjs-pages-router') {
+    routes = extractPagesRoutes(scan.repoPath, scan, project);
+  } else {
+    routes = extractRoutes(scan.repoPath, scan, project);
+  }
 
   // Step 6: Extract state patterns
   const statePatterns = extractStatePatterns(project, sourceFilePaths);

@@ -2,3 +2,8 @@ User-agent: *
 Allow: /
 
 Sitemap: https://morphkit.dev/sitemap.xml
+
+# AI discovery
+# https://llmstxt.org
+Allow: /llms.txt
+Allow: /llms-full.txt

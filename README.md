@@ -32,6 +32,59 @@ That's it. Three commands from web app to Xcode project.
 
 ---
 
+## Using with Claude Code
+
+Morphkit generates everything Claude Code needs to complete the iOS app screen-by-screen:
+
+```bash
+# 1. Generate the iOS project
+npx morphkit generate ./my-nextjs-app --output ./ios-app
+
+# 2. Register the MCP server in Claude Code
+npx morphkit setup
+
+# 3. Open in Claude Code and complete everything
+cd ios-app
+# Run /complete-all to wire up every screen
+```
+
+### What gets generated for AI
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Implementation guide with API contract, Swift conventions, completion manifest |
+| `.claude/commands/` | Slash commands: `/complete-screen`, `/verify`, `/next`, `/complete-all` |
+| `.claude/settings.json` | Auto-registers the MCP server so tools are available immediately |
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `morphkit_analyze` | Analyze a web app and return its semantic model |
+| `morphkit_generate` | Generate a complete SwiftUI project from a web app |
+| `morphkit_plan` | Generate a prioritized implementation plan |
+| `morphkit_screen_context` | Get full context for completing a specific screen |
+| `morphkit_verify` | Check project completion: build status, TODO census, completion % |
+| `morphkit_next_task` | Get the next recommended screen to implement |
+
+### Verify Command
+
+```bash
+npx morphkit verify ./ios-app
+```
+
+```
+Build:   ✓ pass (0 errors)
+TODOs:   12 remaining (wire-api-fetch: 8, wire-api-action: 4)
+Screens: 4/6 complete (67%)
+API:     6/8 endpoints wired (75%)
+Models:  5/5 complete (100%)
+Overall: 72% complete
+Next:    Complete CartView — 3 TODOs remaining
+```
+
+---
+
 ## What Gets Generated
 
 Morphkit produces a complete, buildable Swift Package with this structure:
@@ -72,7 +125,7 @@ Every generated file includes a source mapping comment tracing back to the origi
 - **API client generation** — `fetch` calls and API routes become a typed `URLSession` networking layer with `async/await`.
 - **Confidence scoring** — Every generated file is tagged high/medium/low confidence so you know what to review first.
 - **Preview data factories** — `#if DEBUG` extensions with `.preview()` methods for every model, so SwiftUI previews work out of the box.
-- **AI-enhanced analysis (optional)** — Connect xAI Grok for deeper intent extraction, smarter component mapping, and navigation planning.
+- **AI-enhanced analysis (optional)** — Connect Claude, OpenAI, or Grok for deeper intent extraction, smarter component mapping, and navigation planning.
 - **Zero runtime dependencies** — Generated Swift code uses only Foundation and SwiftUI. No third-party pods or packages.
 
 ---
@@ -309,6 +362,42 @@ bunx morphkit preview ./my-app --screen Products
 | Option | Description |
 |--------|-------------|
 | `-s, --screen <name>` | Preview only files matching a specific screen name |
+
+### `morphkit verify <path>`
+
+Check completion status of a generated iOS project.
+
+```bash
+bunx morphkit verify ./ios-app
+```
+
+Reports build status, TODO census by category, screen/API/model completion percentages, and recommends the next step.
+
+### `morphkit setup`
+
+Register the Morphkit MCP server in Claude Code's settings.
+
+```bash
+bunx morphkit setup
+```
+
+Writes to `.claude/settings.json` so Claude Code can call `morphkit_analyze`, `morphkit_verify`, etc. directly.
+
+### `morphkit sync <source> <target>`
+
+Re-sync a generated iOS project after changes to the source web app.
+
+```bash
+bunx morphkit sync ./my-nextjs-app ./ios-app
+```
+
+### `morphkit watch <path>`
+
+Watch a web app directory and re-generate on changes.
+
+```bash
+bunx morphkit watch ./my-nextjs-app --output ./ios-app
+```
 
 ---
 

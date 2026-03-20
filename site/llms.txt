@@ -1,0 +1,47 @@
+# Morphkit
+
+> CLI tool that converts TypeScript/React web apps to native SwiftUI iOS apps.
+
+npm package: `morphkit-cli`
+Homepage: https://morphkit.dev
+GitHub: https://github.com/ashlrai/morphkit
+
+## CLI Commands
+
+- `morphkit analyze <path>` — Analyze a web app, output semantic model JSON
+- `morphkit generate <path>` — Generate a complete SwiftUI iOS project
+- `morphkit preview <path>` — Preview generation without writing files
+- `morphkit verify <path>` — Check completion status of a generated project
+- `morphkit setup` — Register MCP server in Claude Code settings
+- `morphkit sync <source> <target>` — Re-sync after web app changes
+- `morphkit watch <path>` — Watch mode, re-generate on file changes
+
+## MCP Server
+
+Register: `morphkit setup` (writes to `.claude/settings.json`)
+Command: `npx morphkit mcp`
+
+### Tools
+
+- `morphkit_analyze` — Analyze a web app → semantic model summary
+- `morphkit_generate` — Full pipeline: analyze → generate SwiftUI project
+- `morphkit_plan` — Prioritized implementation plan for iOS conversion
+- `morphkit_screen_context` — Full context for completing a specific screen (view, models, API methods, reference patterns)
+- `morphkit_verify` — Project completion check: build status, TODO census, completion %
+- `morphkit_next_task` — Recommend next screen to implement
+
+## AI Providers
+
+Supports Claude (recommended), OpenAI, and Grok for enhanced analysis. Fully optional — all core functionality works with heuristic-based analysis when no AI key is set.
+
+## Generated Output
+
+When generating an iOS project, Morphkit also produces:
+- `CLAUDE.md` — AI implementation guide with API contract, Swift conventions, completion manifest
+- `.claude/commands/` — Slash commands: /complete-screen, /verify, /next, /complete-all
+- `.claude/settings.json` — Auto-registers the MCP server
+- `MORPHKIT-TODO` markers in Swift files — Structured TODOs (wire-api-fetch, wire-api-action, complete-model, implement-auth)
+
+## Detailed Reference
+
+See [llms-full.txt](https://morphkit.dev/llms-full.txt) for complete MCP tool schemas, MORPHKIT-TODO format, verify output structure, and CLI flag reference.

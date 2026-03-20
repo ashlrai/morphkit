@@ -1381,7 +1381,8 @@
       "@type": "Organization",
       "name": "AshlrAI",
       "url": "https://ashlr.ai"
-    }
+    },
+    "featureList": "MCP server with 6 tools, morphkit verify completion tracking, Claude Code integration with slash commands, Multi-provider AI (Claude, OpenAI, Grok), CLAUDE.md implementation guide generation, Structured MORPHKIT-TODO system"
   }
   </script>
   <script type="application/ld+json">
@@ -1389,7 +1390,7 @@
     "@context": "https://schema.org",
     "@type": "HowTo",
     "name": "How to convert a React app to native iOS with Morphkit",
-    "description": "Convert your existing React or TypeScript web application to a production-quality native SwiftUI iOS app in three steps.",
+    "description": "Convert your existing React or TypeScript web application to a production-quality native SwiftUI iOS app in four steps.",
     "totalTime": "PT2M",
     "tool": {
       "@type": "HowToTool",
@@ -1413,6 +1414,12 @@
         "position": 3,
         "name": "Open the generated Xcode project",
         "text": "Morphkit outputs a complete SwiftUI Xcode project with typed Codable models, async networking, native navigation, and an organized structure ready for the App Store."
+      },
+      {
+        "@type": "HowToStep",
+        "position": 4,
+        "name": "Complete with AI",
+        "text": "Morphkit generates a CLAUDE.md guide, slash commands, and an MCP server. Open in Claude Code and run /complete-all to wire up every screen using structured TODO markers, reference implementations, and the API contract."
       }
     ]
   }
@@ -1468,6 +1475,22 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "Morphkit generates a complete Xcode project including: SwiftUI views for each component, Codable model structs from your TypeScript types, an async networking layer using URLSession, TabView and NavigationStack navigation derived from your routes, an Xcode asset catalog from your Tailwind colors, and a properly organized project structure ready for App Store submission."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can Claude Code complete the generated app automatically?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Morphkit generates a CLAUDE.md implementation guide, .claude/commands/ with slash commands, and structured MORPHKIT-TODO markers in every generated Swift file. Run /complete-all in Claude Code to wire up API calls, complete models, and implement auth flows screen-by-screen."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the MCP server?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The MCP (Model Context Protocol) server exposes 6 tools that Claude Code can call directly: morphkit_analyze, morphkit_generate, morphkit_plan, morphkit_screen_context, morphkit_verify, and morphkit_next_task. Run morphkit setup to register the server in Claude Code."
         }
       }
     ]
@@ -1636,7 +1659,8 @@
         <div class="terminal-line"><span class="term-info">  Analyzing tryprobe.io codebase...</span></div>
         <div class="terminal-line"><span class="term-success">  &#10003; Found 24 components, 6 routes, 8 API endpoints</span></div>
         <div class="terminal-line"><span class="term-success">  &#10003; Mapped navigation: TabView + NavigationStack</span></div>
-        <div class="terminal-line"><span class="term-success">  &#10003; Generated Xcode project &rarr;</span> <span class="term-file">./probe-ios/ProbeAI.xcodeproj</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Generated Swift Package &rarr;</span> <span class="term-file">./probe-ios/Package.swift</span></div>
+        <div class="terminal-line"><span class="term-success">  &#10003; Generated CLAUDE.md + .claude/commands/ for AI-assisted completion</span></div>
       </div>
     </div>
   </div>
@@ -1682,7 +1706,7 @@
   <div class="container">
     <div class="section-header reveal">
       <span class="section-label">How It Works</span>
-      <h2 class="section-title">Three steps to native</h2>
+      <h2 class="section-title">Four steps to native</h2>
       <p class="section-desc">Morphkit reads your codebase like a senior developer would, then writes the Swift code you'd want to write yourself.</p>
     </div>
     <div class="steps">
@@ -1700,6 +1724,11 @@
         <div class="step-number">3</div>
         <h3>Generate</h3>
         <p>Output a complete SwiftUI Xcode project with typed Codable models, an async networking layer, native navigation, and an organized project structure ready for the App Store.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-number">4</div>
+        <h3>Complete with AI</h3>
+        <p>Morphkit generates a CLAUDE.md guide, slash commands, and an MCP server. Open in Claude Code and run <code>/complete-all</code> to wire up every screen using structured TODO markers, reference implementations, and the API contract.</p>
       </div>
     </div>
   </div>
@@ -1748,6 +1777,22 @@
         <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
         <h4>Info.plist and app entry point</h4>
       </div>
+      <div class="feature reveal">
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h4>CLAUDE.md implementation guide</h4>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h4>.claude/commands/ slash commands</h4>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h4>MCP server integration</h4>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon" style="color: var(--accent);"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <h4>morphkit verify completion tracking</h4>
+      </div>
     </div>
     <p class="reveal" style="text-align: center; color: var(--text-muted); font-size: 14px; margin-top: 32px; max-width: 560px; margin-left: auto; margin-right: auto; line-height: 1.65;">You'll want to configure your API endpoints, add an app icon, and customize the UI to match your brand.</p>
   </div>
@@ -1791,8 +1836,13 @@
       </div>
       <div class="feature reveal">
         <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4c0 1.95-2 3-2 8h-4c0-5-2-6.05-2-8a4 4 0 014-4z"/><path d="M10 18h4"/><path d="M10 22h4"/></svg></div>
-        <h4>AI Intent Extraction</h4>
-        <p>Optionally use xAI Grok to understand ambiguous patterns and infer the best native implementation.</p>
+        <h4>AI Provider Support</h4>
+        <p>Claude, OpenAI, or Grok for intent extraction and component mapping. Or run fully offline with heuristics.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/><path d="M7 12h10M12 7v10"/></svg></div>
+        <h4>Claude Code Integration</h4>
+        <p>MCP server, slash commands, and structured CLAUDE.md let Claude Code complete your generated app screen-by-screen with full context.</p>
       </div>
     </div>
   </div>
@@ -1947,6 +1997,7 @@
       <div class="install-tabs" role="tablist" aria-label="Package manager">
         <button id="tab-btn-npx" class="install-tab active" data-tab="npx" role="tab" aria-selected="true" aria-controls="tab-npx">npx</button>
         <button id="tab-btn-bun" class="install-tab" data-tab="bun" role="tab" aria-selected="false" aria-controls="tab-bun">bun</button>
+        <button id="tab-btn-claude" class="install-tab" data-tab="claude" role="tab" aria-selected="false" aria-controls="tab-claude">Claude Code</button>
       </div>
       <div class="install-content">
         <div class="install-block active" id="tab-npx" role="tabpanel" aria-labelledby="tab-btn-npx">
@@ -1963,6 +2014,23 @@
           <div class="install-cmd">
             <code><span class="term-prompt">$</span> morphkit generate ./my-nextjs-app --output ./ios-app</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
+          </div>
+        </div>
+        <div class="install-block" id="tab-claude" role="tabpanel" aria-labelledby="tab-btn-claude">
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
+          </div>
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> cd ios-app</code>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
+          </div>
+          <div class="install-cmd">
+            <code><span class="term-prompt">$</span> npx morphkit setup <span style="color: var(--text-muted)"># Registers MCP server in Claude Code</span></code>
+            <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
+          </div>
+          <div class="install-cmd">
+            <code><span style="color: var(--text-muted)"># Open in Claude Code → run /complete-all</span></code>
           </div>
         </div>
       </div>
@@ -2015,6 +2083,18 @@
         <button class="faq-q" aria-expanded="false" aria-controls="faq-a-6">What does the generated iOS project include?</button>
         <div class="faq-a" id="faq-a-6" role="region">
           <div class="faq-a-inner">A complete Xcode project with SwiftUI views for each component, <code>Codable</code> model structs from your TypeScript types, an async networking layer using <code>URLSession</code>, <code>TabView</code> and <code>NavigationStack</code> navigation derived from your routes, an Xcode Asset Catalog from your design tokens, and a clean project structure organized for App Store submission.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-7">Can Claude Code complete the generated app automatically?</button>
+        <div class="faq-a" id="faq-a-7" role="region">
+          <div class="faq-a-inner">Yes. Morphkit generates a <code>CLAUDE.md</code> implementation guide, <code>.claude/commands/</code> with slash commands, and structured <code>MORPHKIT-TODO</code> markers in every generated Swift file. Run <code>/complete-all</code> in Claude Code and it will wire up API calls, complete data models, and implement auth flows screen-by-screen using the API contract and reference implementations as context.</div>
+        </div>
+      </div>
+      <div class="faq-item reveal">
+        <button class="faq-q" aria-expanded="false" aria-controls="faq-a-8">What is the MCP server?</button>
+        <div class="faq-a" id="faq-a-8" role="region">
+          <div class="faq-a-inner">The MCP (Model Context Protocol) server exposes 6 tools that Claude Code can call directly: <code>morphkit_analyze</code>, <code>morphkit_generate</code>, <code>morphkit_plan</code>, <code>morphkit_screen_context</code>, <code>morphkit_verify</code>, and <code>morphkit_next_task</code>. Run <code>morphkit setup</code> to register the server. Claude Code then has structured access to your project&rsquo;s semantic model, completion status, and implementation context without you needing to copy-paste anything.</div>
         </div>
       </div>
     </div>

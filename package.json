@@ -63,7 +63,11 @@
     "nextjs",
     "code-generation",
     "ai",
-    "mobile"
+    "mobile",
+    "claude-code",
+    "mcp",
+    "ai-assistant",
+    "model-context-protocol"
   ],
   "license": "MIT",
   "author": "AshlrAI <hello@ashlr.ai>",

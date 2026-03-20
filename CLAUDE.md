@@ -28,11 +28,15 @@ morphkit/
 │   │   ├── networking-generator.ts # URLSession API client
 │   │   ├── project-generator.ts    # Xcode project orchestrator
 │   │   └── index.ts
-│   └── ai/                   # AI integration (xAI Grok)
-│       ├── grok-client.ts    # OpenAI SDK → xAI endpoint
-│       ├── structured-output.ts    # Zod schemas for AI responses
-│       ├── prompts/          # Intent extraction, component mapping, code gen
-│       └── index.ts
+│   ├── ai/                   # AI integration (Claude, OpenAI, Grok)
+│   │   ├── provider.ts       # Provider-agnostic AIProvider interface
+│   │   ├── providers/        # claude.ts, grok.ts, openai.ts implementations
+│   │   ├── structured-output.ts    # Zod schemas for AI responses
+│   │   ├── prompts/          # Intent extraction, component mapping, code gen
+│   │   └── index.ts
+│   ├── mcp/                  # Model Context Protocol server
+│   │   └── server.ts         # 6 MCP tools for Claude Code integration
+│   └── verify.ts             # Project verification & completion tracking
 ├── templates/                # Swift/SwiftUI code templates
 ├── test/
 │   ├── analyzer/             # Unit tests for each extractor
@@ -50,7 +54,7 @@ morphkit/
 - **Runtime:** Bun 1.0+
 - **Language:** TypeScript (strict mode)
 - **AST Parsing:** ts-morph (TypeScript Compiler API)
-- **AI:** xAI Grok via OpenAI SDK (`XAI_API_KEY` env var, model: `grok-4-1-fast-reasoning`)
+- **AI:** Multi-provider (Claude, OpenAI, Grok) — auto-detected from env vars, or `--no-ai` for heuristics only
 - **Schemas:** Zod for runtime validation + type inference
 - **Testing:** bun:test with coverage
 - **CLI:** Commander.js + chalk + ora
@@ -95,6 +99,10 @@ bun run typecheck           # TypeScript strict checking
 bun run src/index.ts analyze ./app          # Analyze a Next.js app
 bun run src/index.ts generate ./app -o ./ios # Generate SwiftUI project
 bun run src/index.ts preview ./app          # Preview without writing files
+bun run src/index.ts verify ./ios           # Check completion status of generated project
+bun run src/index.ts setup                  # Register MCP server in Claude Code
+bun run src/index.ts sync ./app ./ios       # Re-sync after web app changes
+bun run src/index.ts watch ./app            # Watch mode — re-generate on changes
 ```
 
 ### Authentication & Monetization
@@ -136,6 +144,51 @@ bun run src/index.ts preview ./app          # Preview without writing files
 - ESLint with `@typescript-eslint/recommended` — config in `.eslintrc.json`
 - `no-explicit-any` is set to `warn` (not error) due to existing `as any` casts
 - Run: `bun run lint`
+
+### MCP Server (`src/mcp/server.ts`)
+
+6 tools exposed via the Model Context Protocol for Claude Code integration:
+
+| Tool | Description |
+|------|-------------|
+| `morphkit_analyze` | Analyze a web app → return semantic model summary |
+| `morphkit_generate` | Full pipeline: analyze → build → generate SwiftUI project |
+| `morphkit_plan` | Generate prioritized implementation plan for iOS conversion |
+| `morphkit_screen_context` | Return everything needed to complete a specific screen (view, models, API methods, reference patterns) |
+| `morphkit_verify` | Check project completion: build status, TODO census, screen/API/model completion % |
+| `morphkit_next_task` | Recommend the next screen to implement based on TODO count and dependency order |
+
+Register with `morphkit setup` — writes to `.claude/settings.json`.
+
+### Verify System (`src/verify.ts`)
+
+`verifyProject(path)` returns a `VerifyResult` with:
+- `buildStatus`: pass/fail/skipped (runs `swift build` if toolchain available)
+- `todosByCategory`: counts of `MORPHKIT-TODO: <category>` markers
+- `todosByFile`: per-file TODO counts
+- `screenCompletion`, `apiCoverage`, `modelCompleteness`: percentage metrics
+- `overallPercentage`: weighted composite score
+- `nextStep`: human-readable recommendation
+
+### MORPHKIT-TODO System
+
+Generated Swift files contain structured TODO markers: `// MORPHKIT-TODO: <category>`
+
+Categories:
+- `wire-api-fetch` — Connect a view's data loading to APIClient
+- `wire-api-action` — Connect a user action (submit, delete) to APIClient
+- `complete-model` — Add real fields to a placeholder model
+- `implement-auth` — Wire authentication flow
+
+Each generated view also has `// MORPHKIT-TODO-COUNT: N` for quick completeness checks.
+
+### Generated `.claude/commands/`
+
+The generator creates slash commands for Claude Code in the output project:
+- `/complete-screen` — Complete a single screen by name
+- `/verify` — Run verification and show completion status
+- `/next` — Get the next recommended task
+- `/complete-all` — Complete all remaining screens sequentially
 
 ## Important Notes
 

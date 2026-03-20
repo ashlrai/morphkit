@@ -1,0 +1,264 @@
+# Morphkit — Full AI Reference
+
+> Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps.
+
+npm: `morphkit-cli`
+Homepage: https://morphkit.dev
+License: MIT
+
+---
+
+## CLI Reference
+
+### morphkit analyze <path>
+
+Analyze a web app and output its semantic model.
+
+Options:
+  -o, --output <file>     Write semantic model JSON to file
+  -v, --verbose           Show detailed analysis output
+  --ai-provider <name>    Force AI provider: claude, openai, grok
+  --no-ai                 Disable AI, use heuristics only
+
+### morphkit generate <path>
+
+Generate a complete SwiftUI iOS project from a web app.
+
+Options:
+  -o, --output <dir>      Output directory (default: ./ios-app)
+  -n, --name <name>       App name, must be PascalCase
+  --model <file>          Use pre-built semantic model JSON
+  -v, --verbose           Show detailed generation output
+  --ai-provider <name>    Force AI provider: claude, openai, grok
+  --no-ai                 Disable AI, use heuristics only
+
+### morphkit preview <path>
+
+Preview generation without writing files.
+
+Options:
+  -s, --screen <name>     Preview only files for a specific screen
+
+### morphkit verify <path>
+
+Check completion status of a generated iOS project.
+
+Output includes:
+  - Build status (pass/fail/skipped)
+  - TODO census by category
+  - Screen completion percentage
+  - API endpoint coverage
+  - Model completeness
+  - Overall percentage
+  - Next step recommendation
+
+### morphkit setup
+
+Register the Morphkit MCP server in Claude Code's `.claude/settings.json`.
+
+### morphkit sync <source> <target>
+
+Re-sync a generated iOS project after changes to the source web app.
+
+### morphkit watch <path>
+
+Watch source directory and re-generate on changes.
+
+Options:
+  -o, --output <dir>      Output directory
+
+---
+
+## MCP Server
+
+### Registration
+
+Command: `npx morphkit mcp`
+Register: `morphkit setup` writes to `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "morphkit": {
+      "command": "npx",
+      "args": ["morphkit", "mcp"]
+    }
+  }
+}
+```
+
+### Tool: morphkit_analyze
+
+Analyze a TypeScript/React web app and return its semantic model.
+
+Parameters:
+  - path: string (required) — Path to the web app directory
+  - verbose: boolean (optional, default: false) — Include full JSON model
+
+Returns: Text summary of entities, screens, API endpoints, auth patterns, navigation.
+
+### Tool: morphkit_generate
+
+Generate a complete SwiftUI iOS project from a web app.
+
+Parameters:
+  - path: string (required) — Path to the web app directory
+  - output: string (required) — Output directory for the generated project
+  - name: string (optional) — App name (PascalCase, defaults to directory name)
+
+Returns: Generation summary with file counts, confidence breakdown, and next steps.
+
+### Tool: morphkit_plan
+
+Generate a prioritized implementation plan for an iOS conversion.
+
+Parameters:
+  - path: string (required) — Path to the web app directory
+
+Returns: Step-by-step implementation plan ordered by dependency and priority.
+
+### Tool: morphkit_screen_context
+
+Returns everything needed to complete a screen in a generated iOS project.
+
+Parameters:
+  - project_path: string (required) — Path to the generated iOS project
+  - screen_name: string (required) — Screen name (e.g. "Cart", "ProductDetail")
+
+Returns:
+  - The View's Swift source code
+  - Related Model files
+  - APIClient methods used by this screen
+  - Reference implementation patterns from completed screens
+  - API contract entries from CLAUDE.md
+
+### Tool: morphkit_verify
+
+Verify a generated iOS project's completion status.
+
+Parameters:
+  - project_path: string (required) — Path to the generated iOS project
+
+Returns: Human-readable summary + raw JSON with VerifyResult fields.
+
+### Tool: morphkit_next_task
+
+Recommend the next screen to complete.
+
+Parameters:
+  - project_path: string (required) — Path to the generated iOS project
+
+Returns: Recommended screen name, TODO count, and implementation guidance.
+
+---
+
+## VerifyResult Schema
+
+```typescript
+interface VerifyResult {
+  buildStatus: 'pass' | 'fail' | 'skipped';
+  buildErrors: number;
+  todosByCategory: Record<string, number>;   // e.g. { "wire-api-fetch": 8, "wire-api-action": 4 }
+  todosByFile: Record<string, number>;       // e.g. { "CartView.swift": 3, "ProductDetailView.swift": 2 }
+  totalTodos: number;
+  screenCompletion: { total: number; complete: number; percentage: number };
+  apiCoverage: { total: number; wired: number; percentage: number };
+  modelCompleteness: { total: number; complete: number; percentage: number };
+  apiBaseUrlSet: boolean;
+  authWired: boolean;
+  overallPercentage: number;
+  nextStep: string;
+}
+```
+
+---
+
+## MORPHKIT-TODO System
+
+Generated Swift files contain structured TODO markers for AI-assisted completion.
+
+### Format
+
+```swift
+// MORPHKIT-TODO: <category>
+// MORPHKIT-TODO-COUNT: <n>
+```
+
+### Categories
+
+| Category | Meaning | Where it appears |
+|----------|---------|-----------------|
+| `wire-api-fetch` | Connect view data loading to APIClient | View `.task {}` or `.onAppear {}` |
+| `wire-api-action` | Connect user action to APIClient | Button/form action closures |
+| `complete-model` | Add real fields to placeholder model | Model files with ≤1 field |
+| `implement-auth` | Wire authentication flow | Auth-related views and stores |
+
+### Completion Detection
+
+A screen is considered complete when:
+1. It has a `// MORPHKIT-TODO-COUNT: 0` line, OR
+2. It has no `MORPHKIT-TODO` or `// TODO:` markers remaining
+
+---
+
+## Generated File Structure
+
+```
+ios-app/
+├── Package.swift                       # Swift Package manifest (iOS 17+)
+├── CLAUDE.md                           # AI implementation guide
+├── .claude/
+│   ├── settings.json                   # MCP server registration
+│   └── commands/
+│       ├── complete-screen.md          # /complete-screen slash command
+│       ├── verify.md                   # /verify slash command
+│       ├── next.md                     # /next slash command
+│       └── complete-all.md             # /complete-all slash command
+├── {AppName}/
+│   ├── {AppName}App.swift              # @main app entry point
+│   ├── ContentView.swift               # Root TabView + NavigationStack
+│   ├── Info.plist                       # App configuration
+│   ├── Assets.xcassets/                 # Colors, app icon placeholders
+│   ├── Models/                          # Codable structs from TS interfaces
+│   ├── Views/                           # SwiftUI views from React components
+│   ├── Navigation/                      # Router, routes enum, tab config
+│   ├── Networking/                      # Typed URLSession API client
+│   └── State/                           # @Observable stores
+└── Tests/
+    └── {AppName}Tests.swift             # Test stubs
+```
+
+---
+
+## Generated CLAUDE.md Template
+
+The generated CLAUDE.md includes these sections:
+1. **Tech Stack** — iOS 17+, SwiftUI, Swift Package Manager
+2. **Build & Run** — Xcode and CLI build instructions
+3. **Quick Start Checklist** — Steps to get a working app
+4. **Project Structure** — Directory layout
+5. **API Contract** — All endpoints extracted from source, grouped by resource
+6. **Authentication** — Auth flow details (if detected)
+7. **Data Models** — Entity reference with field types
+8. **Screen Inventory** — All screens with completion status
+9. **Implementation Priority** — Ordered TODO list with dependencies
+10. **Patterns & Conventions** — Swift code examples for consistency
+11. **Troubleshooting** — Common error reference
+12. **Swift Conventions** — iOS 17+ patterns (must follow)
+13. **AI Assistant Integration** — Slash commands, MCP tools, auto-registration
+
+---
+
+## AI Provider Configuration
+
+Environment variables (set any one):
+  - ANTHROPIC_API_KEY — Claude (recommended)
+  - OPENAI_API_KEY — OpenAI GPT
+  - XAI_API_KEY — xAI Grok
+
+CLI override: `--ai-provider claude|openai|grok`
+Disable AI: `--no-ai`
+
+Auto-detection order: Claude → OpenAI → Grok → heuristics fallback.
+
+When configured, AI enhances: intent analysis, component mapping, navigation planning, state architecture, code generation.

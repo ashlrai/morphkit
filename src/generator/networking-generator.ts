@@ -11,7 +11,7 @@ import type {
 import { isJunkEntity } from './model-generator.js';
 import type { GeneratedFile } from './swiftui-generator.js';
 import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName, cleanStoreName, isWebOnlyState } from './swiftui-generator.js';
-import { cleanURL, extractPathParams, generateFunctionName, singularize } from './api-naming';
+import { cleanURL, extractPathParams, generateFunctionName, singularize } from './api-naming.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,8 +93,6 @@ function sanitizeTypeName(name: string | undefined): string | undefined {
 
     return name;
 }
-
-// cleanURL, extractPathParams, generateFunctionName, singularize are imported from ./api-naming
 
 /**
  * Return true if the raw URL is clearly not a real endpoint
@@ -1568,4 +1566,4 @@ export function generateNetworkingLayer(model: SemanticAppModel): GeneratedFile[
 }
 
 // Re-export shared API naming utilities (canonical source: api-naming.ts)
-export { generateFunctionName, extractPathParams, cleanURL } from './api-naming';
+export { generateFunctionName, extractPathParams, cleanURL } from './api-naming.js';

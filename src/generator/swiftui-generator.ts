@@ -3260,9 +3260,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             dataReqDeclaredNames.add(arrayVarName);
         }
         // List/grid screens with entity arrays need async data loading
-        if (!hasApiData) {
-            hasApiData = true;
-        }
+        hasApiData = true;
     }
 
     // For dashboard layouts, ensure the collection array is declared using the same
@@ -3279,9 +3277,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             declaredTypes.set(dashArrayVar, dashArrayType);
         }
         // Dashboard screens need async loading even without explicit API data requirements
-        if (!hasApiData) {
-            hasApiData = true;
-        }
+        hasApiData = true;
     }
 
     // Entity-based property for detail layouts
@@ -3854,31 +3850,35 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
         // For list/grid screens with entity-derived arrays but no explicit API data requirement,
         // generate a fetch call based on the derived entity name.
-        // For dashboard screens, generate a fetch using the shared dashboard entity resolution
-        if (!hasLoadDataBody && screen.layout === 'dashboard') {
+        // For dashboard screens, generate a fetch for the featured entity array.
+        // Runs even when hasLoadDataBody is true (data requirements may target different vars).
+        if (screen.layout === 'dashboard') {
             const { entityName: dashEntityName } = resolveDashboardEntity(screen, model);
             const dashVar = camelCase(dashEntityName);
             const dashArrayVar = dashVar.endsWith('s') ? dashVar : pluralize(dashVar);
-            const dashPluralName = dashEntityName.endsWith('s') ? dashEntityName : pluralize(dashEntityName);
-            const dashEndpoints = model.apiEndpoints ?? [];
-            const matchingDashEp = dashEndpoints.find(ep => {
-                if ((ep.method ?? 'GET') !== 'GET') return false;
-                const url = ep.url?.toLowerCase() ?? '';
-                if (url.includes(':') || url.includes('{')) return false;
-                const lastSeg = url.split('/').filter(s => s).pop() ?? '';
-                return lastSeg === dashVar + 's' || lastSeg === dashVar || lastSeg === dashPluralName.toLowerCase();
-            });
-            if (matchingDashEp) {
-                const dashFetchFnName = generateFunctionName(matchingDashEp);
-                lines.push(`            ${dashArrayVar} = try await APIClient.shared.${dashFetchFnName}()`);
-            } else {
-                lines.push(`            // Configure fetch${pascalCase(dashPluralName)}() in APIClient`);
-                lines.push(`            // ${dashArrayVar} = try await APIClient.shared.fetch${pascalCase(dashPluralName)}()`);
+            // Skip if a data requirement already assigned to this variable
+            if (!dataReqDeclaredNames.has(dashArrayVar)) {
+                const dashPluralName = dashEntityName.endsWith('s') ? dashEntityName : pluralize(dashEntityName);
+                const dashEndpoints = model.apiEndpoints ?? [];
+                const matchingDashEp = dashEndpoints.find(ep => {
+                    if ((ep.method ?? 'GET') !== 'GET') return false;
+                    const url = ep.url?.toLowerCase() ?? '';
+                    if (url.includes(':') || url.includes('{')) return false;
+                    const lastSeg = url.split('/').filter(s => s).pop() ?? '';
+                    return lastSeg === dashVar + 's' || lastSeg === dashVar || lastSeg === dashPluralName.toLowerCase();
+                });
+                if (matchingDashEp) {
+                    const dashFetchFnName = generateFunctionName(matchingDashEp);
+                    lines.push(`            ${dashArrayVar} = try await APIClient.shared.${dashFetchFnName}()`);
+                } else {
+                    lines.push(`            // Configure fetch${pascalCase(dashPluralName)}() in APIClient`);
+                    lines.push(`            // ${dashArrayVar} = try await APIClient.shared.fetch${pascalCase(dashPluralName)}()`);
+                }
+                hasLoadDataBody = true;
             }
-            hasLoadDataBody = true;
         }
 
-        // For list/grid screens with entity-derived arrays but no explicit API data requirement,
+        // For list/grid screens, generate a fetch call based on the derived entity name
         if (!hasLoadDataBody && derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
             const entVar = camelCase(derivedEntityName);
             const entArrayVar = entVar.endsWith('s') ? entVar : pluralize(entVar);

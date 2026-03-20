@@ -391,7 +391,7 @@ server.tool(
             if (modelDir && viewContent) {
                 // Extract type references from the view file
                 const typeRefs = new Set<string>();
-                const statePattern = /:\s*([A-Z][A-Za-z0-9]+)(?:[?\s]|$)/gm;
+                const statePattern = /:\s*([A-Z][A-Za-z0-9]+)(?=[?<\s,)\n]|$)/gm;
                 let match;
                 while ((match = statePattern.exec(viewContent)) !== null) {
                     const typeName = match[1];

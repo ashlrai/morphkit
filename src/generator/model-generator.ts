@@ -643,6 +643,11 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const relationshipFieldNames = new Set(relationships.map(r => camelCase(r.fieldName)));
     const lines: string[] = [];
 
+    // SwiftData @Model macro conflicts with property named 'description' (CustomStringConvertible)
+    // Rename to 'desc' in the SwiftData model and handle conversion in init/toModel
+    const SWIFTDATA_RESERVED = new Set(['description', 'hash']);
+    const sdFieldName = (name: string) => SWIFTDATA_RESERVED.has(name) ? `${name}Text` : name;
+
     lines.push('@Model');
     lines.push(`final class ${storeName} {`);
     if (!hasId) { lines.push('    var id: UUID'); lines.push(''); }
@@ -661,7 +666,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
                 continue;
             }
         }
-        lines.push(`    var ${field.name}: ${swiftDataFieldType(field.type)}`);
+        lines.push(`    var ${sdFieldName(field.name)}: ${swiftDataFieldType(field.type)}`);
     }
 
     // Init
@@ -671,15 +676,17 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
         const sdType = swiftDataFieldType(field.type);
-        if (field.isOptional) initParams.push(`${field.name}: ${sdType} = nil`);
-        else if (field.isId && sdType === 'UUID') initParams.push(`${field.name}: ${sdType} = UUID()`);
-        else initParams.push(`${field.name}: ${sdType}`);
+        const pName = sdFieldName(field.name);
+        if (field.isOptional) initParams.push(`${pName}: ${sdType} = nil`);
+        else if (field.isId && sdType === 'UUID') initParams.push(`${pName}: ${sdType} = UUID()`);
+        else initParams.push(`${pName}: ${sdType}`);
     }
     lines.push(`    init(${initParams.join(', ')}) {`);
     if (!hasId) lines.push('        self.id = id');
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
-        lines.push(`        self.${field.name} = ${field.name}`);
+        const pName = sdFieldName(field.name);
+        lines.push(`        self.${pName} = ${pName}`);
     }
     lines.push('    }');
 
@@ -690,19 +697,18 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     if (!hasId) convArgs.push('id: model.id');
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
+        const pName = sdFieldName(field.name);
         const sdType = swiftDataFieldType(field.type);
         if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
-            // Type needs JSON encoding: [String: String] → Data
             if (field.isOptional) {
-                convArgs.push(`${field.name}: (try? JSONEncoder().encode(model.${field.name})) ?? nil`);
+                convArgs.push(`${pName}: (try? JSONEncoder().encode(model.${field.name})) ?? nil`);
             } else {
-                convArgs.push(`${field.name}: (try? JSONEncoder().encode(model.${field.name})) ?? Data()`);
+                convArgs.push(`${pName}: (try? JSONEncoder().encode(model.${field.name})) ?? Data()`);
             }
         } else if (sdType.replace('?', '') === 'String' && field.type.replace('?', '') !== 'String' && !field.type.startsWith('[')) {
-            // Non-string type stored as String
-            convArgs.push(`${field.name}: String(describing: model.${field.name})`);
+            convArgs.push(`${pName}: String(describing: model.${field.name})`);
         } else {
-            convArgs.push(`${field.name}: model.${field.name}`);
+            convArgs.push(`${pName}: model.${field.name}`);
         }
     }
     lines.push(`        self.init(${convArgs.join(', ')})`);
@@ -715,16 +721,16 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     if (!hasId) modelArgs.push('id: id');
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
+        const pName = sdFieldName(field.name);
         const sdType = swiftDataFieldType(field.type);
         if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
-            // Data → decode back to original type
             if (field.isOptional) {
-                modelArgs.push(`${field.name}: ${field.name}.flatMap { try? JSONDecoder().decode(${field.type.replace('?', '')}.self, from: $0) }`);
+                modelArgs.push(`${field.name}: ${pName}.flatMap { try? JSONDecoder().decode(${field.type.replace('?', '')}.self, from: $0) }`);
             } else {
-                modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${field.type}.self, from: ${field.name})) ?? ${field.type}()`);
+                modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${field.type}.self, from: ${pName})) ?? ${field.type}()`);
             }
         } else {
-            modelArgs.push(`${field.name}: ${field.name}`);
+            modelArgs.push(`${field.name}: ${pName}`);
         }
     }
     lines.push(`        ${structName}(${modelArgs.join(', ')})`);

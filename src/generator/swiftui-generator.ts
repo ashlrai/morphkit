@@ -259,6 +259,8 @@ function sanitizeSwiftTypeName(name: string | undefined): string | undefined {
     if (/[<>|{}]|=>/.test(name)) return undefined;
     // Reject leaked import paths (Prisma enums, relative paths, node_modules)
     if (/Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\/|\$Enums/.test(name)) return undefined;
+    // Reject TypeScript types that shouldn't appear in Swift
+    if (name === 'Unknown' || name === 'unknown' || name === 'Partial' || name === 'Required' || name === 'Readonly') return undefined;
     return name;
 }
 

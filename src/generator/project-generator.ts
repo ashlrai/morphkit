@@ -270,7 +270,7 @@ function generateDefaultFetchMethod(storeName: string, model?: SemanticAppModel)
         lines.push('        } catch let networkError as NetworkError {');
         lines.push('            error = networkError');
         lines.push('        } catch {');
-        lines.push('            self.error = .unknown(error)');
+        lines.push('            self.error = .networkError(URLError(.unknown))');
         lines.push('        }');
     } else {
         // No matching API endpoint — generate a placeholder that compiles

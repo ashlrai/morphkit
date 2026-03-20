@@ -16,7 +16,7 @@ function makeRoute(urlPath: string, pagePath: string, opts: Partial<ExtractedRou
     urlPath,
     segments: urlPath.split('/').filter(Boolean).map(s => ({
       raw: s,
-      name: s.replace(/[\[\]\.]/g, ''),
+      name: s.replace(/[[\].]/g, ''),
       kind: s.startsWith('[') ? 'dynamic' as const : 'static' as const,
     })),
     files: { page: pagePath, layout: undefined, loading: undefined, error: undefined, notFound: undefined, template: undefined },

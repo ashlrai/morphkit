@@ -535,7 +535,7 @@ function extractServerState(sourceFile: SourceFile, filePath: string): Extracted
 
       const exprText = node.getExpression().getText();
       let library: 'react-query' | 'swr' | undefined;
-      let hookName = exprText;
+      const hookName = exprText;
 
       if (
         exprText === 'useQuery' ||

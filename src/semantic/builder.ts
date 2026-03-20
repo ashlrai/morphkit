@@ -165,7 +165,7 @@ const AI_CALL_TIMEOUT_MS = 30_000;
 function sanitizeErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   // Redact API key patterns: xai-..., sk-..., Bearer tokens
-  return msg.replace(/\b(xai-|sk-|Bearer\s+)[A-Za-z0-9_\-]{8,}/g, '$1[REDACTED]');
+  return msg.replace(/\b(xai-|sk-|Bearer\s+)[A-Za-z0-9_-]{8,}/g, '$1[REDACTED]');
 }
 
 /**

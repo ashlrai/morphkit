@@ -96,12 +96,12 @@ describe('Full Pipeline E2E', { timeout: 30_000 }, () => {
 
   test('generated project compiles with swift build', async () => {
     // Check if swift toolchain is available
+    const { execSync } = await import('child_process');
     let hasSwift = false;
     try {
-      const { execSync } = require('child_process');
       execSync('which swift', { stdio: 'pipe' });
       hasSwift = true;
-    } catch {}
+    } catch (_) { /* swift not installed */ }
 
     if (!hasSwift) {
       console.log('Swift toolchain not found — skipping compilation test');
@@ -123,7 +123,6 @@ describe('Full Pipeline E2E', { timeout: 30_000 }, () => {
 
     // Run swift build on the generated project
     try {
-      const { execSync } = require('child_process');
       const projectRoot = join(testOutput, '..');
       execSync('swift build', {
         cwd: projectRoot,

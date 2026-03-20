@@ -70,7 +70,7 @@ export function shouldWatch(filePath: string): boolean {
 // Mtime tracking for source files (excludes .css)
 // ---------------------------------------------------------------------------
 
-/** Extensions that trigger re-analysis (excludes .css — style-only changes skip analysis). */
+/** Subset of WATCHED_EXTENSIONS that trigger re-analysis (excludes .css). */
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
 
 /**
@@ -109,7 +109,7 @@ export function getSourceFileMtimes(dir: string): Map<string, number> {
 
 /**
  * Returns true if any file in `current` has a newer mtime than the corresponding
- * entry in `previous`, or if new files have appeared.
+ * entry in `previous`, if new files have appeared, or if files have been deleted.
  */
 function hasSourceFilesChanged(
   previous: Map<string, number>,
@@ -118,6 +118,10 @@ function hasSourceFilesChanged(
   for (const [file, mtime] of current) {
     const prevMtime = previous.get(file);
     if (prevMtime === undefined || mtime > prevMtime) return true;
+  }
+  // Detect deleted files
+  for (const file of previous.keys()) {
+    if (!current.has(file)) return true;
   }
   return false;
 }

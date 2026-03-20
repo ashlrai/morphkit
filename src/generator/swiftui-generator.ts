@@ -1368,17 +1368,10 @@ function generateFormLayout(screen: Screen, model: SemanticAppModel, components:
     const lines: string[] = [];
     const screenId = camelCase(screen.name);
 
-    // Collect required (non-optional, non-id) field names for validation
-    const requiredFieldBindings: string[] = [];
-    if (entity) {
-        const fields = deduplicateFields(entity.fields ?? []);
-        for (const field of fields) {
-            if (!field.isPrimaryKey && field.name.toLowerCase() !== 'id' && !field.optional
-                && (field.type.kind === 'string' || field.type.kind === 'number')) {
-                requiredFieldBindings.push(camelCase(field.name));
-            }
-        }
-    }
+    // Collect required field binding names for validation
+    const requiredFieldBindings = entity
+        ? getRequiredFormFields(entity).map(f => camelCase(f.name))
+        : [];
     const hasValidation = requiredFieldBindings.length > 0;
 
     lines.push('Form {');
@@ -1395,7 +1388,7 @@ function generateFormLayout(screen: Screen, model: SemanticAppModel, components:
                 const isRequired = requiredFieldBindings.includes(binding);
                 lines.push(`        ${generateFormField(field)}`);
                 lines.push(`            .accessibilityIdentifier("${screenId}_${binding}")`);
-                if (isRequired && (field.type.kind === 'string' || field.type.kind === 'number')) {
+                if (isRequired) {
                     const emptyCheck = field.type.kind === 'string' ? `${binding}.isEmpty` : `${binding} == 0`;
                     lines.push(`        if showValidation && ${emptyCheck} {`);
                     lines.push('            Text("Required")');
@@ -2974,6 +2967,17 @@ function generateFormComponent(comp: any): string {
 }
 
 /**
+ * Return entity fields that are required for form validation (non-optional,
+ * non-id, string or number type). Used by both generateFormLayout and
+ * generateViewFile to avoid repeating the same filter logic.
+ */
+function getRequiredFormFields(entity: Entity): Field[] {
+    return deduplicateFields(entity.fields ?? []).filter(f =>
+        !f.isPrimaryKey && f.name.toLowerCase() !== 'id' && !f.optional
+        && (f.type.kind === 'string' || f.type.kind === 'number'));
+}
+
+/**
  * Generate a form field from an Entity Field definition.
  */
 function generateFormField(field: Field): string {
@@ -3442,22 +3446,25 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 lines.push(`    @State private var ${fieldVar}: ${fieldType} = ${defaultVal}`);
                 declaredNames.add(fieldVar);
             }
+        } else if ((screen.components ?? []).length === 0) {
+            // Fallback form (no entity, no components) uses $name and $description
+            for (const fallbackVar of ['name', 'description']) {
+                if (!declaredNames.has(fallbackVar)) {
+                    lines.push(`    @State private var ${fallbackVar} = ""`);
+                    declaredNames.add(fallbackVar);
+                }
+            }
         }
     }
 
-    // Form validation state — add showValidation for form screens with required fields
+    // Form validation state and computed property
     if (screen.layout === 'form') {
         const formEntity = resolveEntity(screen, model);
-        if (formEntity) {
-            const formFields = deduplicateFields(formEntity.fields ?? []);
-            const requiredFields = formFields.filter(f =>
-                !f.isPrimaryKey && f.name.toLowerCase() !== 'id' && !f.optional
-                && (f.type.kind === 'string' || f.type.kind === 'number'));
-            if (requiredFields.length > 0) {
-                if (!declaredNames.has('showValidation')) {
-                    lines.push('    @State private var showValidation = false');
-                    declaredNames.add('showValidation');
-                }
+        const requiredFields = formEntity ? getRequiredFormFields(formEntity) : [];
+        if (requiredFields.length > 0) {
+            if (!declaredNames.has('showValidation')) {
+                lines.push('    @State private var showValidation = false');
+                declaredNames.add('showValidation');
             }
         }
     }
@@ -3466,24 +3473,18 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         lines.push('');
     }
 
-    // Form validation: computed isFormValid property
     if (screen.layout === 'form') {
         const formEntity = resolveEntity(screen, model);
-        if (formEntity) {
-            const formFields = deduplicateFields(formEntity.fields ?? []);
-            const requiredFields = formFields.filter(f =>
-                !f.isPrimaryKey && f.name.toLowerCase() !== 'id' && !f.optional
-                && (f.type.kind === 'string' || f.type.kind === 'number'));
-            if (requiredFields.length > 0) {
-                const checks = requiredFields.map(f => {
-                    const binding = camelCase(f.name);
-                    return f.type.kind === 'string' ? `!${binding}.isEmpty` : `${binding} != 0`;
-                });
-                lines.push(`    private var isFormValid: Bool {`);
-                lines.push(`        ${checks.join(' && ')}`);
-                lines.push('    }');
-                lines.push('');
-            }
+        const requiredFields = formEntity ? getRequiredFormFields(formEntity) : [];
+        if (requiredFields.length > 0) {
+            const checks = requiredFields.map(f => {
+                const binding = camelCase(f.name);
+                return f.type.kind === 'string' ? `!${binding}.isEmpty` : `${binding} != 0`;
+            });
+            lines.push(`    private var isFormValid: Bool {`);
+            lines.push(`        ${checks.join(' && ')}`);
+            lines.push('    }');
+            lines.push('');
         }
     }
 

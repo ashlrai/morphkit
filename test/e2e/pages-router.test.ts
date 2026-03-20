@@ -17,6 +17,7 @@ describe('Next.js Pages Router E2E', { timeout: 30_000 }, () => {
       rmSync(OUTPUT_PATH, { recursive: true, force: true });
     }
     process.env.MORPHKIT_NO_AI = '1';
+    process.env.MORPHKIT_SKIP_SWIFT_VALIDATION = '1';
     delete process.env.XAI_API_KEY;
   });
 

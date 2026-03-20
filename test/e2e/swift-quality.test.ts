@@ -27,6 +27,7 @@ let files: GeneratedFile[] = [];
 describe('Swift Output Quality', () => {
   beforeAll(async () => {
     process.env.MORPHKIT_NO_AI = '1';
+    process.env.MORPHKIT_SKIP_SWIFT_VALIDATION = '1';
     delete process.env.XAI_API_KEY;
 
     if (existsSync(OUTPUT_PATH)) {

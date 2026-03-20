@@ -10,7 +10,7 @@ import type {
 
 import { isJunkEntity } from './model-generator.js';
 import type { GeneratedFile } from './swiftui-generator.js';
-import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName, cleanStoreName } from './swiftui-generator.js';
+import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName, cleanStoreName, isWebOnlyState } from './swiftui-generator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -941,7 +941,7 @@ function generateAPIClient(model: SemanticAppModel): string {
     for (const screen of (model.screens ?? []).filter(s => !isMarketingScreen(s))) {
         const dataReqs = screen.dataRequirements ?? [];
         for (const req of dataReqs) {
-            if (req.fetchStrategy !== 'api' && req.fetchStrategy !== 'context') continue;
+            if (req.fetchStrategy !== 'api') continue;
             const rawSource = req.source ?? (req as any).entity;
             if (!rawSource) continue;
             const reqSource = cleanSourceName(rawSource);
@@ -1018,15 +1018,28 @@ function generateAPIClient(model: SemanticAppModel): string {
     // Generate stubs for store-generated fetch calls. Stores call
     // apiClient.fetch${PluralName}() but the APIClient may only have
     // the singular form (e.g., fetchMemory vs fetchMemories).
+    // Skip web-only state and common internal UI state names that should never become API stubs.
+    const UI_STATE_BLOCKLIST = new Set([
+        'isloading', 'error', 'errormessage', 'issubmitting', 'sortorder',
+        'selectedcategory', 'searchquery', 'showpassword', 'added', 'removed',
+        'count', 'total', 'page', 'limit', 'offset', 'query', 'filter',
+    ]);
     const statePatterns = model.stateManagement ?? [];
     for (const sp of statePatterns) {
         const storeName = cleanStoreName(sp.name);
+
+        // Skip web-only state (hover, tooltip, etc.)
+        if (isWebOnlyState(sp.name)) continue;
+        // Skip common UI state names that aren't data sources
+        if (UI_STATE_BLOCKLIST.has(storeName.toLowerCase())) continue;
+        // Only generate stub if store name matches a known entity
+        if (!entityNameSet.has(storeName)) continue;
 
         const pluralName = pluralize(storeName);
         const funcName = camelCase(`fetch${pluralName}`);
         const sigKey = `${funcName}(0)`;
         if (!generatedFuncNames.has(sigKey) && !stubMethods.has(funcName)) {
-            const returnType = entityNameSet.has(storeName) ? `[${storeName}]` : '[String]';
+            const returnType = `[${storeName}]`;
             stubMethods.set(funcName, { returnType, params: '' });
         }
     }

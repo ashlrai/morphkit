@@ -862,6 +862,25 @@ function generateClaudeMd(model: SemanticAppModel, stats: GeneratedProject['stat
     lines.push('```');
     lines.push('');
 
+    // ── AI Assistant Integration ──
+    lines.push('## AI Assistant Integration');
+    lines.push('');
+    lines.push('This project was generated with full Claude Code support:');
+    lines.push('');
+    lines.push('### Slash Commands');
+    lines.push('- `/complete-screen <name>` — Complete a single screen by wiring API calls and implementing TODOs');
+    lines.push('- `/verify` — Run verification and show completion status');
+    lines.push('- `/next` — Get the next recommended screen to implement');
+    lines.push('- `/complete-all` — Complete all remaining screens sequentially');
+    lines.push('');
+    lines.push('### MCP Tools');
+    lines.push('- `morphkit_screen_context` — Get full context for a screen (view, models, API methods, reference patterns)');
+    lines.push('- `morphkit_verify` — Check build status, TODO census, completion %');
+    lines.push('- `morphkit_next_task` — Get the next recommended task');
+    lines.push('');
+    lines.push('The MCP server is auto-registered in `.claude/settings.json`. These tools are available immediately when you open this project in Claude Code.');
+    lines.push('');
+
     // ── Quick Start Checklist ──
     // Compute incompleteEntities early so it's available here
     const incompleteEntities = entities.filter(e =>
@@ -1368,6 +1387,9 @@ function generateWorkspaceSettings(): GeneratedFile {
  * Gracefully skips validation if the Swift toolchain is not installed.
  */
 async function validateSwiftSyntax(appDir: string, files: GeneratedFile[]): Promise<string[]> {
+    // Allow tests to skip expensive swiftc validation
+    if (process.env.MORPHKIT_SKIP_SWIFT_VALIDATION === '1') return [];
+
     const warnings: string[] = [];
 
     // Check if swiftc is available on PATH

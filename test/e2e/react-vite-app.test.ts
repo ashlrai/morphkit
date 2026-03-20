@@ -11,6 +11,7 @@ describe('React + Vite App E2E', { timeout: 30_000 }, () => {
   beforeAll(() => {
     // Disable AI client for tests to avoid real API call timeouts
     process.env.MORPHKIT_NO_AI = '1';
+    process.env.MORPHKIT_SKIP_SWIFT_VALIDATION = '1';
     delete process.env.XAI_API_KEY;
   });
 

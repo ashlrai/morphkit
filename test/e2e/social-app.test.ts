@@ -19,6 +19,7 @@ describe('Social App Pipeline E2E', { timeout: 30_000 }, () => {
     }
     // Disable AI client for tests to avoid real API call timeouts
     process.env.MORPHKIT_NO_AI = '1';
+    process.env.MORPHKIT_SKIP_SWIFT_VALIDATION = '1';
     delete process.env.XAI_API_KEY;
   });
 

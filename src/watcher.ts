@@ -6,8 +6,8 @@
  * then re-runs analysis and diffing on each detected change.
  */
 
-import { watch, type FSWatcher } from 'fs';
-import { resolve, relative, extname } from 'path';
+import { watch, type FSWatcher, statSync, readdirSync } from 'fs';
+import { resolve, relative, extname, join } from 'path';
 
 import chalk from 'chalk';
 import ora from 'ora';
@@ -64,6 +64,62 @@ export function shouldWatch(filePath: string): boolean {
   }
 
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Mtime tracking for source files (excludes .css)
+// ---------------------------------------------------------------------------
+
+/** Extensions that trigger re-analysis (excludes .css — style-only changes skip analysis). */
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
+
+/**
+ * Walk `dir` recursively and collect mtimes for source files (.ts/.tsx/.js/.jsx).
+ * Returns a Map of absolute path → mtime in ms.
+ */
+export function getSourceFileMtimes(dir: string): Map<string, number> {
+  const mtimes = new Map<string, number>();
+
+  function walk(current: string): void {
+    let entries: string[];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (IGNORED_DIRS.includes(entry)) continue;
+      const fullPath = join(current, entry);
+      try {
+        const stat = statSync(fullPath);
+        if (stat.isDirectory()) {
+          walk(fullPath);
+        } else if (SOURCE_EXTENSIONS.has(extname(entry).toLowerCase())) {
+          mtimes.set(fullPath, stat.mtimeMs);
+        }
+      } catch {
+        // File may have been deleted between readdir and stat — skip
+      }
+    }
+  }
+
+  walk(dir);
+  return mtimes;
+}
+
+/**
+ * Returns true if any file in `current` has a newer mtime than the corresponding
+ * entry in `previous`, or if new files have appeared.
+ */
+function hasSourceFilesChanged(
+  previous: Map<string, number>,
+  current: Map<string, number>,
+): boolean {
+  for (const [file, mtime] of current) {
+    const prevMtime = previous.get(file);
+    if (prevMtime === undefined || mtime > prevMtime) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +216,7 @@ export async function startWatchMode(
   let previousModel: SemanticAppModel | null = null;
   let fsWatcher: FSWatcher | null = null;
   const changedFiles: Set<string> = new Set();
+  let lastSourceMtimes: Map<string, number> = new Map();
 
   // ------ Initial build ------
   console.log('');
@@ -192,6 +249,7 @@ export async function startWatchMode(
     );
 
     previousModel = adapted;
+    lastSourceMtimes = getSourceFileMtimes(sourcePath);
     stats.filesUpdated += project.stats.totalFiles;
   } catch (error) {
     spinner.fail('Initial build failed');
@@ -218,6 +276,28 @@ export async function startWatchMode(
       console.log(
         chalk.cyan('[morphkit]') + ` File changed: ${chalk.dim(rel)}`,
       );
+    }
+
+    // If only CSS files changed, skip the entire rebuild
+    const cssOnly = filesToReport.every(
+      (f) => extname(f).toLowerCase() === '.css',
+    );
+    if (cssOnly) {
+      console.log(
+        chalk.cyan('[morphkit]') +
+          chalk.dim(' CSS-only change — skipping re-analysis'),
+      );
+      return;
+    }
+
+    // Check source file mtimes — skip analysis if nothing actually changed
+    const currentMtimes = getSourceFileMtimes(sourcePath);
+    if (!hasSourceFilesChanged(lastSourceMtimes, currentMtimes)) {
+      console.log(
+        chalk.cyan('[morphkit]') +
+          chalk.dim(' No source file mtime changes — skipping re-analysis'),
+      );
+      return;
     }
 
     const rebuildSpinner = ora('Re-analyzing...').start();
@@ -295,6 +375,7 @@ export async function startWatchMode(
       );
 
       previousModel = adapted;
+      lastSourceMtimes = currentMtimes;
     } catch (error) {
       rebuildSpinner.fail('Rebuild failed');
       console.error(

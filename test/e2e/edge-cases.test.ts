@@ -23,6 +23,7 @@ function makeTempDir(prefix: string): string {
 beforeAll(() => {
   // Disable AI client for all tests
   process.env.MORPHKIT_NO_AI = '1';
+  process.env.MORPHKIT_SKIP_SWIFT_VALIDATION = '1';
   delete process.env.XAI_API_KEY;
 });
 

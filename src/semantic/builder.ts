@@ -15,6 +15,7 @@ import * as path from 'path';
 import type { GrokClient} from '../ai/index.js';
 import { getGrokClient as getClient } from '../ai/index.js';
 import type { ExtractedComponentInfo } from '../ai/prompts/component-mapping.js';
+import { withCaching } from '../ai/cache.js';
 import { createAIProvider } from '../ai/provider.js';
 import type { AIProvider , AIProviderConfig, AIProviderName } from '../ai/provider.js';
 import type { SwiftUIMapping } from '../ai/structured-output.js';
@@ -146,7 +147,11 @@ async function getAIProviderSafe(): Promise<AIProvider | null> {
   }
 
   try {
-    const provider = await createAIProvider(config);
+    let provider: AIProvider = await createAIProvider(config);
+    // Wrap with caching unless explicitly opted out
+    if (process.env.MORPHKIT_NO_AI_CACHE !== '1') {
+      provider = withCaching(provider);
+    }
     console.log(`[morphkit] AI-enhanced analysis enabled (provider: ${provider.name}${explicitModel ? `, model: ${explicitModel}` : ''})`);
     return provider;
   } catch (err) {

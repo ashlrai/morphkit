@@ -207,6 +207,11 @@ export function isDiffEmpty(diff: ModelDiff): boolean {
 // Summary builder
 // ---------------------------------------------------------------------------
 
+/** Format a count with the correct singular/plural noun. */
+function countLabel(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function buildSummary(diff: Omit<ModelDiff, 'summary'>): string {
   const parts: string[] = [];
 
@@ -218,42 +223,20 @@ function buildSummary(diff: Omit<ModelDiff, 'summary'>): string {
     return 'No changes detected';
   }
 
-  if (diff.addedScreens.length > 0) {
-    parts.push(`${diff.addedScreens.length} new screen${diff.addedScreens.length === 1 ? '' : 's'}`);
-  }
-  if (diff.removedScreens.length > 0) {
-    parts.push(`${diff.removedScreens.length} removed screen${diff.removedScreens.length === 1 ? '' : 's'}`);
-  }
-  if (diff.modifiedScreens.length > 0) {
-    parts.push(`${diff.modifiedScreens.length} updated screen${diff.modifiedScreens.length === 1 ? '' : 's'}`);
-  }
+  if (diff.addedScreens.length > 0) parts.push(`${countLabel(diff.addedScreens.length, 'new screen', 'new screens')}`);
+  if (diff.removedScreens.length > 0) parts.push(`${countLabel(diff.removedScreens.length, 'removed screen', 'removed screens')}`);
+  if (diff.modifiedScreens.length > 0) parts.push(`${countLabel(diff.modifiedScreens.length, 'updated screen', 'updated screens')}`);
 
-  if (diff.addedEntities.length > 0) {
-    parts.push(`${diff.addedEntities.length} new entit${diff.addedEntities.length === 1 ? 'y' : 'ies'}`);
-  }
-  if (diff.removedEntities.length > 0) {
-    parts.push(`${diff.removedEntities.length} removed entit${diff.removedEntities.length === 1 ? 'y' : 'ies'}`);
-  }
-  if (diff.modifiedEntities.length > 0) {
-    parts.push(`${diff.modifiedEntities.length} updated entit${diff.modifiedEntities.length === 1 ? 'y' : 'ies'}`);
-  }
+  if (diff.addedEntities.length > 0) parts.push(`${countLabel(diff.addedEntities.length, 'new entity', 'new entities')}`);
+  if (diff.removedEntities.length > 0) parts.push(`${countLabel(diff.removedEntities.length, 'removed entity', 'removed entities')}`);
+  if (diff.modifiedEntities.length > 0) parts.push(`${countLabel(diff.modifiedEntities.length, 'updated entity', 'updated entities')}`);
 
-  if (diff.addedEndpoints.length > 0) {
-    parts.push(`${diff.addedEndpoints.length} new endpoint${diff.addedEndpoints.length === 1 ? '' : 's'}`);
-  }
-  if (diff.removedEndpoints.length > 0) {
-    parts.push(`${diff.removedEndpoints.length} removed endpoint${diff.removedEndpoints.length === 1 ? '' : 's'}`);
-  }
-  if (diff.modifiedEndpoints.length > 0) {
-    parts.push(`${diff.modifiedEndpoints.length} updated endpoint${diff.modifiedEndpoints.length === 1 ? '' : 's'}`);
-  }
+  if (diff.addedEndpoints.length > 0) parts.push(`${countLabel(diff.addedEndpoints.length, 'new endpoint', 'new endpoints')}`);
+  if (diff.removedEndpoints.length > 0) parts.push(`${countLabel(diff.removedEndpoints.length, 'removed endpoint', 'removed endpoints')}`);
+  if (diff.modifiedEndpoints.length > 0) parts.push(`${countLabel(diff.modifiedEndpoints.length, 'updated endpoint', 'updated endpoints')}`);
 
-  if (diff.changedNavigation) {
-    parts.push('navigation updated');
-  }
-  if (diff.changedAuth) {
-    parts.push('auth updated');
-  }
+  if (diff.changedNavigation) parts.push('navigation updated');
+  if (diff.changedAuth) parts.push('auth updated');
 
   return parts.join(', ');
 }

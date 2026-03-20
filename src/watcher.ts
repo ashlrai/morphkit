@@ -18,146 +18,12 @@ import type { GeneratedProject } from './generator/project-generator.js';
 import { adaptForPlatform } from './semantic/adapter.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import type { SemanticAppModel } from './semantic/model.js';
+import { diffModels, isDiffEmpty } from './sync/model-diff.js';
+import type { ModelDiff } from './sync/model-diff.js';
 
-// ---------------------------------------------------------------------------
-// Model Diff
-// ---------------------------------------------------------------------------
-
-export interface ModelDiff {
-  addedScreens: string[];
-  removedScreens: string[];
-  modifiedScreens: string[];
-  addedEntities: string[];
-  removedEntities: string[];
-  modifiedEntities: string[];
-  addedEndpoints: string[];
-  removedEndpoints: string[];
-  changedNavigation: boolean;
-  changedAuth: boolean;
-}
-
-/**
- * Compare two SemanticAppModels and return a structured diff
- * describing what changed between them.
- */
-export function diffModels(
-  prev: SemanticAppModel,
-  next: SemanticAppModel,
-): ModelDiff {
-  const diff: ModelDiff = {
-    addedScreens: [],
-    removedScreens: [],
-    modifiedScreens: [],
-    addedEntities: [],
-    removedEntities: [],
-    modifiedEntities: [],
-    addedEndpoints: [],
-    removedEndpoints: [],
-    changedNavigation: false,
-    changedAuth: false,
-  };
-
-  // --- Screens ---
-  const prevScreenNames = new Set(prev.screens.map((s) => s.name));
-  const nextScreenNames = new Set(next.screens.map((s) => s.name));
-
-  for (const name of nextScreenNames) {
-    if (!prevScreenNames.has(name)) {
-      diff.addedScreens.push(name);
-    }
-  }
-  for (const name of prevScreenNames) {
-    if (!nextScreenNames.has(name)) {
-      diff.removedScreens.push(name);
-    }
-  }
-
-  // Check for modified screens (same name, different content)
-  const prevScreenMap = new Map(prev.screens.map((s) => [s.name, s]));
-  const nextScreenMap = new Map(next.screens.map((s) => [s.name, s]));
-
-  for (const [name, nextScreen] of nextScreenMap) {
-    if (prevScreenNames.has(name) && !diff.addedScreens.includes(name)) {
-      const prevScreen = prevScreenMap.get(name)!;
-      if (JSON.stringify(prevScreen) !== JSON.stringify(nextScreen)) {
-        diff.modifiedScreens.push(name);
-      }
-    }
-  }
-
-  // --- Entities ---
-  const prevEntityNames = new Set(prev.entities.map((e) => e.name));
-  const nextEntityNames = new Set(next.entities.map((e) => e.name));
-
-  for (const name of nextEntityNames) {
-    if (!prevEntityNames.has(name)) {
-      diff.addedEntities.push(name);
-    }
-  }
-  for (const name of prevEntityNames) {
-    if (!nextEntityNames.has(name)) {
-      diff.removedEntities.push(name);
-    }
-  }
-
-  const prevEntityMap = new Map(prev.entities.map((e) => [e.name, e]));
-  const nextEntityMap = new Map(next.entities.map((e) => [e.name, e]));
-
-  for (const [name, nextEntity] of nextEntityMap) {
-    if (prevEntityNames.has(name) && !diff.addedEntities.includes(name)) {
-      const prevEntity = prevEntityMap.get(name)!;
-      if (JSON.stringify(prevEntity) !== JSON.stringify(nextEntity)) {
-        diff.modifiedEntities.push(name);
-      }
-    }
-  }
-
-  // --- API Endpoints ---
-  const prevEndpointKeys = new Set(
-    prev.apiEndpoints.map((e) => `${e.method} ${e.url}`),
-  );
-  const nextEndpointKeys = new Set(
-    next.apiEndpoints.map((e) => `${e.method} ${e.url}`),
-  );
-
-  for (const key of nextEndpointKeys) {
-    if (!prevEndpointKeys.has(key)) {
-      diff.addedEndpoints.push(key);
-    }
-  }
-  for (const key of prevEndpointKeys) {
-    if (!nextEndpointKeys.has(key)) {
-      diff.removedEndpoints.push(key);
-    }
-  }
-
-  // --- Navigation ---
-  diff.changedNavigation =
-    JSON.stringify(prev.navigation) !== JSON.stringify(next.navigation);
-
-  // --- Auth ---
-  diff.changedAuth = JSON.stringify(prev.auth) !== JSON.stringify(next.auth);
-
-  return diff;
-}
-
-/**
- * Returns true if the diff contains any changes at all.
- */
-export function isDiffEmpty(diff: ModelDiff): boolean {
-  return (
-    diff.addedScreens.length === 0 &&
-    diff.removedScreens.length === 0 &&
-    diff.modifiedScreens.length === 0 &&
-    diff.addedEntities.length === 0 &&
-    diff.removedEntities.length === 0 &&
-    diff.modifiedEntities.length === 0 &&
-    diff.addedEndpoints.length === 0 &&
-    diff.removedEndpoints.length === 0 &&
-    !diff.changedNavigation &&
-    !diff.changedAuth
-  );
-}
+// Re-export for consumers that import from watcher
+export { diffModels, isDiffEmpty };
+export type { ModelDiff };
 
 // ---------------------------------------------------------------------------
 // File change filtering
@@ -505,46 +371,31 @@ function describeChangedFiles(
   diff: ModelDiff,
   project: GeneratedProject,
 ): string[] {
-  const relevantNames: string[] = [];
-
-  // Map screen names to likely generated file names
-  const allScreenChanges = [
+  // Collect all changed screen and entity names
+  const changedNames = [
     ...diff.addedScreens,
     ...diff.modifiedScreens,
-  ];
-  for (const screenName of allScreenChanges) {
-    const matching = project.files.filter(
-      (f) =>
-        f.path.includes(screenName) ||
-        f.path.toLowerCase().includes(screenName.toLowerCase()),
-    );
-    for (const m of matching) {
-      relevantNames.push(m.path);
-    }
-  }
-
-  // Map entity names to likely generated file names
-  const allEntityChanges = [
     ...diff.addedEntities,
     ...diff.modifiedEntities,
   ];
-  for (const entityName of allEntityChanges) {
-    const matching = project.files.filter(
-      (f) =>
-        f.path.includes(entityName) ||
-        f.path.toLowerCase().includes(entityName.toLowerCase()),
-    );
-    for (const m of matching) {
-      if (!relevantNames.includes(m.path)) {
-        relevantNames.push(m.path);
+
+  // Find generated files whose path matches any changed name (case-insensitive)
+  const relevantPaths = new Set<string>();
+  for (const name of changedNames) {
+    const nameLower = name.toLowerCase();
+    for (const f of project.files) {
+      if (f.path.toLowerCase().includes(nameLower)) {
+        relevantPaths.add(f.path);
       }
     }
   }
 
+  const result = [...relevantPaths];
+
   // Limit to a reasonable number for display
-  if (relevantNames.length > 5) {
-    return [...relevantNames.slice(0, 4), `+${relevantNames.length - 4} more`];
+  if (result.length > 5) {
+    return [...result.slice(0, 4), `+${result.length - 4} more`];
   }
 
-  return relevantNames;
+  return result;
 }

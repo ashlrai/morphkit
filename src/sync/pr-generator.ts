@@ -6,7 +6,7 @@
  * for PR creation (with graceful fallback to manual instructions).
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 import type { SimpleGit } from 'simple-git';
 import { simpleGit } from 'simple-git';
@@ -225,10 +225,13 @@ export async function createSyncPR(options: PROptions): Promise<PRResult> {
       });
 
       try {
-        const result = execSync(
-          `gh pr create --title "${escapeShell(title)}" --body "${escapeShell(body)}" --base "${options.baseBranch}" --head "${options.branchName}"`,
-          { cwd: options.targetRepo, encoding: 'utf-8', timeout: 30_000 },
-        );
+        const result = execFileSync('gh', [
+          'pr', 'create',
+          '--title', title,
+          '--body', body,
+          '--base', options.baseBranch,
+          '--head', options.branchName,
+        ], { cwd: options.targetRepo, encoding: 'utf-8', timeout: 30_000 });
         prUrl = result.trim();
       } catch (err) {
         manualInstructions = buildManualInstructions(options);

@@ -11,6 +11,7 @@ import type {
 import { isJunkEntity } from './model-generator.js';
 import type { GeneratedFile } from './swiftui-generator.js';
 import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName, cleanStoreName, isWebOnlyState } from './swiftui-generator.js';
+import { cleanURL, extractPathParams, generateFunctionName, singularize } from './api-naming';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,71 +94,7 @@ function sanitizeTypeName(name: string | undefined): string | undefined {
     return name;
 }
 
-// ---------------------------------------------------------------------------
-// URL cleaning — strip JS template literal syntax, normalise to REST paths
-// ---------------------------------------------------------------------------
-
-/**
- * Clean a raw URL that may contain JS template-literal syntax, function calls,
- * variable references, backticks, etc. and return a clean REST-style path.
- *
- * Examples:
- *   "`${API_BASE}/products/${id}`"  →  "/products/:id"
- *   "url.toString()"                →  null  (not a valid endpoint)
- *   "/api/products"                 →  "/api/products"
- *   "`${API_BASE}/products/search?q=${encodeURIComponent(query)}`"
- *                                   →  "/products/search"
- */
-function cleanURL(raw: string): string | null {
-    let url = raw.trim();
-
-    // Strip surrounding backticks (template literals)
-    if (url.startsWith('`') && url.endsWith('`')) {
-        url = url.slice(1, -1);
-    }
-
-    // Replace ${SOME_BASE_VAR} at the start (e.g. ${API_BASE}) with nothing —
-    // these are just a base URL constant and add no path info.
-    url = url.replace(/^\$\{[A-Za-z_][A-Za-z0-9_]*\}/, '');
-
-    // Replace remaining ${expr} with a path parameter placeholder.
-    // Simple identifiers like ${id} become :id
-    // Complex expressions like ${encodeURIComponent(query)} become :query (extract inner var)
-    url = url.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
-        // Try to extract a simple variable name from the expression
-        const simpleVar = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)$/);
-        if (simpleVar) return `:${simpleVar[1]}`;
-
-        // For function-call expressions like encodeURIComponent(query), extract the argument
-        const fnCall = expr.match(/\w+\(([a-zA-Z_][a-zA-Z0-9_]*)\)/);
-        if (fnCall) return `:${fnCall[1]}`;
-
-        // Fallback: use a generic param name
-        return ':param';
-    });
-
-    // Strip query strings — Swift clients typically build these separately
-    const queryIdx = url.indexOf('?');
-    if (queryIdx !== -1) {
-        url = url.substring(0, queryIdx);
-    }
-
-    // Convert Next.js dynamic route params: [param] → :param
-    url = url.replace(/\[([a-zA-Z_][a-zA-Z0-9_]*)\]/g, ':$1');
-
-    // Strip any remaining JS artifacts (e.g., string concatenation operators, quotes)
-    url = url.replace(/['"]+/g, '').replace(/\s*\+\s*/g, '');
-
-    // If the result doesn't look like a URL path at all, discard it
-    if (!url.startsWith('/') && !url.startsWith('http')) {
-        return null;
-    }
-
-    // Normalise: remove trailing slash, collapse double slashes
-    url = url.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
-
-    return url;
-}
+// cleanURL, extractPathParams, generateFunctionName, singularize are imported from ./api-naming
 
 /**
  * Return true if the raw URL is clearly not a real endpoint
@@ -165,33 +102,6 @@ function cleanURL(raw: string): string | null {
  */
 function isGarbageURL(raw: string): boolean {
     return cleanURL(raw) === null;
-}
-
-/** Extract path parameters from a URL pattern (`:param` or `{param}`) */
-function extractPathParams(url: string): string[] {
-    const params: string[] = [];
-    const seen = new Set<string>();
-    const colonMatch = url.match(/:([a-zA-Z_][a-zA-Z0-9_]*)/g);
-    if (colonMatch) {
-        for (const m of colonMatch) {
-            const name = m.slice(1);
-            if (!seen.has(name)) {
-                seen.add(name);
-                params.push(name);
-            }
-        }
-    }
-    const braceMatch = url.match(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g);
-    if (braceMatch) {
-        for (const m of braceMatch) {
-            const name = m.slice(1, -1);
-            if (!seen.has(name)) {
-                seen.add(name);
-                params.push(name);
-            }
-        }
-    }
-    return params;
 }
 
 /** Infer a base URL from a list of API endpoints by extracting a common prefix */
@@ -1288,51 +1198,6 @@ function generateUploadEndpointMethod(endpoint: ApiEndpoint, entities: Entity[] 
     return lines.join('\n');
 }
 
-function generateFunctionName(endpoint: ApiEndpoint): string {
-    const method = (endpoint.method ?? 'GET').toLowerCase();
-    const cleaned = cleanURL(endpoint.url) ?? '/resource';
-
-    // Get meaningful path segments (skip empty, params, and 'api')
-    const segments = cleaned
-        .split('/')
-        .filter((s) => s && !s.startsWith(':') && !s.startsWith('{') && !s.startsWith('[') && s !== 'api');
-
-    const resource = segments[segments.length - 1] ?? 'resource';
-
-    // Detect if the URL has a path parameter — if so, the resource is likely singular
-    const hasPathParam = cleaned.includes(':') || cleaned.includes('{');
-
-    // For GET with a path param (e.g. /products/:id), use singular form
-    const resourceName = (method === 'get' && hasPathParam)
-        ? singularize(resource)
-        : resource;
-
-    switch (method) {
-        case 'get':
-            return `fetch${pascalCase(resourceName)}`;
-        case 'post':
-            return `create${pascalCase(singularize(resource))}`;
-        case 'put':
-        case 'patch':
-            return `update${pascalCase(singularize(resource))}`;
-        case 'delete':
-            return `delete${pascalCase(singularize(resource))}`;
-        default:
-            return `${method}${pascalCase(resource)}`;
-    }
-}
-
-/** Naive singularize — handles common English plural suffixes */
-function singularize(word: string): string {
-    if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
-    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes') ||
-        word.endsWith('shes') || word.endsWith('ches')) {
-        return word.slice(0, -2);
-    }
-    if (word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
-    return word;
-}
-
 /**
  * Try to infer a Swift return type from the endpoint URL by matching path
  * segments against known entity names from the semantic model.
@@ -1702,5 +1567,5 @@ export function generateNetworkingLayer(model: SemanticAppModel): GeneratedFile[
     return files;
 }
 
-// Exported for use by swiftui-generator to compute exact API method names
-export { generateFunctionName, extractPathParams, cleanURL };
+// Re-export shared API naming utilities (canonical source: api-naming.ts)
+export { generateFunctionName, extractPathParams, cleanURL } from './api-naming';

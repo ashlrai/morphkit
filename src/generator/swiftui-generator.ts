@@ -16,7 +16,7 @@ import type {
 } from '../semantic/model';
 
 import { isJunkEntity } from './model-generator';
-import { generateFunctionName as networkingFunctionName, extractPathParams as networkingExtractPathParams, cleanURL as networkingCleanURL } from './networking-generator';
+import { generateFunctionName, extractPathParams, cleanURL } from './api-naming';
 
 export interface GeneratedFile {
     path: string;
@@ -710,7 +710,7 @@ function resolveDashboardEntity(screen: Screen, model: SemanticAppModel): { enti
 
     if (entities.length > 0 && (!entity || isJunkEntity(entity) || (entity.fields ?? []).length < 3)) {
         const bestEntity = [...entities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
-        if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
+        if (bestEntity) {
             entity = bestEntity;
             entityName = pascalCase(bestEntity.name);
         }
@@ -3250,11 +3250,10 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {
-            // Resolve the actual entity type via centralized compound suffix matching
+            // Resolve the actual entity type via compound suffix matching
             // (e.g., "Round" → "StructuredRound")
-            const actualEntityName = resolveEntityNameInOutput(derivedEntityName, model) ?? derivedEntityName;
-            const entityExists = entityExistsInOutput(actualEntityName, model);
-            const arrayType = entityExists ? `[${actualEntityName}]` : '[String]';
+            const actualEntityName = resolveEntityNameInOutput(derivedEntityName, model);
+            const arrayType = actualEntityName ? `[${actualEntityName}]` : '[String]';
             lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
             declaredNames.add(arrayVarName);
             declaredTypes.set(arrayVarName, arrayType);
@@ -3273,12 +3272,15 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const dashVar = camelCase(dashEntityName);
         const dashArrayVar = dashVar.endsWith('s') ? dashVar : `${dashVar}s`;
         if (!declaredNames.has(dashArrayVar)) {
-            const resolvedDashName = resolveEntityNameInOutput(dashEntityName, model) ?? dashEntityName;
-            const dashEntityExists = entityExistsInOutput(resolvedDashName, model);
-            const dashArrayType = dashEntityExists ? `[${resolvedDashName}]` : '[String]';
+            const resolvedDashName = resolveEntityNameInOutput(dashEntityName, model);
+            const dashArrayType = resolvedDashName ? `[${resolvedDashName}]` : '[String]';
             lines.push(`    @State private var ${dashArrayVar}: ${dashArrayType} = []`);
             declaredNames.add(dashArrayVar);
             declaredTypes.set(dashArrayVar, dashArrayType);
+        }
+        // Dashboard screens need async loading even without explicit API data requirements
+        if (!hasApiData) {
+            hasApiData = true;
         }
     }
 
@@ -3738,9 +3740,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             const bestEp = matchingEp ?? listEp;
             if (bestEp) {
                 // Use networking generator's function name computation for exact match
-                const exactFnName = networkingFunctionName(matchingEp ?? bestEp);
-                const cleanedUrl = networkingCleanURL(bestEp.url) ?? '';
-                const pathParams = networkingExtractPathParams(cleanedUrl);
+                const exactFnName = generateFunctionName(bestEp);
+                const cleanedUrl = cleanURL(bestEp.url) ?? '';
+                const pathParams = extractPathParams(cleanedUrl);
                 // For detail endpoints, use the path param (usually 'id')
                 const paramName = pathParams.length > 0 ? camelCase(pathParams[0]) : 'id';
                 // If matching endpoint has path params, include them in the call
@@ -3786,7 +3788,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 });
                 // Use networking generator's exact function name when endpoint is known
                 const exactFetchFnName = dataEndpoint
-                    ? networkingFunctionName(dataEndpoint)
+                    ? generateFunctionName(dataEndpoint)
                     : `fetch${pascalCase(fetchName)}`;
                 const endpointInfo = dataEndpoint
                     ? `${dataEndpoint.method ?? 'GET'} ${dataEndpoint.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param')}`
@@ -3819,7 +3821,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                         }
                     } else if (fetchReturnsArray && !declaredIsArray) {
                         // Auto-fix: declared as Entity? but fetch returns [Entity] — take .first
-                        if (!declaredIsScalar && declaredType.endsWith('?')) {
+                        if (!declaredIsScalar && declaredType.endsWith('?') && !declaredType.startsWith('[')) {
                             lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
                         } else {
                             todoCount++;
@@ -3852,6 +3854,31 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
         // For list/grid screens with entity-derived arrays but no explicit API data requirement,
         // generate a fetch call based on the derived entity name.
+        // For dashboard screens, generate a fetch using the shared dashboard entity resolution
+        if (!hasLoadDataBody && screen.layout === 'dashboard') {
+            const { entityName: dashEntityName } = resolveDashboardEntity(screen, model);
+            const dashVar = camelCase(dashEntityName);
+            const dashArrayVar = dashVar.endsWith('s') ? dashVar : pluralize(dashVar);
+            const dashPluralName = dashEntityName.endsWith('s') ? dashEntityName : pluralize(dashEntityName);
+            const dashEndpoints = model.apiEndpoints ?? [];
+            const matchingDashEp = dashEndpoints.find(ep => {
+                if ((ep.method ?? 'GET') !== 'GET') return false;
+                const url = ep.url?.toLowerCase() ?? '';
+                if (url.includes(':') || url.includes('{')) return false;
+                const lastSeg = url.split('/').filter(s => s).pop() ?? '';
+                return lastSeg === dashVar + 's' || lastSeg === dashVar || lastSeg === dashPluralName.toLowerCase();
+            });
+            if (matchingDashEp) {
+                const dashFetchFnName = generateFunctionName(matchingDashEp);
+                lines.push(`            ${dashArrayVar} = try await APIClient.shared.${dashFetchFnName}()`);
+            } else {
+                lines.push(`            // Configure fetch${pascalCase(dashPluralName)}() in APIClient`);
+                lines.push(`            // ${dashArrayVar} = try await APIClient.shared.fetch${pascalCase(dashPluralName)}()`);
+            }
+            hasLoadDataBody = true;
+        }
+
+        // For list/grid screens with entity-derived arrays but no explicit API data requirement,
         if (!hasLoadDataBody && derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
             const entVar = camelCase(derivedEntityName);
             const entArrayVar = entVar.endsWith('s') ? entVar : pluralize(entVar);
@@ -3866,7 +3893,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 return lastSeg === entVar + 's' || lastSeg === entVar || lastSeg === pluralName.toLowerCase();
             });
             if (matchingListEp) {
-                const fetchFnName = networkingFunctionName(matchingListEp);
+                const fetchFnName = generateFunctionName(matchingListEp);
                 const declaredType = declaredTypes.get(entArrayVar) ?? '';
                 if (dataReqDeclaredNames.has(entArrayVar)) {
                     lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}()`);

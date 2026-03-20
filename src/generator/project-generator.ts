@@ -1329,11 +1329,8 @@ import PackageDescription
 let package = Package(
     name: "${appName}",
     platforms: [.iOS(.v17), .macOS(.v14)],
-    products: [
-        .library(name: "${appName}", targets: ["${appName}"]),
-    ],
     targets: [
-        .target(
+        .executableTarget(
             name: "${appName}",
             path: "${appName}",
             exclude: ["Info.plist"],

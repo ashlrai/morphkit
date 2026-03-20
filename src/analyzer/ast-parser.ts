@@ -328,10 +328,31 @@ export function extractFunctionComponents(sourceFile: SourceFile): ComponentDefi
 
         const isArrow = Node.isArrowFunction(initializer);
         const isFuncExpr = Node.isFunctionExpression(initializer);
-        if (!isArrow && !isFuncExpr) continue;
-        if (!returnsJsx(initializer)) continue;
 
-        const fnNode = initializer as ArrowFunction | FunctionExpression;
+        // Detect React.memo() and React.forwardRef() wrapped components
+        // e.g., const Foo = React.memo(() => <div/>)
+        //        const Foo = memo(function Foo(props) { ... })
+        //        const Foo = forwardRef((props, ref) => <div/>)
+        let unwrappedFn: Node | null = null;
+        if (!isArrow && !isFuncExpr && Node.isCallExpression(initializer)) {
+            const callExpr = initializer.getExpression();
+            const callText = callExpr.getText();
+            if (callText === 'React.memo' || callText === 'memo' || callText === 'React.forwardRef' || callText === 'forwardRef') {
+                const args = initializer.getArguments();
+                if (args.length > 0) {
+                    const firstArg = args[0];
+                    if (Node.isArrowFunction(firstArg) || Node.isFunctionExpression(firstArg)) {
+                        unwrappedFn = firstArg;
+                    }
+                }
+            }
+        }
+
+        const actualFn = unwrappedFn ?? initializer;
+        if (!Node.isArrowFunction(actualFn) && !Node.isFunctionExpression(actualFn)) continue;
+        if (!returnsJsx(actualFn)) continue;
+
+        const fnNode = actualFn as ArrowFunction | FunctionExpression;
         const { propsType, props } = extractPropsFromParams(fnNode.getParameters(), fnNode);
         const isDefaultExport = varStatement.isExported() && varStatement.hasModifier(SyntaxKind.DefaultKeyword);
 
@@ -345,6 +366,34 @@ export function extractFunctionComponents(sourceFile: SourceFile): ComponentDefi
           line: varStatement.getStartLineNumber(),
         });
       }
+    }
+
+    // --- Class components: class Foo extends React.Component / Component ---
+    for (const cls of sourceFile.getClasses()) {
+      const name = cls.getName();
+      if (!name || !/^[A-Z]/.test(name)) continue;
+      const baseClass = cls.getExtends();
+      if (!baseClass) continue;
+      const baseText = baseClass.getText();
+      if (baseText !== 'React.Component' && baseText !== 'Component' &&
+          baseText !== 'React.PureComponent' && baseText !== 'PureComponent' &&
+          !baseText.startsWith('React.Component<') && !baseText.startsWith('Component<') &&
+          !baseText.startsWith('React.PureComponent<') && !baseText.startsWith('PureComponent<')) continue;
+
+      // Extract props type from generic argument if available
+      const typeArgs = baseClass.getTypeArguments();
+      const propsType = typeArgs.length > 0 ? typeArgs[0].getText() : undefined;
+      const isDefaultExport = cls.isDefaultExport();
+
+      results.push({
+        name,
+        filePath,
+        kind: 'function-declaration', // Treat as function for downstream compatibility
+        propsType,
+        props: [],
+        isDefaultExport,
+        line: cls.getStartLineNumber(),
+      });
     }
 
     // --- Default exports that are anonymous functions ---

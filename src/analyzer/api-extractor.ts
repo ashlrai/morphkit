@@ -447,6 +447,34 @@ function extractFetchCalls(sourceFile: SourceFile, filePath: string): ExtractedA
 // axios calls
 // ---------------------------------------------------------------------------
 
+/**
+ * Pre-pass: find variable names assigned from `axios.create(...)`.
+ *
+ * Detects patterns like:
+ *   const api = axios.create({ baseURL: '/api' });
+ *   const client = axios.create();
+ *   export const http = axios.create({ ... });
+ */
+function collectAxiosInstanceNames(sourceFile: SourceFile): Set<string> {
+  const names = new Set<string>();
+
+  try {
+    for (const varDecl of sourceFile.getVariableDeclarations()) {
+      const init = varDecl.getInitializer();
+      if (!init || !Node.isCallExpression(init)) continue;
+
+      const callExpr = init.getExpression().getText();
+      if (callExpr === 'axios.create') {
+        names.add(varDecl.getName());
+      }
+    }
+  } catch {
+    // Not critical — fall back to direct axios detection only
+  }
+
+  return names;
+}
+
 function extractAxiosCalls(sourceFile: SourceFile, filePath: string): ExtractedApi[] {
   const results: ExtractedApi[] = [];
 
@@ -457,12 +485,28 @@ function extractAxiosCalls(sourceFile: SourceFile, filePath: string): ExtractedA
       .some((imp) => imp.getModuleSpecifierValue() === 'axios');
     if (!hasAxios) return results;
 
+    // Collect variable names that are axios instances (e.g., `const api = axios.create(...)`)
+    const axiosInstanceNames = collectAxiosInstanceNames(sourceFile);
+
     sourceFile.forEachDescendant((node) => {
       if (!Node.isCallExpression(node)) return;
 
       const exprText = node.getExpression().getText();
+
       // Match axios.get(), axios.post(), axios(), etc.
-      const axiosMethodMatch = exprText.match(/^axios(?:\.(\w+))?$/);
+      // Also match axiosInstance.get(), axiosInstance.post(), etc.
+      let axiosMethodMatch = exprText.match(/^axios(?:\.(\w+))?$/);
+
+      // If no direct axios match, check if the caller is a known axios instance
+      let isInstanceCall = false;
+      if (!axiosMethodMatch) {
+        const instanceMatch = exprText.match(/^(\w+)(?:\.(\w+))?$/);
+        if (instanceMatch && axiosInstanceNames.has(instanceMatch[1]!)) {
+          // Rewrite to look like an axios match: instanceName.get -> method = 'get'
+          axiosMethodMatch = [exprText, instanceMatch[2] ?? undefined] as RegExpMatchArray;
+          isInstanceCall = true;
+        }
+      }
       if (!axiosMethodMatch) return;
 
       const axiosMethod = axiosMethodMatch[1] ?? 'request';

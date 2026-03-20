@@ -43,6 +43,7 @@ import type {
   DataRequirement,
   UserAction,
   TypeDefinition,
+  Relationship,
 } from './model.js';
 
 
@@ -1892,6 +1893,56 @@ function inferEntities(
 }
 
 // ---------------------------------------------------------------------------
+// Relationship Inference — post-processing pass over built entities
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan each entity's fields for foreign-key patterns (`*Id` suffix) and, when
+ * the prefix matches another entity name (case-insensitive), add a relationship
+ * entry.  For example, a field `userId: string` on the `Order` entity produces
+ * a `one-to-one` relationship targeting the `User` entity.
+ *
+ * Mutates `entities` in place.
+ */
+function inferRelationships(entities: Entity[]): void {
+  // Build a case-insensitive lookup: lowercased entity name → actual entity name
+  const entityNameLookup = new Map<string, string>();
+  for (const entity of entities) {
+    entityNameLookup.set(entity.name.toLowerCase(), entity.name);
+  }
+
+  for (const entity of entities) {
+    for (const field of entity.fields) {
+      // Match field names ending with "Id" (case-insensitive), e.g. userId, productId, AuthorId
+      const match = field.name.match(/^(.+?)[Ii][Dd]$/);
+      if (!match) continue;
+
+      const prefix = match[1].toLowerCase();
+      const targetEntityName = entityNameLookup.get(prefix);
+      if (!targetEntityName) continue;
+
+      // Don't create self-referential relationships
+      if (targetEntityName === entity.name) continue;
+
+      // Don't add duplicate relationships for the same field
+      const alreadyExists = entity.relationships.some(
+        (r) => r.fieldName === field.name && r.targetEntity === targetEntityName,
+      );
+      if (alreadyExists) continue;
+
+      const relationship: Relationship = {
+        targetEntity: targetEntityName,
+        type: 'one-to-one',
+        fieldName: field.name,
+        description: `References ${targetEntityName} via foreign key ${field.name}`,
+      };
+
+      entity.relationships.push(relationship);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -1950,6 +2001,9 @@ export async function buildSemanticModel(
   if (aiProvider) {
     await enhanceEntitiesWithAI(entities, aiProvider, components, apiEndpoints, statePatterns);
   }
+
+  // 7c. Infer entity relationships from foreign key field patterns (*Id fields)
+  inferRelationships(entities);
 
   // 9. Calculate overall confidence
   const confidence = calculateOverallConfidence(screens, stateManagement, apiEndpointModels);

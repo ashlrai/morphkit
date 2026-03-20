@@ -910,6 +910,12 @@ function categorizeEntityFields(entity: Entity): EntityFieldRoles {
     return result;
 }
 
+/** Generate a currency Text expression, handling optional price fields with ?? 0 fallback */
+function currencyText(accessor: string, field?: Field | null): string {
+    const safeAccessor = field?.optional ? `${accessor} ?? 0` : accessor;
+    return `Text(${safeAccessor}, format: .currency(code: "USD"))`;
+}
+
 /** Remove duplicate field names, keeping the first occurrence */
 function deduplicateFields(fields: Field[]): Field[] {
     const seen = new Set<string>();
@@ -1231,7 +1237,7 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
                 lines.push(`                    ${ri}.foregroundStyle(.secondary)`);
             }
             if (roles.priceField) {
-                lines.push(`                ${ri}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+                lines.push(`                ${ri}${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
                 lines.push(`                    ${ri}.font(.subheadline)`);
                 lines.push(`                    ${ri}.fontWeight(.semibold)`);
             }
@@ -1375,7 +1381,7 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
             lines.push(`                    ${gi}.lineLimit(2)`);
         }
         if (roles.priceField) {
-            lines.push(`                ${gi}Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push(`                ${gi}${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
             lines.push(`                    ${gi}.font(.subheadline)`);
             lines.push(`                    ${gi}.fontWeight(.semibold)`);
         }
@@ -1583,7 +1589,7 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
 
         // Price
         if (roles.priceField) {
-            lines.push(`        Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push(`        ${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
             lines.push('            .font(.title2)');
             lines.push('            .fontWeight(.semibold)');
             lines.push('');
@@ -1778,7 +1784,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
                 lines.push('                                    .lineLimit(1)');
             }
             if (roles.priceField) {
-                lines.push(`                                Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+                lines.push(`                                ${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
                 lines.push('                                    .font(.subheadline)');
                 lines.push('                                    .fontWeight(.semibold)');
                 lines.push('                                    .tint(.accentColor)');
@@ -1891,7 +1897,7 @@ function generateDashboardLayout(screen: Screen, model: SemanticAppModel, compon
         lines.push('                        }');
         lines.push('                        Spacer()');
         if (roles.priceField) {
-            lines.push(`                        Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+            lines.push(`                        ${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
             lines.push('                            .font(.subheadline)');
             lines.push('                            .fontWeight(.semibold)');
         }
@@ -2525,6 +2531,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     // title/price/image through the relationship: `cartItem.product.name`.
     let nameAccessor = `${varName}.name`;
     let priceAccessor = `${varName}.price`;
+    let priceIsOptional = false;
     let quantityAccessor = `${varName}.quantity`;
     let imageAccessor: string | null = null;
     let imageField: Field | null = null;
@@ -2563,7 +2570,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
             if (refEntity) {
                 const refRoles = categorizeEntityFields(refEntity);
                 if (refRoles.titleField) nameAccessor = `${refPrefix}.${camelCase(refRoles.titleField.name)}`;
-                if (refRoles.priceField) priceAccessor = `${refPrefix}.${camelCase(refRoles.priceField.name)}`;
+                if (refRoles.priceField) { priceAccessor = `${refPrefix}.${camelCase(refRoles.priceField.name)}`; priceIsOptional = !!refRoles.priceField.optional; }
                 if (refRoles.imageField) {
                     imageAccessor = `${refPrefix}.${camelCase(refRoles.imageField.name)}`;
                     imageField = refRoles.imageField;
@@ -2580,7 +2587,7 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
             // No reference field — access fields directly on the item entity
             const roles = categorizeEntityFields(itemEntity);
             if (roles.titleField) nameAccessor = `${varName}.${camelCase(roles.titleField.name)}`;
-            if (roles.priceField) priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`;
+            if (roles.priceField) { priceAccessor = `${varName}.${camelCase(roles.priceField.name)}`; priceIsOptional = !!roles.priceField.optional; }
             if (roles.quantityField) quantityAccessor = `${varName}.${camelCase(roles.quantityField.name)}`;
             if (roles.imageField) {
                 imageAccessor = `${varName}.${camelCase(roles.imageField.name)}`;
@@ -2661,7 +2668,8 @@ function generateCartLayout(screen: Screen, model: SemanticAppModel, components:
     lines.push(`                        Text(${nameAccessor})`);
     lines.push('                            .font(.body)');
     lines.push('                            .lineLimit(2)');
-    lines.push(`                        Text(${priceAccessor}, format: .currency(code: "USD"))`);
+    const safePriceAccessor = priceIsOptional ? `${priceAccessor} ?? 0` : priceAccessor;
+    lines.push(`                        Text(${safePriceAccessor}, format: .currency(code: "USD"))`);
     lines.push('                            .font(.subheadline)');
     lines.push('                            .foregroundStyle(.secondary)');
     lines.push('                    }');
@@ -2821,7 +2829,7 @@ function generateCustomLayout(screen: Screen, model: SemanticAppModel, component
                 lines.push('                        .foregroundStyle(.secondary)');
             }
             if (roles.priceField) {
-                lines.push(`                    Text(${varName}.${camelCase(roles.priceField.name)}, format: .currency(code: "USD"))`);
+                lines.push(`                    ${currencyText(`${varName}.${camelCase(roles.priceField.name)}`, roles.priceField)}`);
                 lines.push('                        .font(.subheadline)');
                 lines.push('                        .fontWeight(.semibold)');
             }
@@ -3691,7 +3699,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     lines.push('                    .foregroundStyle(.secondary)');
                 }
                 if (listRoles.priceField) {
-                    lines.push(`                Text(${listVarName}.${camelCase(listRoles.priceField.name)}, format: .currency(code: "USD"))`);
+                    lines.push(`                ${currencyText(`${listVarName}.${camelCase(listRoles.priceField.name)}`, listRoles.priceField)}`);
                     lines.push('                    .font(.subheadline)');
                     lines.push('                    .fontWeight(.semibold)');
                 }

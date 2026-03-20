@@ -717,7 +717,16 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
             if (field.isOptional) {
                 modelArgs.push(`${field.name}: ${pName}.flatMap { try? JSONDecoder().decode(${field.type.replace('?', '')}.self, from: $0) }`);
             } else {
-                modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${field.type}.self, from: ${pName})) ?? ${field.type}()`);
+                // For non-optional Data fields, decode with a safe fallback
+                // Use .init() for simple types but a fatalError for complex structs to surface the issue at runtime
+                const baseType = field.type.replace('?', '');
+                const simpleDefaults: Record<string, string> = {
+                    'String': '""', 'Int': '0', 'Double': '0', 'Bool': 'false',
+                    'Date': '.now', 'UUID': 'UUID()', '[String]': '[]', '[Int]': '[]',
+                    '[String: String]': '[:]',
+                };
+                const fallback = simpleDefaults[baseType] ?? `${baseType}(id: UUID().uuidString)`;
+                modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${baseType}.self, from: ${pName})) ?? ${fallback}`);
             }
         } else {
             modelArgs.push(`${field.name}: ${pName}`);

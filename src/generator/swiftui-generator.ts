@@ -525,8 +525,10 @@ function inferTypeFromName(name: string): string {
     if (lower.includes('price') || lower.includes('amount') || lower.includes('rate')) return 'Double';
     if (lower.includes('query') || lower.includes('search') || lower.includes('text') || lower.includes('name') || lower.includes('title')) return 'String';
     if (lower.includes('date') || lower.includes('time')) return 'Date';
-    if (lower.includes('items') || lower.includes('list') || lower.includes('results') || lower.endsWith('s')) return '[Any]';
+    if (lower.includes('items') || lower.includes('list') || lower.includes('results')) return '[String]';
     if (lower.includes('selected') || lower.includes('category') || lower.includes('order') || lower.includes('sort')) return 'String';
+    // Plural names ending in 's' — use [String] (safer than [Any] which breaks Codable/Hashable)
+    if (lower.endsWith('s') && !lower.endsWith('ss') && lower.length > 3) return '[String]';
     if (lower.includes('error') || lower.includes('message') || lower.includes('code') || lower.includes('token')) return 'String?';
     if (lower.includes('loading') || lower.includes('saving') || lower.includes('sending')) return 'Bool';
     if (lower.includes('email') || lower.includes('password') || lower.includes('username') || lower.includes('url')) return 'String';
@@ -4061,7 +4063,7 @@ const CORE_SCREEN_NAMES = new Set([
     'discover', 'feed', 'notifications', 'messages', 'chat',
     'cart', 'checkout', 'orders', 'favorites', 'analytics',
     'calendar', 'contacts', 'products', 'categories', 'map',
-    'onboarding', 'welcome',
+    'onboarding', 'welcome', 'security', 'privacy',
 ]);
 
 /**

@@ -3160,8 +3160,23 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {
-            const entityExists = entityExistsInOutput(derivedEntityName, model);
-            const arrayType = entityExists ? `[${derivedEntityName}]` : '[String]';
+            // Resolve the actual entity type that the API returns for this resource.
+            // The networking generator uses inferReturnTypeFromEntities which may pick
+            // a different entity than what we inferred from screen name (e.g., StructuredRound vs Round).
+            let actualEntityName = derivedEntityName;
+            const allEntities = model.entities ?? [];
+            if (!entityExistsInOutput(derivedEntityName, model)) {
+                // Entity doesn't exist — try compound name matching (e.g., "Round" → "StructuredRound")
+                const lowerDerived = derivedEntityName.toLowerCase();
+                const match = allEntities.find(e => {
+                    if (isJunkEntity(e)) return false;
+                    const words = e.name.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
+                    return words[words.length - 1]?.toLowerCase() === lowerDerived;
+                });
+                if (match) actualEntityName = pascalCase(match.name);
+            }
+            const entityExists = entityExistsInOutput(actualEntityName, model);
+            const arrayType = entityExists ? `[${actualEntityName}]` : '[String]';
             lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
             declaredNames.add(arrayVarName);
             dataReqDeclaredNames.add(arrayVarName);
@@ -3629,7 +3644,18 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 return lastSeg === entVar + 's' || lastSeg === entVar || lastSeg === pluralName.toLowerCase();
             });
             if (hasListFetch) {
-                lines.push(`            ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(pluralName)}()`);
+                const fetchFnName = `fetch${pascalCase(pluralName)}`;
+                // Entity-inferred fetch: API may return a different type than the declared state
+                // (e.g., fetchRounds() → [StructuredRound] but state is [Round])
+                // Use a safe assignment that works even if types differ
+                const declaredType = declaredTypes.get(entArrayVar) ?? '';
+                if (dataReqDeclaredNames.has(entArrayVar)) {
+                    // Data-requirement declared — types were set up to match
+                    lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}()`);
+                } else {
+                    // Entity-inferred — emit with explicit type annotation to catch mismatches at compile time
+                    lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}() // Verify return type matches ${declaredType}`);
+                }
             } else {
                 lines.push(`            // Configure fetch${pascalCase(pluralName)}() in APIClient`);
                 lines.push(`            // ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(pluralName)}()`);

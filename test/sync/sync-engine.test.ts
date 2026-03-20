@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
-import { generateBranchName, generatePRBody } from '../../src/sync/pr-generator';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+
+
 import type { ModelDiff } from '../../src/sync/model-diff';
+import { generateBranchName, generatePRBody } from '../../src/sync/pr-generator';
 
 // ---------------------------------------------------------------------------
 // PR generator unit tests (no repo needed)

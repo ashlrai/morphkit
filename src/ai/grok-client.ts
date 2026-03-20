@@ -9,6 +9,22 @@
  */
 
 import OpenAI from "openai";
+
+import {
+  buildCodeGenerationPrompt,
+  CODE_GENERATION_SYSTEM_PROMPT,
+  type ScreenGenContext,
+} from "./prompts/code-generation.js";
+import {
+  buildComponentMappingPrompt,
+  COMPONENT_MAPPING_SYSTEM_PROMPT,
+  type ExtractedComponentInfo,
+} from "./prompts/component-mapping.js";
+import {
+  buildIntentExtractionPrompt,
+  INTENT_EXTRACTION_SYSTEM_PROMPT,
+  type AppContext,
+} from "./prompts/intent-extraction.js";
 import {
   IntentAnalysisSchema,
   SwiftUIMappingSchema,
@@ -21,21 +37,6 @@ import {
   type iOSNavigationPlan,
   type iOSStateArchitecture,
 } from "./structured-output.js";
-import {
-  buildIntentExtractionPrompt,
-  INTENT_EXTRACTION_SYSTEM_PROMPT,
-  type AppContext,
-} from "./prompts/intent-extraction.js";
-import {
-  buildComponentMappingPrompt,
-  COMPONENT_MAPPING_SYSTEM_PROMPT,
-  type ExtractedComponentInfo,
-} from "./prompts/component-mapping.js";
-import {
-  buildCodeGenerationPrompt,
-  CODE_GENERATION_SYSTEM_PROMPT,
-  type ScreenGenContext,
-} from "./prompts/code-generation.js";
 
 // ---------------------------------------------------------------------------
 // Public Types (inputs to GrokClient methods)

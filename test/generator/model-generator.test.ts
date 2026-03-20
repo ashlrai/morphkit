@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+
 import { generateSwiftModels } from '../../src/generator/model-generator';
 import type { SemanticAppModel } from '../../src/semantic/model';
 

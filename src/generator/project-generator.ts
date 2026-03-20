@@ -1,6 +1,10 @@
 // Morphkit Xcode Project Generator
 // Orchestrates all generators and writes a complete SwiftUI project to disk
 
+import { execSync, execFileSync } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, dirname, normalize, resolve } from 'node:path';
+
 import type {
     SemanticAppModel,
     ThemeConfig,
@@ -10,15 +14,12 @@ import type {
     Entity,
 } from '../semantic/model';
 
-import type { GeneratedFile } from './swiftui-generator';
-import { generateSwiftUIViews, generateErrorUIComponents, pascalCase, relativeSourcePath, isMarketingScreen, pluralize, cleanStoreName, getReferenceScreenNames } from './swiftui-generator';
 import { generateSwiftModels, isJunkEntity, generateSwiftDataModels, generateDataManager, getSwiftDataEligibleEntities } from './model-generator';
 import { generateNavigation } from './navigation-generator';
 import { generateNetworkingLayer } from './networking-generator';
+import { generateSwiftUIViews, generateErrorUIComponents, pascalCase, relativeSourcePath, isMarketingScreen, pluralize, cleanStoreName, getReferenceScreenNames } from './swiftui-generator';
+import type { GeneratedFile } from './swiftui-generator';
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, dirname, normalize, resolve } from 'node:path';
-import { execSync, execFileSync } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -250,7 +251,7 @@ function generateDefaultFetchMethod(storeName: string, model?: SemanticAppModel)
     const hasFetchMethod = endpoints.some(ep => {
         if ((ep.method ?? 'GET') !== 'GET') return false;
         // Clean the URL: strip template literals, backticks, ${VAR} prefixes
-        let url = (ep.url ?? '').replace(/`/g, '').replace(/\$\{[^}]+\}/g, '').toLowerCase();
+        const url = (ep.url ?? '').replace(/`/g, '').replace(/\$\{[^}]+\}/g, '').toLowerCase();
         // Skip endpoints with path parameters
         if (url.includes(':') || url.includes('{') || url.includes('[')) return false;
         const lastSegment = url.split('/').filter(s => s && s !== 'api').pop() ?? '';

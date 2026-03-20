@@ -1,11 +1,12 @@
 import { describe, test, expect } from 'bun:test';
+
+import type { SemanticAppModel } from '../src/semantic/model';
 import {
   diffModels,
   isDiffEmpty,
   shouldWatch,
   createDebouncedRunner,
 } from '../src/watcher';
-import type { SemanticAppModel } from '../src/semantic/model';
 
 // ---------------------------------------------------------------------------
 // Helpers to build minimal SemanticAppModel fixtures

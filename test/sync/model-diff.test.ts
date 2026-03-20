@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
-import { diffModels, isDiffEmpty } from '../../src/sync/model-diff';
+
 import type { SemanticAppModel } from '../../src/semantic/model';
+import { diffModels, isDiffEmpty } from '../../src/sync/model-diff';
 
 // ---------------------------------------------------------------------------
 // Helpers

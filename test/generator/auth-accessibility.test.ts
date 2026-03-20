@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { generateSwiftUIViews } from '../../src/generator/swiftui-generator';
+
 import { generateNetworkingLayer } from '../../src/generator/networking-generator';
+import { generateSwiftUIViews } from '../../src/generator/swiftui-generator';
 import type { SemanticAppModel } from '../../src/semantic/model';
 
 // ---------------------------------------------------------------------------

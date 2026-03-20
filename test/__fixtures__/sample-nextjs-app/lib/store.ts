@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+
 import type { Product, CartItem, Cart } from '@/types/product';
 
 interface CartStore extends Cart {

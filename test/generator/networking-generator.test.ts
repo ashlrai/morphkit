@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+
 import { generateNetworkingLayer } from '../../src/generator/networking-generator';
 import type { SemanticAppModel, ApiEndpoint } from '../../src/semantic/model';
 

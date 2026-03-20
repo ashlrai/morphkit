@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import type { Product } from '@/types/product';
 
 const mockProducts: Product[] = [

@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeAll } from 'bun:test';
-import { buildSemanticModel } from '../../src/semantic/builder';
-import type { AnalysisResult } from '../../src/semantic/builder';
+
+import type { ExtractedComponent } from '../../src/analyzer/component-extractor';
 import type { RepoScanResult, FileEntry } from '../../src/analyzer/repo-scanner';
 import type { ExtractedRoute } from '../../src/analyzer/route-extractor';
-import type { ExtractedComponent } from '../../src/analyzer/component-extractor';
+import { buildSemanticModel } from '../../src/semantic/builder';
+import type { AnalysisResult } from '../../src/semantic/builder';
 
 function fe(absPath: string): FileEntry {
   const ext = absPath.split('.').pop() ?? '';

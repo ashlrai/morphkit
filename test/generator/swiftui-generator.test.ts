@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+
 import { generateSwiftUIViews, isWebOnlyState, getReferenceScreenNames } from '../../src/generator/swiftui-generator';
 import type { SemanticAppModel } from '../../src/semantic/model';
 

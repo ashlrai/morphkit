@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
-import { extractRoutes } from '../../src/analyzer/route-extractor';
+
 import type { RepoScanResult, FileEntry } from '../../src/analyzer/repo-scanner';
+import { extractRoutes } from '../../src/analyzer/route-extractor';
 
 function fe(absPath: string): FileEntry {
   const ext = absPath.split('.').pop() ?? '';

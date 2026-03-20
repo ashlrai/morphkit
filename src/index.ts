@@ -1,17 +1,20 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
-import chalk from 'chalk';
-import ora from 'ora';
-import { resolve, join } from 'path';
 import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
+import { resolve, join } from 'path';
+
+import chalk from 'chalk';
+import { Command } from 'commander';
+import ora from 'ora';
+
+
 import { analyzeRepo } from './analyzer/index.js';
-import { buildSemanticModel } from './semantic/builder.js';
-import { adaptForPlatform } from './semantic/adapter.js';
 import { generateProject } from './generator/index.js';
-import { startWatchMode } from './watcher.js';
-import { syncRepos } from './sync/index.js';
+import { adaptForPlatform } from './semantic/adapter.js';
+import { buildSemanticModel } from './semantic/builder.js';
 import type { SemanticAppModel } from './semantic/model.js';
+import { syncRepos } from './sync/index.js';
+import { startWatchMode } from './watcher.js';
 
 // ---------------------------------------------------------------------------
 // API Key Authentication

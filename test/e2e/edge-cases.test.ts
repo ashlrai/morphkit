@@ -1,14 +1,15 @@
-import { describe, test, expect, afterEach, beforeAll } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
-import { mkdtempSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync, rmSync, existsSync , mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
+import { join } from 'path';
+
+import { describe, test, expect, afterEach, beforeAll } from 'bun:test';
+
 import { analyzeRepo } from '../../src/analyzer/index';
-import { buildSemanticModel } from '../../src/semantic/builder';
-import { adaptForPlatform } from '../../src/semantic/adapter';
-import { generateProject } from '../../src/generator/index';
-import type { AnalysisResult } from '../../src/semantic/builder';
 import type { RepoScanResult } from '../../src/analyzer/repo-scanner';
+import { generateProject } from '../../src/generator/index';
+import { adaptForPlatform } from '../../src/semantic/adapter';
+import type { AnalysisResult } from '../../src/semantic/builder';
+import { buildSemanticModel } from '../../src/semantic/builder';
 
 // Track temp dirs for cleanup
 const tempDirs: string[] = [];

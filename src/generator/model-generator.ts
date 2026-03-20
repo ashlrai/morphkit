@@ -49,8 +49,8 @@ function analyseField(field: Field): SwiftField {
     const needsCodingKey = name !== originalName;
 
     const td: TypeDefinition = field.type;
-    let isOptional = field.optional === true;
-    let isArray = td.kind === 'array';
+    const isOptional = field.optional === true;
+    const isArray = td.kind === 'array';
 
     let swiftType = typeDefinitionToSwiftType(td);
 

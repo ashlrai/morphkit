@@ -11,12 +11,20 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { RepoScanResult } from '../analyzer/repo-scanner.js';
-import type { ExtractedComponent } from '../analyzer/component-extractor.js';
-import type { ExtractedRoute } from '../analyzer/route-extractor.js';
-import type { ExtractedState } from '../analyzer/state-extractor.js';
+
+import type { GrokClient} from '../ai/index.js';
+import { getGrokClient as getClient } from '../ai/index.js';
+import type { ExtractedComponentInfo } from '../ai/prompts/component-mapping.js';
+import { createAIProvider } from '../ai/provider.js';
+import type { AIProvider , AIProviderConfig, AIProviderName } from '../ai/provider.js';
+import type { SwiftUIMapping } from '../ai/structured-output.js';
 import type { ExtractedApi } from '../analyzer/api-extractor.js';
 import type { ParsedFile, TypeProperty } from '../analyzer/ast-parser.js';
+import type { ExtractedComponent } from '../analyzer/component-extractor.js';
+import type { RepoScanResult } from '../analyzer/repo-scanner.js';
+import type { ExtractedRoute } from '../analyzer/route-extractor.js';
+import type { ExtractedState } from '../analyzer/state-extractor.js';
+
 import type {
   SemanticAppModel,
   Screen,
@@ -35,12 +43,7 @@ import type {
   UserAction,
   TypeDefinition,
 } from './model.js';
-import { GrokClient, getGrokClient as getClient } from '../ai/index.js';
-import { createAIProvider } from '../ai/provider.js';
-import type { AIProvider } from '../ai/provider.js';
-import type { AIProviderConfig, AIProviderName } from '../ai/provider.js';
-import type { ExtractedComponentInfo } from '../ai/prompts/component-mapping.js';
-import type { SwiftUIMapping } from '../ai/structured-output.js';
+
 
 // Re-export the analyzer types so consumers can reference them
 export type { ExtractedComponent } from '../analyzer/component-extractor.js';

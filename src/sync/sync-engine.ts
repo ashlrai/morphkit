@@ -8,15 +8,17 @@
  * Designed to be used both from the CLI and programmatically.
  */
 
-import { resolve, join, relative, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { resolve, join, relative, dirname } from 'node:path';
+
 import { analyzeRepo } from '../analyzer/index.js';
-import { buildSemanticModel } from '../semantic/builder.js';
-import { adaptForPlatform } from '../semantic/adapter.js';
 import { generateProject } from '../generator/index.js';
-import type { SemanticAppModel } from '../semantic/model.js';
 import type { GeneratedFile } from '../generator/swiftui-generator.js';
+import { adaptForPlatform } from '../semantic/adapter.js';
+import { buildSemanticModel } from '../semantic/builder.js';
+import type { SemanticAppModel } from '../semantic/model.js';
+
 import { diffModels, isDiffEmpty } from './model-diff.js';
 import type { ModelDiff } from './model-diff.js';
 import { generateBranchName, createSyncPR, generatePRBody } from './pr-generator.js';

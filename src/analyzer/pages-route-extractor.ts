@@ -12,7 +12,9 @@
  */
 
 import * as path from 'path';
+
 import type { Project } from 'ts-morph';
+
 import type { RepoScanResult, FileEntry } from './repo-scanner.js';
 import type { ExtractedRoute, RouteSegment, NavigationKind } from './route-extractor.js';
 

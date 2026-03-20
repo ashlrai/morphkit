@@ -3135,7 +3135,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
 
     // Entity-based properties for list/grid/dashboard layouts when no explicit data requirements
-    let derivedEntityName = deriveEntityName(screen, model);
+    const derivedEntityName = deriveEntityName(screen, model);
     // Also include custom layouts with repeated components or collection data requirements
     const hasRepeatedContent = (screen.components ?? []).some(c => c.count === 'repeated');
     const hasCollectionReq = (screen.dataRequirements ?? []).some(r => r.cardinality === 'many');

@@ -8,14 +8,16 @@
  * - Proper async loading patterns
  * - No `Any` types in models from TS interfaces
  */
-import { describe, test, expect, beforeAll } from 'bun:test';
-import { join } from 'path';
 import { existsSync, rmSync } from 'fs';
+import { join } from 'path';
+
+import { describe, test, expect, beforeAll } from 'bun:test';
+
 import { analyzeRepo } from '../../src/analyzer/index';
-import { buildSemanticModel } from '../../src/semantic/builder';
-import { adaptForPlatform } from '../../src/semantic/adapter';
 import { generateProject } from '../../src/generator/index';
 import type { GeneratedFile } from '../../src/generator/swiftui-generator';
+import { adaptForPlatform } from '../../src/semantic/adapter';
+import { buildSemanticModel } from '../../src/semantic/builder';
 
 const FIXTURE_PATH = join(import.meta.dir, '../__fixtures__/sample-nextjs-app');
 const OUTPUT_PATH = join(import.meta.dir, '../__output__/swift-quality');

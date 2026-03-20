@@ -5,9 +5,10 @@
  * file lists and framework detection metadata.
  */
 
-import fg from 'fast-glob';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+
+import fg from 'fast-glob';
 
 // ---------------------------------------------------------------------------
 // Types

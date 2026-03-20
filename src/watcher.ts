@@ -8,14 +8,16 @@
 
 import { watch, type FSWatcher } from 'fs';
 import { resolve, relative, extname } from 'path';
+
 import chalk from 'chalk';
 import ora from 'ora';
-import type { SemanticAppModel } from './semantic/model.js';
+
 import { analyzeRepo } from './analyzer/index.js';
-import { buildSemanticModel } from './semantic/builder.js';
-import { adaptForPlatform } from './semantic/adapter.js';
 import { generateProject } from './generator/index.js';
 import type { GeneratedProject } from './generator/project-generator.js';
+import { adaptForPlatform } from './semantic/adapter.js';
+import { buildSemanticModel } from './semantic/builder.js';
+import type { SemanticAppModel } from './semantic/model.js';
 
 // ---------------------------------------------------------------------------
 // Model Diff
@@ -305,7 +307,7 @@ export async function startWatchMode(
   try {
     const analysisResult = await analyzeRepo(sourcePath);
     spinner.text = 'Building semantic model...';
-    let model = await buildSemanticModel(analysisResult);
+    const model = await buildSemanticModel(analysisResult);
 
     if (appName) {
       model.appName = appName;
@@ -357,7 +359,7 @@ export async function startWatchMode(
     try {
       const analysisResult = await analyzeRepo(sourcePath);
       rebuildSpinner.text = 'Building semantic model...';
-      let model = await buildSemanticModel(analysisResult);
+      const model = await buildSemanticModel(analysisResult);
 
       if (appName) {
         model.appName = appName;

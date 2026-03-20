@@ -4,7 +4,10 @@
  */
 
 import * as path from 'path';
-import { Project, SourceFile, Node } from 'ts-morph';
+
+import type { Project} from 'ts-morph';
+import { SourceFile, Node } from 'ts-morph';
+
 import type { RepoScanResult, FileEntry } from './repo-scanner.js';
 
 // ---------------------------------------------------------------------------

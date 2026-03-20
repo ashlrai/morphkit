@@ -18,6 +18,7 @@ export { mapTsTypeToSwift, pascalCase, camelCase } from './swiftui-generator';
 // ---------------------------------------------------------------------------
 
 import type { SemanticAppModel } from '../semantic/model';
+
 import type { GeneratedProject } from './project-generator';
 import { generateXcodeProject } from './project-generator';
 

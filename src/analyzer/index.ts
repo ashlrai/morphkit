@@ -75,12 +75,13 @@ export {
 // Types for the full analysis result
 // ---------------------------------------------------------------------------
 
-import type { RepoScanResult } from './repo-scanner.js';
+import type { ExtractedApi } from './api-extractor.js';
+import { extractApiEndpoints } from './api-extractor.js';
 import type { ParsedFile } from './ast-parser.js';
 import type { ExtractedComponent } from './component-extractor.js';
+import type { RepoScanResult } from './repo-scanner.js';
 import type { ExtractedRoute } from './route-extractor.js';
 import type { ExtractedState } from './state-extractor.js';
-import type { ExtractedApi } from './api-extractor.js';
 
 export interface AnalysisResult {
   /** Repository scan metadata */
@@ -108,7 +109,6 @@ import { extractRoutes } from './route-extractor.js';
 import { extractReactRoutes } from './react-route-extractor.js';
 import { extractPagesRoutes } from './pages-route-extractor.js';
 import { extractStatePatterns } from './state-extractor.js';
-import { extractApiEndpoints } from './api-extractor.js';
 
 /**
  * Run the complete Morphkit analysis pipeline on a repository.

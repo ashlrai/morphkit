@@ -6,9 +6,11 @@
  * for PR creation (with graceful fallback to manual instructions).
  */
 
+import { execSync } from 'node:child_process';
+
 import type { SimpleGit } from 'simple-git';
 import { simpleGit } from 'simple-git';
-import { execSync } from 'node:child_process';
+
 import type { ModelDiff } from './model-diff.js';
 
 // ---------------------------------------------------------------------------

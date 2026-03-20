@@ -1,6 +1,8 @@
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
+
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+
 import { scanRepo } from '../../src/analyzer/repo-scanner';
 
 const TEST_DIR = join(import.meta.dir, '__fixtures__', 'mock-nextjs-app');

@@ -1,8 +1,10 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
 import { join } from 'path';
+
+import { describe, test, expect, beforeAll } from 'bun:test';
+
+import { createProject } from '../../src/analyzer/ast-parser';
 import { extractReactRoutes } from '../../src/analyzer/react-route-extractor';
 import { scanRepo } from '../../src/analyzer/repo-scanner';
-import { createProject } from '../../src/analyzer/ast-parser';
 import type { RepoScanResult } from '../../src/analyzer/repo-scanner';
 
 const FIXTURE_PATH = join(import.meta.dir, '../__fixtures__/react-vite-app');

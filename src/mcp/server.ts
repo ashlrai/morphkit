@@ -11,16 +11,17 @@
  *   morphkit_plan     — Return a prioritized implementation plan for the generated project
  */
 
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { resolve } from 'path';
-import { existsSync } from 'fs';
 
 import { analyzeRepo } from '../analyzer/index.js';
-import { buildSemanticModel } from '../semantic/builder.js';
-import { adaptForPlatform } from '../semantic/adapter.js';
 import { generateProject } from '../generator/index.js';
+import { adaptForPlatform } from '../semantic/adapter.js';
+import { buildSemanticModel } from '../semantic/builder.js';
 import type { SemanticAppModel } from '../semantic/model.js';
 
 // ---------------------------------------------------------------------------

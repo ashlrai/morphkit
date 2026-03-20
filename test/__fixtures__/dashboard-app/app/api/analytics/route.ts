@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import type { AnalyticsData } from '@/types/analytics';
 
 export async function GET() {

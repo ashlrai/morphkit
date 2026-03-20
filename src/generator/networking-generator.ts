@@ -9,10 +9,9 @@ import type {
     ConfidenceLevel,
 } from '../semantic/model';
 
-import type { GeneratedFile } from './swiftui-generator';
-import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName } from './swiftui-generator';
 import { isJunkEntity } from './model-generator';
-import { cleanStoreName } from './swiftui-generator';
+import type { GeneratedFile } from './swiftui-generator';
+import { pascalCase, camelCase, isMarketingScreen, pluralize, cleanSourceName , cleanStoreName } from './swiftui-generator';
 
 // ---------------------------------------------------------------------------
 // Helpers

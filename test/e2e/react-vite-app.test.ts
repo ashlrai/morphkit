@@ -1,5 +1,7 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
 import { join } from 'path';
+
+import { describe, test, expect, beforeAll } from 'bun:test';
+
 import { analyzeRepo } from '../../src/analyzer/index';
 import { buildSemanticModel } from '../../src/semantic/builder';
 

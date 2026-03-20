@@ -7,6 +7,7 @@
  */
 
 import OpenAI from 'openai';
+
 import type {
   AIProvider,
   AIComponentInput,

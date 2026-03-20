@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { resolve, join } from 'path';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { homedir, tmpdir } from 'os';
+import { resolve, join, dirname } from 'path';
 
 import chalk from 'chalk';
 import { Command } from 'commander';
@@ -14,6 +14,7 @@ import { adaptForPlatform } from './semantic/adapter.js';
 import { buildSemanticModel } from './semantic/builder.js';
 import type { SemanticAppModel } from './semantic/model.js';
 import { syncRepos } from './sync/index.js';
+import { verifyProject, formatVerifyResult } from './verify.js';
 import { startWatchMode } from './watcher.js';
 
 // ---------------------------------------------------------------------------
@@ -711,6 +712,77 @@ program
       }
     } catch (error) {
       spinner.fail('Sync failed');
+      console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('verify')
+  .description('Verify completion status of a generated iOS project')
+  .argument('<path>', 'Path to the generated iOS project directory')
+  .option('--json', 'Output raw JSON instead of formatted text')
+  .action(async (projectPath: string, options: { json?: boolean }) => {
+    const resolvedPath = resolve(projectPath);
+
+    validateDirectoryExists(resolvedPath);
+
+    const spinner = ora('Verifying project...').start();
+
+    try {
+      const result = await verifyProject(resolvedPath);
+      spinner.succeed('Verification complete');
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log('');
+        console.log(chalk.bold('Verification Result'));
+        console.log(chalk.dim('─'.repeat(40)));
+        console.log(formatVerifyResult(result));
+      }
+    } catch (error) {
+      spinner.fail('Verification failed');
+      console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('setup')
+  .description('Register Morphkit MCP server in Claude Code settings')
+  .option('--global', 'Register in ~/.claude/settings.json (default: project-local .claude/settings.json)')
+  .action(async (options: { global?: boolean }) => {
+    const settingsPath = options.global
+      ? join(homedir(), '.claude', 'settings.json')
+      : join(process.cwd(), '.claude', 'settings.json');
+
+    try {
+      // Read existing settings or start fresh
+      let settings: Record<string, any> = {};
+      if (existsSync(settingsPath)) {
+        const raw = readFileSync(settingsPath, 'utf-8');
+        settings = JSON.parse(raw);
+      }
+
+      // Merge mcpServers entry
+      if (!settings.mcpServers) {
+        settings.mcpServers = {};
+      }
+      settings.mcpServers.morphkit = {
+        command: 'npx',
+        args: ['-y', 'morphkit-cli@latest', 'mcp'],
+      };
+
+      // Create parent directories if needed
+      mkdirSync(dirname(settingsPath), { recursive: true });
+
+      // Write updated settings
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+
+      console.log(chalk.green(`\nMorphkit MCP server registered in ${settingsPath}`));
+      console.log(chalk.dim('Claude Code will now have access to Morphkit tools.'));
+    } catch (error) {
       console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
       process.exit(1);
     }

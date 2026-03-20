@@ -1142,6 +1142,77 @@ function generateClaudeMd(model: SemanticAppModel, stats: GeneratedProject['stat
     lines.push('| `// TODO:` in loadData() | Morphkit detected a type mismatch and emitted a safe placeholder | Read the TODO comment for the specific mismatch and fix the types |');
     lines.push('');
 
+    // ── Swift Conventions (Step 7) ──
+    lines.push('## Swift Conventions (Must Follow)');
+    lines.push('');
+    lines.push('These rules prevent common AI coding mistakes in this project:');
+    lines.push('');
+    lines.push('| Rule | Wrong | Right |');
+    lines.push('|------|-------|-------|');
+    lines.push('| Observable pattern | `class Store: ObservableObject` | `@Observable class Store` |');
+    lines.push('| Task lifecycle | `.onAppear { Task { await load() } }` | `.task { await load() }` |');
+    lines.push('| Token storage | `UserDefaults.standard.set(token, ...)` | `KeychainHelper.save(key: "authToken", value: token)` |');
+    lines.push('| ForEach identity | `ForEach(items) { item in` | `ForEach(items, id: \\.id) { item in` or conform to `Identifiable` |');
+    lines.push('| State access | `@State var name = ""` | `@State private var name = ""` |');
+    lines.push('| Async button | `Button("Save") { await save() }` | `Button("Save") { Task { await save() } }` |');
+    lines.push('| Navigation | `NavigationView { }` | `NavigationStack { }` |');
+    lines.push('| Preview macro | `struct X_Previews: PreviewProvider` | `#Preview { }` |');
+    lines.push('| Error handling | `try! await ...` | `do { try await ... } catch { errorMessage = error.localizedDescription }` |');
+    lines.push('| List deletion | `.onDelete` with non-binding array | `.swipeActions { Button(role: .destructive) { } }` |');
+    lines.push('');
+
+    // ── Completion Manifest (Step 4) ──
+    lines.push('## Completion Manifest');
+    lines.push('');
+    lines.push('Machine-readable project state for AI tooling. Do not edit manually.');
+    lines.push('');
+    lines.push('```json');
+
+    const manifestScreens = screens.map(s => {
+        const isRef = referenceScreenNames.has(s.name);
+        const apiReqs = (s.dataRequirements ?? []).filter(r => r.fetchStrategy === 'api');
+        const apiMethods = apiReqs.map(r => {
+            const source = r.source ?? '';
+            return `fetch${pascalCase(source.endsWith('s') ? source : pluralize(source))}`;
+        });
+        // Determine navigation targets from actions
+        const navTargets = (s.actions ?? [])
+            .filter(a => a.effect?.type === 'navigate')
+            .map(a => pascalCase(a.effect?.target ?? ''))
+            .filter(Boolean);
+
+        const entry: Record<string, unknown> = {
+            name: s.name,
+            file: `Views/${pascalCase(s.name)}View.swift`,
+            status: isRef ? 'reference' : 'scaffold',
+            layout: s.layout ?? 'custom',
+        };
+        if (!isRef) {
+            entry.todoCount = '?'; // Will be filled by verify
+        }
+        if (apiMethods.length > 0) entry.apiMethods = apiMethods;
+        if (navTargets.length > 0) entry.navigatesTo = navTargets;
+        return entry;
+    });
+
+    const manifest = {
+        screens: manifestScreens,
+        incompleteModels: incompleteEntities.map(e => pascalCase(e.name)),
+        unwiredEndpoints: endpoints
+            .filter(ep => {
+                const url = ep.url.toLowerCase();
+                return !url.includes('auth') && !url.includes('login') && !url.includes('register');
+            })
+            .map(ep => `${ep.method ?? 'GET'} ${ep.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param')}`),
+        completionOrder: screens
+            .filter(s => !referenceScreenNames.has(s.name))
+            .map(s => s.name),
+    };
+
+    lines.push(JSON.stringify(manifest, null, 2));
+    lines.push('```');
+    lines.push('');
+
     // ── Warnings ──
     if (stats.warnings.length > 0) {
         lines.push('## Build Warnings');
@@ -1349,6 +1420,203 @@ async function validateSwiftSyntax(appDir: string, files: GeneratedFile[]): Prom
 }
 
 // ---------------------------------------------------------------------------
+// .claude/commands/ generation (Step 1)
+// ---------------------------------------------------------------------------
+
+function generateClaudeCommands(model: SemanticAppModel): GeneratedFile[] {
+    const appName = pascalCase(model.appName ?? 'MyApp');
+    const screens = (model.screens ?? []).filter(s => !isMarketingScreen(s));
+    const referenceScreenNames = getReferenceScreenNames(model);
+    const files: GeneratedFile[] = [];
+
+    // /complete-screen command
+    files.push({
+        path: '../.claude/commands/complete-screen.md',
+        content: `# Complete Screen: $ARGUMENTS
+
+Gather all context needed to complete the screen named \`$ARGUMENTS\`, then implement all TODOs.
+
+## Steps
+
+1. Read \`${appName}/Views/\${ARGUMENTS}View.swift\` — find all \`MORPHKIT-TODO:\` blocks
+2. Read the reference implementation: ${[...referenceScreenNames].slice(0, 2).map(n => `\`${appName}/Views/${pascalCase(n)}View.swift\``).join(' or ')}
+3. Read relevant model files from \`${appName}/Models/\` — check @State declarations for type names
+4. Read \`${appName}/Networking/APIClient.swift\` — find the methods referenced in the TODOs
+5. For each MORPHKIT-TODO block:
+   - Follow the pattern shown in the Reference line
+   - Use the APIClient method specified
+   - Match the endpoint and request/response types
+6. Run \`swift build\` to verify the changes compile
+7. Report completion status
+
+## Rules
+- Use \`@Observable\` not \`ObservableObject\`
+- Use \`.task { }\` not \`.onAppear { Task { } }\`
+- Use \`KeychainHelper\` not \`UserDefaults\` for tokens
+- \`ForEach\` requires \`id:\` parameter or \`Identifiable\` conformance
+- \`@State\` must be \`private\`
+- Button async actions need \`Task { }\` wrapper
+`,
+        sourceMapping: 'morphkit:claude-commands',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // /verify command
+    files.push({
+        path: '../.claude/commands/verify.md',
+        content: `# Verify Project Completion
+
+Count remaining TODOs, check build status, and report completion percentage.
+
+## Steps
+
+1. Search all \`.swift\` files in \`${appName}/\` for \`MORPHKIT-TODO:\` comments
+2. Group TODOs by category (wire-api-fetch, wire-api-action, wire-navigation, wire-mutation)
+3. Count TODOs per file from \`MORPHKIT-TODO-COUNT:\` headers
+4. Run \`swift build\` and report errors
+5. Check if API base URL is still placeholder in \`${appName}/Networking/APIConfiguration.swift\`
+6. Check if auth is still stubbed in \`${appName}/State/AuthManager.swift\`
+
+## Output Format
+
+\`\`\`
+Build Status:        ✅ PASS | ❌ FAIL (N errors)
+Screen Completion:   N/M (XX%)
+API Wiring:          N/M (XX%)
+Overall:             XX% complete
+
+TODO Breakdown:
+  wire-api-fetch:    N
+  wire-api-action:   N
+  wire-navigation:   N
+
+Files with TODOs:
+  Views/CartView.swift:     3 TODOs
+  Views/CheckoutView.swift: 2 TODOs
+
+Next step:           Complete <ScreenName> (N TODOs)
+\`\`\`
+`,
+        sourceMapping: 'morphkit:claude-commands',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // /next command
+    const screenList = screens
+        .filter(s => !referenceScreenNames.has(s.name))
+        .map(s => {
+            const apiReqs = (s.dataRequirements ?? []).filter(r => r.fetchStrategy === 'api');
+            return `- ${s.name} (${s.layout}, ${apiReqs.length} API deps, ${(s.actions ?? []).length} actions)`;
+        }).join('\n');
+
+    files.push({
+        path: '../.claude/commands/next.md',
+        content: `# What to Complete Next
+
+Analyze which screen to complete next based on dependency order and TODO count.
+
+## Decision Criteria (in priority order)
+
+1. **Leaf screens first** — screens that don't navigate to other incomplete screens
+2. **Fewer TODOs** — easier wins build momentum
+3. **API method availability** — prefer screens whose APIClient methods are already implemented
+
+## Screens to Consider
+
+${screenList}
+
+## Steps
+
+1. Read each View file's \`MORPHKIT-TODO-COUNT:\` header to get TODO counts
+2. Check the completion manifest in \`CLAUDE.md\` for dependency info (\`navigatesTo\` field)
+3. Identify leaf screens (screens whose \`navigatesTo\` targets are all complete or reference impls)
+4. Among leaves, pick the one with fewest TODOs
+5. Output: screen name, file path, TODO count, and what TODOs need to be resolved
+
+## Output Format
+
+\`\`\`
+Next: Complete <ScreenName>View (<N> TODOs)
+File: ${appName}/Views/<ScreenName>View.swift
+Reason: Leaf screen with fewest TODOs
+
+TODOs:
+  - wire-api-fetch: fetchItems() -> [Item] (GET /api/items)
+  - wire-api-action: addToCart(...) (POST /api/cart)
+
+Run: /complete-screen <ScreenName>
+\`\`\`
+`,
+        sourceMapping: 'morphkit:claude-commands',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    // /complete-all command
+    files.push({
+        path: '../.claude/commands/complete-all.md',
+        content: `# Complete All Screens
+
+Systematically complete all remaining screens in dependency order.
+
+## Strategy
+
+1. Run \`/verify\` to get current completion status
+2. Read the reference implementation(s): ${[...referenceScreenNames].slice(0, 2).map(n => `\`${appName}/Views/${pascalCase(n)}View.swift\``).join(', ')}
+3. Build a dependency graph from the completion manifest in \`CLAUDE.md\`
+4. Complete screens bottom-up (leaf screens first):
+   a. For each screen, run \`/complete-screen <name>\`
+   b. After each screen, run \`swift build\` to verify
+   c. If build fails, fix errors before moving to next screen
+5. After all screens: run \`/verify\` to confirm 100% completion
+
+## Completion Order Rules
+
+- Reference implementation screens are already done — skip them
+- Auth screens should be completed early (other screens may depend on auth state)
+- Detail screens before their parent list screens (list needs NavigationLink targets)
+- Settings/profile screens last (least critical path)
+
+## Rules
+- Use \`@Observable\` not \`ObservableObject\`
+- Use \`.task { }\` not \`.onAppear { Task { } }\`
+- Use \`KeychainHelper\` not \`UserDefaults\` for tokens
+- \`ForEach\` requires \`id:\` parameter or \`Identifiable\` conformance
+- \`@State\` must be \`private\`
+- Button async actions need \`Task { }\` wrapper
+`,
+        sourceMapping: 'morphkit:claude-commands',
+        confidence: 'high',
+        warnings: [],
+    });
+
+    return files;
+}
+
+// ---------------------------------------------------------------------------
+// .claude/settings.json generation (Step 6)
+// ---------------------------------------------------------------------------
+
+function generateClaudeSettings(): GeneratedFile {
+    return {
+        path: '../.claude/settings.json',
+        content: JSON.stringify({
+            mcpServers: {
+                morphkit: {
+                    command: 'npx',
+                    args: ['-y', 'morphkit-cli@latest', 'mcp'],
+                },
+            },
+        }, null, 2) + '\n',
+        sourceMapping: 'morphkit:claude-settings',
+        confidence: 'high',
+        warnings: [],
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -1414,6 +1682,13 @@ export async function generateXcodeProject(
 
     // 11. Xcode workspace settings (opens cleanly in Xcode)
     allFiles.push(generateWorkspaceSettings());
+
+    // 12b. .claude/commands/ (slash commands for AI assistant workflow)
+    const commandFiles = generateClaudeCommands(model);
+    allFiles.push(...commandFiles);
+
+    // 12c. .claude/settings.json (MCP server auto-registration)
+    allFiles.push(generateClaudeSettings());
 
     // --- Calculate stats ---
 

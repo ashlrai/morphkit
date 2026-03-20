@@ -11,8 +11,8 @@
  *   morphkit_plan     — Return a prioritized implementation plan for the generated project
  */
 
-import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { resolve, join, basename } from 'path';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -23,6 +23,7 @@ import { generateProject } from '../generator/index.js';
 import { adaptForPlatform } from '../semantic/adapter.js';
 import { buildSemanticModel } from '../semantic/builder.js';
 import type { SemanticAppModel } from '../semantic/model.js';
+import { verifyProject, formatVerifyResult } from '../verify.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -303,6 +304,444 @@ server.tool(
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             return { content: [{ type: 'text' as const, text: `Planning failed: ${msg}` }] };
+        }
+    },
+);
+
+// --- Tool: morphkit_screen_context ---
+
+server.tool(
+    'morphkit_screen_context',
+    'Returns everything needed to complete a screen in a generated iOS project: the View file, related Models, APIClient methods, reference implementation patterns, and API contract from CLAUDE.md. One call gives full context for implementing a screen.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project directory'),
+        screen_name: z.string().describe('Name of the screen (e.g. "Cart", "ProductDetail")'),
+    },
+    async ({ project_path, screen_name }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            const toPascalCase = (name: string) =>
+                name.replace(/(?:^|[-_\s])(\w)/g, (_, c) => c.toUpperCase()).replace(/[-_\s]/g, '');
+
+            const pascalName = toPascalCase(screen_name);
+            const screenLower = screen_name.toLowerCase();
+            const lines: string[] = [];
+
+            // --- Find the View file ---
+            const viewFileName = `${pascalName}View.swift`;
+            let viewFilePath = '';
+            let viewContent = '';
+
+            // Try common paths: {project}/Views/{file}, {project}/{appName}/Views/{file}
+            const candidatePaths = [
+                join(projectDir, 'Views', viewFileName),
+            ];
+            // Also check subdirectories (the appName subfolder)
+            try {
+                const topEntries = readdirSync(projectDir);
+                for (const entry of topEntries) {
+                    const entryPath = join(projectDir, entry);
+                    if (statSync(entryPath).isDirectory() && entry !== 'node_modules' && !entry.startsWith('.')) {
+                        candidatePaths.push(join(entryPath, 'Views', viewFileName));
+                    }
+                }
+            } catch { /* ignore */ }
+
+            for (const candidate of candidatePaths) {
+                if (existsSync(candidate)) {
+                    viewFilePath = candidate;
+                    viewContent = readFileSync(candidate, 'utf-8');
+                    break;
+                }
+            }
+
+            lines.push(`## Screen: ${pascalName}View`);
+            lines.push('');
+
+            if (viewContent) {
+                lines.push(`### View File (${viewFilePath})`);
+                lines.push('```swift');
+                lines.push(viewContent);
+                lines.push('```');
+            } else {
+                lines.push(`### View File`);
+                lines.push(`_Not found: looked for ${viewFileName} in Views/ directories_`);
+            }
+            lines.push('');
+
+            // --- Find related Model files ---
+            lines.push('### Related Models');
+            const modelDir = (() => {
+                const direct = join(projectDir, 'Models');
+                if (existsSync(direct)) return direct;
+                try {
+                    const topEntries = readdirSync(projectDir);
+                    for (const entry of topEntries) {
+                        const sub = join(projectDir, entry, 'Models');
+                        if (existsSync(sub) && statSync(sub).isDirectory()) return sub;
+                    }
+                } catch { /* ignore */ }
+                return null;
+            })();
+
+            if (modelDir && viewContent) {
+                // Extract type references from the view file
+                const typeRefs = new Set<string>();
+                const statePattern = /:\s*([A-Z][A-Za-z0-9]+)[\?\s]/g;
+                let match;
+                while ((match = statePattern.exec(viewContent)) !== null) {
+                    const typeName = match[1];
+                    // Skip common SwiftUI types
+                    if (!['View', 'State', 'Binding', 'Published', 'Observable', 'String', 'Int', 'Double', 'Bool', 'Float', 'Date', 'UUID', 'Color', 'Image', 'Text', 'NavigationStack', 'VStack', 'HStack', 'ZStack', 'List', 'ForEach', 'Button', 'TextField', 'Alert', 'Sheet', 'NavigationLink', 'ScrollView', 'LazyVStack', 'LazyHStack', 'Some', 'AnyView', 'EmptyView', 'Spacer', 'Divider', 'Section', 'Group', 'GeometryReader', 'AsyncImage', 'ProgressView', 'Error'].includes(typeName)) {
+                        typeRefs.add(typeName);
+                    }
+                }
+
+                // Also look for array type references like [TypeName]
+                const arrayPattern = /\[([A-Z][A-Za-z0-9]+)\]/g;
+                while ((match = arrayPattern.exec(viewContent)) !== null) {
+                    const typeName = match[1];
+                    if (!['String', 'Int', 'Double', 'Bool', 'Float', 'Date', 'UUID', 'Any'].includes(typeName)) {
+                        typeRefs.add(typeName);
+                    }
+                }
+
+                let foundModels = false;
+                try {
+                    const modelFiles = readdirSync(modelDir).filter(f => f.endsWith('.swift'));
+                    for (const mf of modelFiles) {
+                        const modelName = mf.replace('.swift', '');
+                        if (typeRefs.has(modelName)) {
+                            const modelContent = readFileSync(join(modelDir, mf), 'utf-8');
+                            lines.push(`#### ${mf}`);
+                            lines.push('```swift');
+                            lines.push(modelContent);
+                            lines.push('```');
+                            lines.push('');
+                            foundModels = true;
+                        }
+                    }
+                } catch { /* ignore */ }
+
+                if (!foundModels) {
+                    lines.push(`_No matching model files found for types: ${[...typeRefs].join(', ') || 'none detected'}_`);
+                }
+            } else if (!modelDir) {
+                lines.push('_Models/ directory not found_');
+            } else {
+                lines.push('_Could not extract type references (view file not found)_');
+            }
+            lines.push('');
+
+            // --- Find APIClient methods ---
+            lines.push('### APIClient Methods');
+            const apiClientPath = (() => {
+                const direct = join(projectDir, 'Networking', 'APIClient.swift');
+                if (existsSync(direct)) return direct;
+                try {
+                    const topEntries = readdirSync(projectDir);
+                    for (const entry of topEntries) {
+                        const sub = join(projectDir, entry, 'Networking', 'APIClient.swift');
+                        if (existsSync(sub)) return sub;
+                    }
+                } catch { /* ignore */ }
+                return null;
+            })();
+
+            if (apiClientPath) {
+                const apiContent = readFileSync(apiClientPath, 'utf-8');
+                // Extract methods that reference the screen's entity
+                const apiLines = apiContent.split('\n');
+                const relevantMethods: string[] = [];
+                let inMethod = false;
+                let braceDepth = 0;
+                let currentMethod: string[] = [];
+
+                for (const line of apiLines) {
+                    if (line.includes('func ') && (
+                        line.toLowerCase().includes(screenLower) ||
+                        line.toLowerCase().includes(pascalName.toLowerCase())
+                    )) {
+                        inMethod = true;
+                        braceDepth = 0;
+                        currentMethod = [];
+                    }
+
+                    if (inMethod) {
+                        currentMethod.push(line);
+                        braceDepth += (line.match(/\{/g) || []).length;
+                        braceDepth -= (line.match(/\}/g) || []).length;
+                        if (braceDepth <= 0 && currentMethod.length > 1) {
+                            relevantMethods.push(currentMethod.join('\n'));
+                            inMethod = false;
+                            currentMethod = [];
+                        }
+                    }
+                }
+
+                if (relevantMethods.length > 0) {
+                    lines.push('```swift');
+                    lines.push(relevantMethods.join('\n\n'));
+                    lines.push('```');
+                } else {
+                    // Fall back to showing method signatures
+                    const signatures = apiLines
+                        .filter(l => l.trim().startsWith('func '))
+                        .map(l => l.trim());
+                    lines.push('_No methods directly referencing this screen entity. All methods:_');
+                    lines.push('```swift');
+                    lines.push(signatures.join('\n'));
+                    lines.push('```');
+                }
+            } else {
+                lines.push('_APIClient.swift not found_');
+            }
+            lines.push('');
+
+            // --- Find reference implementation ---
+            lines.push('### Reference Implementation');
+            let foundRef = false;
+            const searchDirs = [join(projectDir, 'Views')];
+            try {
+                const topEntries = readdirSync(projectDir);
+                for (const entry of topEntries) {
+                    const sub = join(projectDir, entry, 'Views');
+                    if (existsSync(sub) && statSync(sub).isDirectory()) {
+                        searchDirs.push(sub);
+                    }
+                }
+            } catch { /* ignore */ }
+
+            for (const dir of searchDirs) {
+                if (!existsSync(dir)) continue;
+                try {
+                    const files = readdirSync(dir).filter(f => f.endsWith('.swift'));
+                    for (const f of files) {
+                        const filePath = join(dir, f);
+                        const content = readFileSync(filePath, 'utf-8');
+                        if (content.includes('REFERENCE IMPLEMENTATION')) {
+                            lines.push(`#### ${f} (reference)`);
+                            lines.push('```swift');
+                            lines.push(content);
+                            lines.push('```');
+                            foundRef = true;
+                            break;
+                        }
+                    }
+                    if (foundRef) break;
+                } catch { /* ignore */ }
+            }
+            if (!foundRef) {
+                lines.push('_No reference implementation file found_');
+            }
+            lines.push('');
+
+            // --- Find API Contract from CLAUDE.md ---
+            lines.push('### API Contract');
+            const claudeMdPath = (() => {
+                const direct = join(projectDir, 'CLAUDE.md');
+                if (existsSync(direct)) return direct;
+                try {
+                    const topEntries = readdirSync(projectDir);
+                    for (const entry of topEntries) {
+                        const sub = join(projectDir, entry, 'CLAUDE.md');
+                        if (existsSync(sub)) return sub;
+                    }
+                } catch { /* ignore */ }
+                return null;
+            })();
+
+            if (claudeMdPath) {
+                const claudeContent = readFileSync(claudeMdPath, 'utf-8');
+                // Extract sections relevant to this screen
+                const sections = claudeContent.split(/^## /m);
+                const relevantSections = sections.filter(s =>
+                    s.toLowerCase().includes(screenLower) ||
+                    s.toLowerCase().includes(pascalName.toLowerCase()) ||
+                    s.toLowerCase().includes('api contract') ||
+                    s.toLowerCase().includes('endpoint')
+                );
+
+                if (relevantSections.length > 0) {
+                    for (const section of relevantSections) {
+                        lines.push(`## ${section.trim()}`);
+                        lines.push('');
+                    }
+                } else {
+                    lines.push('_No API contract section found referencing this screen_');
+                }
+            } else {
+                lines.push('_CLAUDE.md not found in project_');
+            }
+
+            return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Screen context failed: ${msg}` }] };
+        }
+    },
+);
+
+// --- Tool: morphkit_verify ---
+
+server.tool(
+    'morphkit_verify',
+    'Verify a generated iOS project: checks for TODO placeholders, missing implementations, file structure issues, and completeness. Returns both a human-readable summary and raw JSON for programmatic parsing.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+    },
+    async ({ project_path }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            const result = await verifyProject(projectDir);
+            const formatted = formatVerifyResult(result);
+            const jsonResult = JSON.stringify(result, null, 2);
+
+            const output = `${formatted}\n\n---\n\n## Raw Result (JSON)\n\`\`\`json\n${jsonResult}\n\`\`\``;
+            return { content: [{ type: 'text' as const, text: output }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Verification failed: ${msg}` }] };
+        }
+    },
+);
+
+// --- Tool: morphkit_next_task ---
+
+server.tool(
+    'morphkit_next_task',
+    'Analyzes a generated iOS project and recommends the next screen to complete. Considers TODO count, dependency order from CLAUDE.md completion manifest, and implementation status.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+    },
+    async ({ project_path }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            const result = await verifyProject(projectDir);
+            const todosByFile: Record<string, string[]> = (result as any).todosByFile ?? {};
+
+            // Find the file with the most TODOs
+            let maxTodos = 0;
+            let maxFile = '';
+            const fileTodoCounts: Array<{ file: string; count: number; todos: string[] }> = [];
+
+            for (const [file, todos] of Object.entries(todosByFile)) {
+                const todoList = Array.isArray(todos) ? todos : [];
+                fileTodoCounts.push({ file, count: todoList.length, todos: todoList });
+                if (todoList.length > maxTodos) {
+                    maxTodos = todoList.length;
+                    maxFile = file;
+                }
+            }
+
+            // Sort by TODO count descending
+            fileTodoCounts.sort((a, b) => b.count - a.count);
+
+            // Check for dependency order in CLAUDE.md
+            let dependencyOrder: string[] = [];
+            const claudeMdPath = (() => {
+                const direct = join(projectDir, 'CLAUDE.md');
+                if (existsSync(direct)) return direct;
+                try {
+                    const topEntries = readdirSync(projectDir);
+                    for (const entry of topEntries) {
+                        const sub = join(projectDir, entry, 'CLAUDE.md');
+                        if (existsSync(sub)) return sub;
+                    }
+                } catch { /* ignore */ }
+                return null;
+            })();
+
+            if (claudeMdPath) {
+                const claudeContent = readFileSync(claudeMdPath, 'utf-8');
+                // Look for completion manifest JSON block
+                const manifestMatch = claudeContent.match(/```json\s*\n(\{[\s\S]*?"completionOrder"[\s\S]*?\})\s*\n```/);
+                if (manifestMatch) {
+                    try {
+                        const manifest = JSON.parse(manifestMatch[1]);
+                        if (Array.isArray(manifest.completionOrder)) {
+                            dependencyOrder = manifest.completionOrder;
+                        }
+                    } catch { /* ignore parse errors */ }
+                }
+            }
+
+            // Determine the recommended next screen
+            const lines: string[] = [];
+            lines.push('# Next Task Recommendation');
+            lines.push('');
+
+            if (fileTodoCounts.length === 0) {
+                lines.push('All screens appear complete — no TODOs found.');
+                return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+            }
+
+            // If we have a dependency order, prefer the first incomplete item
+            let recommendedFile = maxFile;
+            let reason = `Has the most TODOs (${maxTodos})`;
+
+            if (dependencyOrder.length > 0) {
+                for (const screenName of dependencyOrder) {
+                    const matching = fileTodoCounts.find(f =>
+                        f.file.toLowerCase().includes(screenName.toLowerCase()) && f.count > 0
+                    );
+                    if (matching) {
+                        recommendedFile = matching.file;
+                        reason = `Next in dependency order from CLAUDE.md completion manifest (${matching.count} TODOs)`;
+                        break;
+                    }
+                }
+            }
+
+            // Extract screen name from file path
+            const screenFileName = basename(recommendedFile, '.swift');
+            const screenName = screenFileName.replace(/View$/, '');
+
+            lines.push(`## Recommended: ${screenName}`);
+            lines.push(`**File:** ${recommendedFile}`);
+            lines.push(`**Why:** ${reason}`);
+            lines.push('');
+
+            // List TODOs for the recommended file
+            const recommendedEntry = fileTodoCounts.find(f => f.file === recommendedFile);
+            if (recommendedEntry && recommendedEntry.todos.length > 0) {
+                lines.push(`### TODOs in ${screenFileName} (${recommendedEntry.todos.length})`);
+                for (const todo of recommendedEntry.todos) {
+                    lines.push(`- ${todo.trim()}`);
+                }
+                lines.push('');
+            }
+
+            // Show overview of all files with TODOs
+            lines.push('### All Files with TODOs');
+            for (const entry of fileTodoCounts.slice(0, 15)) {
+                const marker = entry.file === recommendedFile ? ' **← next**' : '';
+                lines.push(`- \`${basename(entry.file)}\` — ${entry.count} TODOs${marker}`);
+            }
+            if (fileTodoCounts.length > 15) {
+                lines.push(`- ... and ${fileTodoCounts.length - 15} more files`);
+            }
+            lines.push('');
+
+            lines.push('### Suggested Command');
+            lines.push(`\`/complete-screen ${screenName}\``);
+
+            return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Next task analysis failed: ${msg}` }] };
         }
     },
 );

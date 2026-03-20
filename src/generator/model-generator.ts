@@ -690,7 +690,20 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     if (!hasId) convArgs.push('id: model.id');
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
-        convArgs.push(`${field.name}: model.${field.name}`);
+        const sdType = swiftDataFieldType(field.type);
+        if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
+            // Type needs JSON encoding: [String: String] → Data
+            if (field.isOptional) {
+                convArgs.push(`${field.name}: (try? JSONEncoder().encode(model.${field.name})) ?? nil`);
+            } else {
+                convArgs.push(`${field.name}: (try? JSONEncoder().encode(model.${field.name})) ?? Data()`);
+            }
+        } else if (sdType.replace('?', '') === 'String' && field.type.replace('?', '') !== 'String' && !field.type.startsWith('[')) {
+            // Non-string type stored as String
+            convArgs.push(`${field.name}: String(describing: model.${field.name})`);
+        } else {
+            convArgs.push(`${field.name}: model.${field.name}`);
+        }
     }
     lines.push(`        self.init(${convArgs.join(', ')})`);
     lines.push('    }');
@@ -702,7 +715,17 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     if (!hasId) modelArgs.push('id: id');
     for (const field of fields) {
         if (relationshipFieldNames.has(field.name)) continue;
-        modelArgs.push(`${field.name}: ${field.name}`);
+        const sdType = swiftDataFieldType(field.type);
+        if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
+            // Data → decode back to original type
+            if (field.isOptional) {
+                modelArgs.push(`${field.name}: ${field.name}.flatMap { try? JSONDecoder().decode(${field.type.replace('?', '')}.self, from: $0) }`);
+            } else {
+                modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${field.type}.self, from: ${field.name})) ?? ${field.type}()`);
+            }
+        } else {
+            modelArgs.push(`${field.name}: ${field.name}`);
+        }
     }
     lines.push(`        ${structName}(${modelArgs.join(', ')})`);
     lines.push('    }');

@@ -2200,7 +2200,7 @@ function generateAuthLayout(screen: Screen, model: SemanticAppModel, components:
         : generateLoginAuthLayout(screen, model, components, indentLevel);
 }
 
-function generateLoginAuthLayout(screen: Screen, _model: SemanticAppModel, _components: ComponentRef[], indentLevel: number): string {
+function generateLoginAuthLayout(screen: Screen, model: SemanticAppModel, _components: ComponentRef[], indentLevel: number): string {
     const lines: string[] = [];
 
     lines.push('NavigationStack {');
@@ -2278,12 +2278,20 @@ function generateLoginAuthLayout(screen: Screen, _model: SemanticAppModel, _comp
     lines.push('        .accessibilityLabel("Sign in")');
     lines.push('        .accessibilityHint("Double tap to sign in with your email and password")');
     lines.push('');
+    // Find the register/signup screen name from the model
+    const screens = (model.screens ?? []).filter(s => !isMarketingScreen(s));
+    const registerScreen = screens.find(s => {
+        const lower = s.name.toLowerCase();
+        return lower.includes('register') || lower.includes('signup') || lower.includes('sign-up') || lower.includes('createaccount');
+    });
+    const registerViewName = registerScreen ? `${pascalCase(registerScreen.name)}View` : 'SignUpView';
+
     lines.push('        // Navigation to register');
     lines.push('        HStack {');
     lines.push(`            Text("Don't have an account?")`);
     lines.push('                .foregroundStyle(.secondary)');
     lines.push('            NavigationLink("Sign Up") {');
-    lines.push('                RegisterView()');
+    lines.push(`                ${registerViewName}()`);
     lines.push('            }');
     lines.push('            .accessibilityHint("Navigates to registration screen")');
     lines.push('        }');
@@ -2833,7 +2841,7 @@ function generateSemanticComponent(comp: ComponentRef, screen: Screen): string {
 
     // Try to identify what kind of component this is semantically
     if (lower.includes('image') || lower === 'image') {
-        return 'AsyncImage(url: imageURL) { image in\n            image.resizable().aspectRatio(contentMode: .fit)\n        } placeholder: {\n            ProgressView()\n        }';
+        return 'AsyncImage(url: URL(string: "https://placeholder.co/400")) { image in\n            image.resizable().aspectRatio(contentMode: .fit)\n        } placeholder: {\n            ProgressView()\n        }\n        .accessibilityLabel("Image")';
     }
     if (lower.includes('link') || lower.includes('navigation')) {
         return `NavigationLink("View Details") {\n            // Navigate to detail\n        }`;
@@ -3139,7 +3147,12 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
 
     // Entity-based properties for list/grid/dashboard layouts when no explicit data requirements
-    const derivedEntityName = deriveEntityName(screen, model);
+    let derivedEntityName = deriveEntityName(screen, model);
+    // Fallback: infer entity from screen name for list/grid screens (e.g., "Rounds" → "Round")
+    if (!derivedEntityName && (screen.layout === 'list' || screen.layout === 'grid')) {
+        derivedEntityName = inferEntityFromScreen(screen);
+        if (derivedEntityName) derivedEntityName = resolveEntityCasing(derivedEntityName, model);
+    }
     // Also include custom layouts with repeated components or collection data requirements
     const hasRepeatedContent = (screen.components ?? []).some(c => c.count === 'repeated');
     const hasCollectionReq = (screen.dataRequirements ?? []).some(r => r.cardinality === 'many');

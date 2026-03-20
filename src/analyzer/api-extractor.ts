@@ -3,6 +3,8 @@
  * server actions, and server-state hooks (React Query / SWR).
  */
 
+import * as path from 'path';
+
 import {
   Project,
   SourceFile,
@@ -10,7 +12,6 @@ import {
   SyntaxKind,
   type CallExpression,
 } from 'ts-morph';
-import * as path from 'path';
 
 // ---------------------------------------------------------------------------
 // Types

@@ -29,21 +29,16 @@ interface SwiftField {
     comment?: string;
 }
 
+/** Regex matching TS/JS syntax or leaked import paths that must not appear in Swift types */
+const INVALID_SWIFT_TYPE = /[<>|{}]|=>|Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\/|\$Enums/;
+
 /**
- * Convert a TypeDefinition to a raw string representation for mapTsTypeToSwift,
- * or use typeDefToSwift directly for structured types.
- * Includes a guard to catch any leaked TS/JS syntax in the result.
+ * Convert a TypeDefinition to a Swift type string via typeDefToSwift,
+ * with a final safety net to catch any leaked TS/JS syntax.
  */
 function typeDefinitionToSwiftType(td: TypeDefinition): string {
-    let result = typeDefToSwift(td);
-    // Final safety net: if the resolved type still contains TS/JS syntax, fall back
-    if (/[<>|{}]|=>/.test(result)) {
-        result = 'String';
-    }
-    // Catch leaked import paths (e.g., Prisma enums: Import("...").$Enums.Status)
-    if (/Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\//.test(result)) {
-        result = 'String';
-    }
+    const result = typeDefToSwift(td);
+    if (INVALID_SWIFT_TYPE.test(result)) return 'String';
     return result;
 }
 
@@ -58,19 +53,14 @@ function analyseField(field: Field): SwiftField {
 
     let swiftType = typeDefinitionToSwiftType(td);
 
-    // Sanitize: if the resolved type contains TS/JS syntax, fall back to safe types
-    if (/[<>{}|]|=>/.test(swiftType)) {
-        swiftType = isOptional ? 'String?' : 'String';
-    }
     // Map TS primitive names that may have leaked through
     if (swiftType === 'Number') swiftType = 'Double';
     if (swiftType === 'Boolean') swiftType = 'Bool';
     // Replace Any-containing types that break Codable/Hashable conformance
     if (swiftType === 'Any') swiftType = 'String';
-    if (swiftType === '[Any]') swiftType = '[String]';
-    if (swiftType === '[String: Any]') swiftType = '[String: String]';
-    if (swiftType.includes('[String: Any]')) swiftType = swiftType.replace('[String: Any]', '[String: String]');
     if (swiftType === 'Any?') swiftType = 'String?';
+    if (swiftType === '[Any]') swiftType = '[String]';
+    if (swiftType.includes('[String: Any]')) swiftType = swiftType.replace('[String: Any]', '[String: String]');
 
     // Detect integer types from hints or naming
     const isInteger =

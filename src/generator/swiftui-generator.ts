@@ -1199,7 +1199,6 @@ function generateListLayout(screen: Screen, model: SemanticAppModel, components:
                 lines.push(`        ${ri}}`);
             } else {
                 // No entity found — array is [String], display the string directly
-                const entityInOutput = entityExistsInOutput(entityName, model);
                 if (entityInOutput) {
                     lines.push(`        ${ri}Text(String(describing: ${varName}.id))`);
                     lines.push(`            ${ri}.font(.headline)`);
@@ -4091,24 +4090,20 @@ export function isMarketingScreen(screen: Screen): boolean {
     if (matchesMarketingName) return true;
 
     // Filter icon components — SVG/icon wrappers are not screens
-    if (/Icon$/i.test(screen.name) || /^(Arrow|Check|Play|Chart|Users|Mic|Folder|Message|Sparkles|Trophy|Map|Upload|Search|File|Status|Trend|Star|Heart|Bell|Settings|Lock|Eye|Pen|Trash|Plus|Minus|Close|Menu|Calendar|Clock|Download|Share|Link|Filter|Sort|Grid|List|Home|Mail|Phone|Camera|Video|Globe|Flag|Tag|Pin|Bookmark|Shield|Zap|Sun|Moon|Cloud|Wifi|Battery|Volume|Pause|Stop|Skip|Refresh|Rotate|Crop|Layers|Copy|Clipboard|Info|Help|Alert|Warning)Icon$/i.test(screen.name)) return true;
+    if (/Icon$/i.test(screen.name)) return true;
 
     // Filter mockup/demo/skeleton/placeholder components — these are UI decorations, not screens
     if (/Mockup$|Skeleton$|Placeholder$|Shimmer$|Loader$/i.test(screen.name)) return true;
     if (/^(Animated|Loading|Skeleton|Shimmer)/i.test(screen.name) && screen.dataRequirements.length === 0 && screen.actions.length === 0) return true;
 
-    // Blog-prefixed screens that are purely static (no data, state, or actions)
-    const isStatic =
-        screen.dataRequirements.length === 0 &&
-        screen.stateBindings.length === 0 &&
-        screen.actions.length === 0;
-
     // Filter blog content pages — individual articles are not app screens.
     // Preserve generic blog screens: Blog, BlogView, BlogList, BlogDetail, BlogPost, BlogFeed.
-    const BLOG_GENERIC = /^blog(-?(view|list|detail|post|feed))?$/i;
-    if (name.toLowerCase().startsWith('blogindex')) return true;
-    if (kebabName.startsWith('blog-') && !BLOG_GENERIC.test(kebabName)) return true;
-    if (name === 'blog' && isStatic) return true;
+    if (name.startsWith('blogindex')) return true;
+    if (kebabName.startsWith('blog-') && !/^blog(-?(view|list|detail|post|feed))?$/i.test(kebabName)) return true;
+    if (name === 'blog' &&
+        screen.dataRequirements.length === 0 &&
+        screen.stateBindings.length === 0 &&
+        screen.actions.length === 0) return true;
 
     return false;
 }

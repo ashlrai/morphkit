@@ -9,6 +9,7 @@
  */
 
 import * as path from 'path';
+
 import {
   Project,
   SourceFile,
@@ -20,6 +21,7 @@ import {
   type JsxSelfClosingElement,
   type CallExpression,
 } from 'ts-morph';
+
 import type { RepoScanResult } from './repo-scanner.js';
 import type {
   ExtractedRoute,

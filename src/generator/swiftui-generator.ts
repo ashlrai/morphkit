@@ -16,6 +16,7 @@ import type {
 } from '../semantic/model';
 
 import { isJunkEntity } from './model-generator';
+import { generateFunctionName as networkingFunctionName, extractPathParams as networkingExtractPathParams, cleanURL as networkingCleanURL } from './networking-generator';
 
 export interface GeneratedFile {
     path: string;
@@ -637,9 +638,33 @@ function deriveEntityName(screen: Screen, model?: SemanticAppModel): string | nu
  * that pascalCase can't split into proper words ("Historyitem" instead
  * of "HistoryItem").
  */
-/** Check if an entity name will exist in the generated Swift output (not junk, not filtered) */
+/** Check if an entity name will exist in the generated Swift output (not junk, not filtered).
+ *  Supports compound suffix matching: "Round" matches "StructuredRound" by checking
+ *  if the last CamelCase word of any entity name matches.
+ */
 function entityExistsInOutput(name: string, model: SemanticAppModel): boolean {
-    return (model.entities ?? []).some(e => !isJunkEntity(e) && pascalCase(e.name) === name);
+    return resolveEntityNameInOutput(name, model) !== null;
+}
+
+/**
+ * Resolve an entity name to the actual PascalCase name in the generated output.
+ * Returns null if no match found. Tries exact match first, then compound suffix match
+ * (e.g., "Round" → "StructuredRound").
+ */
+function resolveEntityNameInOutput(name: string, model: SemanticAppModel): string | null {
+    const entities = model.entities ?? [];
+    // Exact match first
+    const exact = entities.find(e => !isJunkEntity(e) && pascalCase(e.name) === name);
+    if (exact) return pascalCase(exact.name);
+    // Compound suffix match: "Round" matches "StructuredRound"
+    const lowerName = name.toLowerCase();
+    const suffixMatch = entities.find(e => {
+        if (isJunkEntity(e)) return false;
+        const words = e.name.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
+        return words[words.length - 1]?.toLowerCase() === lowerName;
+    });
+    if (suffixMatch) return pascalCase(suffixMatch.name);
+    return null;
 }
 
 /**
@@ -648,8 +673,9 @@ function entityExistsInOutput(name: string, model: SemanticAppModel): boolean {
  * "Collections"), omit the annotation so Swift infers from the array element type.
  */
 function forEachHeader(arrayExpr: string, varName: string, entityName: string, model: SemanticAppModel): string {
-    if (entityExistsInOutput(entityName, model)) {
-        return `ForEach(${arrayExpr}) { (${varName}: ${entityName}) in`;
+    const resolvedName = resolveEntityNameInOutput(entityName, model);
+    if (resolvedName) {
+        return `ForEach(${arrayExpr}) { (${varName}: ${resolvedName}) in`;
     }
     // When entity doesn't exist, the array is [String] — use id: \.self
     return `ForEach(${arrayExpr}, id: \\.self) { ${varName} in`;
@@ -664,6 +690,38 @@ function resolveEntityCasing(name: string, model: SemanticAppModel): string {
         }
     }
     return name;
+}
+
+/**
+ * Resolve the primary entity for dashboard/home screens.
+ * Shared between state declaration and generateDashboardLayout to ensure consistency.
+ * Returns { entity, entityName } where entityName is always PascalCase.
+ */
+function resolveDashboardEntity(screen: Screen, model: SemanticAppModel): { entity: Entity | null; entityName: string } {
+    const derivedEntityName = deriveEntityName(screen, model);
+    let entity = resolveEntity(screen, model);
+    let entityName = derivedEntityName ?? inferEntityFromScreen(screen);
+
+    const entities = (model.entities ?? []).filter(e => {
+        if (isJunkEntity(e)) return false;
+        if (e.fields.length === 1 && e.fields[0]?.name === '__enum') return false;
+        return e.fields.length >= 3;
+    });
+
+    if (entities.length > 0 && (!entity || isJunkEntity(entity) || (entity.fields ?? []).length < 3)) {
+        const bestEntity = [...entities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
+        if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
+            entity = bestEntity;
+            entityName = pascalCase(bestEntity.name);
+        }
+    }
+
+    // Ensure entityName aligns with the resolved entity
+    if (entity && pascalCase(entity.name) !== entityName) {
+        entityName = pascalCase(entity.name);
+    }
+
+    return { entity, entityName };
 }
 
 /**
@@ -1637,29 +1695,8 @@ function generateDetailLayout(screen: Screen, model: SemanticAppModel, component
 }
 
 function generateDashboardLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {
-    // For dashboard/home screens, resolveEntity may return a bogus "Home" entity
-    // that doesn't match any real data model. Fall back to the first non-enum entity.
-    let entity = resolveEntity(screen, model);
-    let entityName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
-
-    // If resolveEntity returned null or matched an entity with very few fields (< 3),
-    // fall back to the entity in the model with the most fields (e.g., "Product" for e-commerce).
-    // Filter out junk entities and enum-only entities so we pick a real data model.
-    const entities = (model.entities ?? []).filter(e => !isJunkEntity(e) && !(e.fields.length === 1 && e.fields[0]?.name === '__enum'));
-    if (entities.length > 0 && (!entity || isJunkEntity(entity) || (entity.fields ?? []).length < 3)) {
-        const bestEntity = [...entities].sort((a, b) => (b.fields ?? []).length - (a.fields ?? []).length)[0];
-        if (bestEntity && (bestEntity.fields ?? []).length >= 3) {
-            entity = bestEntity;
-            entityName = pascalCase(bestEntity.name);
-        }
-    }
-
-    // Ensure entityName aligns with the resolved entity. For dashboard/home screens,
-    // entityName may still be "Home" from inferEntityFromScreen while entity was resolved
-    // to a real data entity (e.g. Product) via component name matching.
-    if (entity && pascalCase(entity.name) !== entityName) {
-        entityName = pascalCase(entity.name);
-    }
+    // Use shared dashboard entity resolution to match state declaration logic
+    const { entity, entityName } = resolveDashboardEntity(screen, model);
 
     const varName = camelCase(entityName);
     const dataReqs = screen.dataRequirements ?? [];
@@ -3175,19 +3212,21 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (req.cardinality === 'many' || (req as any).type === 'list') {
             const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
             if (!declaredNames.has(arrayVarName)) {
-                // Only use typed array if the entity exists in the model
-                const entityExists = entityExistsInOutput(entityName, model);
-                const arrayType = entityExists ? `[${entityName}]` : '[String]';
+                // Use resolved entity name (supports compound suffix matching)
+                const resolvedName = resolveEntityNameInOutput(entityName, model);
+                const arrayType = resolvedName ? `[${resolvedName}]` : '[String]';
                 lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
                 declaredNames.add(arrayVarName);
+                declaredTypes.set(arrayVarName, arrayType);
                 dataReqDeclaredNames.add(arrayVarName);
             }
         } else {
             if (!declaredNames.has(varName)) {
-                const entityExists = entityExistsInOutput(entityName, model);
-                const stateType = entityExists ? `${entityName}?` : 'String?';
+                const resolvedName = resolveEntityNameInOutput(entityName, model);
+                const stateType = resolvedName ? `${resolvedName}?` : 'String?';
                 lines.push(`    @State private var ${varName}: ${stateType}`);
                 declaredNames.add(varName);
+                declaredTypes.set(varName, stateType);
                 dataReqDeclaredNames.add(varName);
             }
         }
@@ -3211,25 +3250,14 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         const varName = camelCase(derivedEntityName);
         const arrayVarName = varName.endsWith('s') ? varName : `${varName}s`;
         if (!declaredNames.has(arrayVarName)) {
-            // Resolve the actual entity type that the API returns for this resource.
-            // The networking generator uses inferReturnTypeFromEntities which may pick
-            // a different entity than what we inferred from screen name (e.g., StructuredRound vs Round).
-            let actualEntityName = derivedEntityName;
-            const allEntities = model.entities ?? [];
-            if (!entityExistsInOutput(derivedEntityName, model)) {
-                // Entity doesn't exist — try compound name matching (e.g., "Round" → "StructuredRound")
-                const lowerDerived = derivedEntityName.toLowerCase();
-                const match = allEntities.find(e => {
-                    if (isJunkEntity(e)) return false;
-                    const words = e.name.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
-                    return words[words.length - 1]?.toLowerCase() === lowerDerived;
-                });
-                if (match) actualEntityName = pascalCase(match.name);
-            }
+            // Resolve the actual entity type via centralized compound suffix matching
+            // (e.g., "Round" → "StructuredRound")
+            const actualEntityName = resolveEntityNameInOutput(derivedEntityName, model) ?? derivedEntityName;
             const entityExists = entityExistsInOutput(actualEntityName, model);
             const arrayType = entityExists ? `[${actualEntityName}]` : '[String]';
             lines.push(`    @State private var ${arrayVarName}: ${arrayType} = []`);
             declaredNames.add(arrayVarName);
+            declaredTypes.set(arrayVarName, arrayType);
             dataReqDeclaredNames.add(arrayVarName);
         }
         // List/grid screens with entity arrays need async data loading
@@ -3239,25 +3267,18 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     }
 
     // For dashboard layouts, ensure the collection array is declared using the same
-    // fallback logic as generateDashboardLayout (prefer primary entity over "Home")
+    // entity resolution as generateDashboardLayout (via shared resolveDashboardEntity)
     if (screen.layout === 'dashboard') {
-        // For dashboard/home screens, always use the entity with the most fields
-        // rather than trying to derive from screen name (which gives "Home" → "Home" type)
-        const allEntities = (model.entities ?? []).filter(e => {
-            if (isJunkEntity(e)) return false;
-            // Skip enum entities (single __enum field)
-            if (e.fields.length === 1 && e.fields[0]?.name === '__enum') return false;
-            return e.fields.length >= 3;
-        });
-        const bestEntity = allEntities.sort((a, b) => b.fields.length - a.fields.length)[0];
-        const dashEntityName = bestEntity ? pascalCase(bestEntity.name) : (derivedEntityName ?? inferEntityFromScreen(screen));
+        const { entityName: dashEntityName } = resolveDashboardEntity(screen, model);
         const dashVar = camelCase(dashEntityName);
         const dashArrayVar = dashVar.endsWith('s') ? dashVar : `${dashVar}s`;
         if (!declaredNames.has(dashArrayVar)) {
-            const dashEntityExists = entityExistsInOutput(pascalCase(dashEntityName), model);
-            const dashArrayType = dashEntityExists ? `[${pascalCase(dashEntityName)}]` : '[String]';
+            const resolvedDashName = resolveEntityNameInOutput(dashEntityName, model) ?? dashEntityName;
+            const dashEntityExists = entityExistsInOutput(resolvedDashName, model);
+            const dashArrayType = dashEntityExists ? `[${resolvedDashName}]` : '[String]';
             lines.push(`    @State private var ${dashArrayVar}: ${dashArrayType} = []`);
             declaredNames.add(dashArrayVar);
+            declaredTypes.set(dashArrayVar, dashArrayType);
         }
     }
 
@@ -3304,6 +3325,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (!declaredNames.has(eVar)) {
             lines.push(`    @State private var ${eVar}: ${eName}?`);
             declaredNames.add(eVar);
+            declaredTypes.set(eVar, `${eName}?`);
         }
 
         // Mark that this detail screen needs id-based async loading
@@ -3324,6 +3346,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 if (repeatedComps.length > 0) {
                     lines.push(`    @State private var ${arrayVarName}: [${eName}] = []`);
                     declaredNames.add(arrayVarName);
+                    declaredTypes.set(arrayVarName, `[${eName}]`);
                 }
             }
         }
@@ -3408,6 +3431,36 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
+    // Profile layout state — ensure the profile entity variable is declared
+    if (screen.layout === 'profile') {
+        const profileEntity = resolveEntity(screen, model);
+        if (profileEntity) {
+            const profileVarName = camelCase(profileEntity.name);
+            if (!declaredNames.has(profileVarName)) {
+                const profileTypeName = pascalCase(profileEntity.name);
+                lines.push(`    @State private var ${profileVarName}: ${profileTypeName}?`);
+                declaredNames.add(profileVarName);
+                declaredTypes.set(profileVarName, `${profileTypeName}?`);
+            }
+        } else {
+            // Fallback: profile screens without a matched entity use a generic profile var
+            if (!declaredNames.has('profile')) {
+                lines.push('    @State private var profile: String?');
+                declaredNames.add('profile');
+                declaredTypes.set('profile', 'String?');
+            }
+        }
+        if (!declaredNames.has('isLoading')) {
+            lines.push('    @State private var isLoading = false');
+            declaredNames.add('isLoading');
+        }
+        if (!declaredNames.has('errorMessage')) {
+            lines.push('    @State private var errorMessage: String?');
+            declaredNames.add('errorMessage');
+        }
+        hasApiData = true;
+    }
+
     // Cart-specific: ensure cart items array state exists and add computed total
     const isCart = isCartScreen(screen);
     if (isCart) {
@@ -3417,6 +3470,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         if (!declaredNames.has(cartArrayVar)) {
             lines.push(`    @State private var ${cartArrayVar}: [${cartEntityName}] = []`);
             declaredNames.add(cartArrayVar);
+            declaredTypes.set(cartArrayVar, `[${cartEntityName}]`);
         }
     }
 
@@ -3666,23 +3720,36 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             // Reuse the same entity resolution as state declaration and body
             const detailEntityName = resolvedDetailEntityName || inferEntityFromScreen(screen);
             const detailVarName = resolvedDetailVarName || camelCase(detailEntityName);
-            // Check if a matching fetch method would exist in the generated API client
+            // Find matching detail endpoint (GET with path param matching entity name)
             const detailEndpoints = model.apiEndpoints ?? [];
-            const hasFetchEndpoint = detailEndpoints.some(ep => {
+            const matchingEp = detailEndpoints.find(ep => {
                 const url = ep.url?.toLowerCase() ?? '';
                 const nameLower = detailEntityName.toLowerCase();
-                return url.includes(nameLower) || url.includes(nameLower + 's');
+                return (ep.method ?? 'GET') === 'GET'
+                    && (url.includes(nameLower) || url.includes(nameLower + 's'))
+                    && (url.includes(':') || url.includes('{'));
             });
-            if (hasFetchEndpoint) {
-                // Find the actual parameter name from the matching endpoint URL
-                const matchingEp = detailEndpoints.find(ep => {
-                    const url = ep.url?.toLowerCase() ?? '';
-                    const nameLower = detailEntityName.toLowerCase();
-                    return (url.includes(nameLower) || url.includes(nameLower + 's')) && (url.includes(':') || url.includes('{'));
-                });
-                const paramMatch = matchingEp?.url?.match(/:([a-zA-Z_]+)/) ?? matchingEp?.url?.match(/\{([a-zA-Z_]+)\}/);
-                const paramName = paramMatch ? camelCase(paramMatch[1]) : 'id';
-                lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(${paramName}: id)`);
+            // Also match list endpoint for fallback
+            const listEp = !matchingEp ? detailEndpoints.find(ep => {
+                const url = ep.url?.toLowerCase() ?? '';
+                const nameLower = detailEntityName.toLowerCase();
+                return (ep.method ?? 'GET') === 'GET' && (url.includes(nameLower) || url.includes(nameLower + 's'));
+            }) : null;
+            const bestEp = matchingEp ?? listEp;
+            if (bestEp) {
+                // Use networking generator's function name computation for exact match
+                const exactFnName = networkingFunctionName(matchingEp ?? bestEp);
+                const cleanedUrl = networkingCleanURL(bestEp.url) ?? '';
+                const pathParams = networkingExtractPathParams(cleanedUrl);
+                // For detail endpoints, use the path param (usually 'id')
+                const paramName = pathParams.length > 0 ? camelCase(pathParams[0]) : 'id';
+                // If matching endpoint has path params, include them in the call
+                if (matchingEp && pathParams.length > 0) {
+                    lines.push(`            ${detailVarName} = try await APIClient.shared.${exactFnName}(${paramName}: id)`);
+                } else {
+                    // No path param endpoint found — use singular fetch with id
+                    lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(${paramName}: id)`);
+                }
             } else {
                 todoCount++;
                 lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
@@ -3712,11 +3779,15 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 // Data-requirement state vars use array types for "many" cardinality.
                 const isArrayReq = req.cardinality === 'many' || (req as any).type === 'list';
 
-                // Look up matching API endpoint for enriched TODO context
+                // Look up matching API endpoint to compute exact method name
                 const dataEndpoint = (model.apiEndpoints ?? []).find(ep => {
                     const url = (ep.url ?? '').toLowerCase();
                     return (ep.method ?? 'GET') === 'GET' && (url.includes(reqSource.toLowerCase()) || url.includes(fetchName.toLowerCase()));
                 });
+                // Use networking generator's exact function name when endpoint is known
+                const exactFetchFnName = dataEndpoint
+                    ? networkingFunctionName(dataEndpoint)
+                    : `fetch${pascalCase(fetchName)}`;
                 const endpointInfo = dataEndpoint
                     ? `${dataEndpoint.method ?? 'GET'} ${dataEndpoint.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param')}`
                     : `GET /api/${fetchName.toLowerCase()}`;
@@ -3727,53 +3798,52 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     const declaredType = declaredTypes.get(arrayVarName) ?? '';
                     const declaredIsArray = declaredType.startsWith('[');
                     const declaredIsScalar = /^(String\??|Bool\??|Int\??|Double\??|Float\??|Date\??|UUID\??)$/.test(declaredType);
-                    const fetchReturnsArray = fetchName.endsWith('s') || isArrayReq;
+                    // Prefer req.cardinality as authoritative signal; fetchName pluralization is tiebreaker only
+                    const fetchReturnsArray = isArrayReq || (req.cardinality !== 'one' && fetchName.endsWith('s'));
 
-                    // Mismatch 1: scalar state but API returns array (e.g., referrals: String? ← fetchReferrals(): [String])
-                    if (fetchReturnsArray && declaredIsScalar) {
-                        todoCount++;
-                        lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
-                        lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
-                        lines.push(`            // APIClient method: fetch${pascalCase(fetchName)}() -> ${returnType}`);
-                        lines.push(`            // Issue: declared as ${declaredType}, API returns array — change @State type to ${returnType}`);
-                        lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
-                        if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
-                    // Mismatch 2: typed array but API returns different type (e.g., [SavedTemplate] but fetch returns [String])
-                    } else if (declaredIsArray && declaredType !== '[String]') {
-                        // Extract the element type from [TypeName]
+                    if (fetchReturnsArray && declaredIsArray) {
+                        // Both agree on array — compatible, emit assignment
                         const elementType = declaredType.slice(1, -1);
                         const entityExists = entityExistsInOutput(elementType, model);
-                        if (!entityExists) {
+                        if (!entityExists && declaredType !== '[String]') {
                             // The declared type references an entity the API client doesn't know about
                             todoCount++;
                             lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
                             lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
-                            lines.push(`            // APIClient method: fetch${pascalCase(fetchName)}() -> ${returnType}`);
+                            lines.push(`            // APIClient method: ${exactFetchFnName}() -> ${returnType}`);
                             lines.push(`            // Issue: declared as ${declaredType}, but ${elementType} may not match API return type`);
-                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                             if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
                         } else {
-                            lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         }
-                    // Mismatch 3: non-array state but fetch returns array (broader check than just scalars)
                     } else if (fetchReturnsArray && !declaredIsArray) {
-                        todoCount++;
-                        lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
-                        lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
-                        lines.push(`            // APIClient method: fetch${pascalCase(fetchName)}() -> ${returnType}`);
-                        lines.push(`            // Issue: declared as ${declaredType}, needs array type — change @State type to ${returnType}`);
-                        lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
-                        if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
+                        // Auto-fix: declared as Entity? but fetch returns [Entity] — take .first
+                        if (!declaredIsScalar && declaredType.endsWith('?')) {
+                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
+                        } else {
+                            todoCount++;
+                            lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
+                            lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
+                            lines.push(`            // APIClient method: ${exactFetchFnName}() -> ${returnType}`);
+                            lines.push(`            // Issue: declared as ${declaredType}, API returns array — change @State type or use .first`);
+                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                            if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
+                        }
+                    } else if (!fetchReturnsArray && declaredIsArray) {
+                        // Auto-fix: declared as [Entity] but fetch returns Entity — wrap in array
+                        lines.push(`            ${arrayVarName} = [try await APIClient.shared.${exactFetchFnName}()]`);
                     } else {
-                        lines.push(`            ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                        // Both scalar — compatible
+                        lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                     }
                 } else {
                     // Variable not declared — emit as TODO
                     todoCount++;
                     lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
                     lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
-                    lines.push(`            // APIClient method: fetch${pascalCase(fetchName)}() -> ${returnType}`);
-                    lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.fetch${pascalCase(fetchName)}()`);
+                    lines.push(`            // APIClient method: ${exactFetchFnName}() -> ${returnType}`);
+                    lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                     if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
                 }
                 hasLoadDataBody = true;
@@ -3786,26 +3856,21 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             const entVar = camelCase(derivedEntityName);
             const entArrayVar = entVar.endsWith('s') ? entVar : pluralize(entVar);
             const pluralName = derivedEntityName.endsWith('s') ? derivedEntityName : pluralize(derivedEntityName);
-            // Check if the fetch method would exist in the generated API client
+            // Find matching list endpoint to compute exact function name
             const listEndpoints = model.apiEndpoints ?? [];
-            const hasListFetch = listEndpoints.some(ep => {
+            const matchingListEp = listEndpoints.find(ep => {
                 if ((ep.method ?? 'GET') !== 'GET') return false;
                 const url = ep.url?.toLowerCase() ?? '';
                 if (url.includes(':') || url.includes('{')) return false;
                 const lastSeg = url.split('/').filter(s => s).pop() ?? '';
                 return lastSeg === entVar + 's' || lastSeg === entVar || lastSeg === pluralName.toLowerCase();
             });
-            if (hasListFetch) {
-                const fetchFnName = `fetch${pascalCase(pluralName)}`;
-                // Entity-inferred fetch: API may return a different type than the declared state
-                // (e.g., fetchRounds() → [StructuredRound] but state is [Round])
-                // Use a safe assignment that works even if types differ
+            if (matchingListEp) {
+                const fetchFnName = networkingFunctionName(matchingListEp);
                 const declaredType = declaredTypes.get(entArrayVar) ?? '';
                 if (dataReqDeclaredNames.has(entArrayVar)) {
-                    // Data-requirement declared — types were set up to match
                     lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}()`);
                 } else {
-                    // Entity-inferred — emit with explicit type annotation to catch mismatches at compile time
                     lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}() // Verify return type matches ${declaredType}`);
                 }
             } else {
@@ -4537,4 +4602,4 @@ export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
 }
 
 // Re-export helpers for use by other generators
-export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName, pluralize, cleanSourceName, cleanStoreName, getReferenceScreenNames, isWebOnlyState };
+export { mapTsTypeToSwift, typeDefToSwift, defaultValueForType, pascalCase, camelCase, indent, relativeSourcePath, isValidSwiftFieldName, pluralize, cleanSourceName, cleanStoreName, getReferenceScreenNames, isWebOnlyState, resolveEntityNameInOutput };

@@ -1701,3 +1701,6 @@ export function generateNetworkingLayer(model: SemanticAppModel): GeneratedFile[
 
     return files;
 }
+
+// Exported for use by swiftui-generator to compute exact API method names
+export { generateFunctionName, extractPathParams, cleanURL };

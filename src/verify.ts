@@ -89,9 +89,11 @@ function extractFuncBodies(source: string): Array<{ name: string; body: string }
 
         // Track brace depth to find the closing brace
         let depth = 0;
-        let bodyLines: string[] = [];
+        const bodyLines: string[] = [];
         for (let j = braceStart; j < lines.length; j++) {
-            for (const ch of lines[j]) {
+            // Strip line comments before counting braces to avoid mismatches
+            const stripped = lines[j].replace(/\/\/.*$/, '');
+            for (const ch of stripped) {
                 if (ch === '{') depth++;
                 if (ch === '}') depth--;
             }
@@ -191,7 +193,7 @@ export function verifyProject(projectPath: string): VerifyResult {
         return rel.includes('Views/') || rel.includes('views/');
     });
 
-    let screensTotal = viewFiles.length;
+    const screensTotal = viewFiles.length;
     let screensComplete = 0;
 
     for (const viewFile of viewFiles) {
@@ -264,24 +266,26 @@ export function verifyProject(projectPath: string): VerifyResult {
 
     for (const modelFile of modelFiles) {
         const content = safeReadFile(modelFile);
+        // Strip line comments before brace counting to avoid mismatches
+        const contentStripped = content.replace(/\/\/.*$/gm, '');
         // Find struct declarations
         const structRegex = /struct\s+\w+[^{]*\{/g;
         let structMatch;
 
-        while ((structMatch = structRegex.exec(content)) !== null) {
+        while ((structMatch = structRegex.exec(contentStripped)) !== null) {
             modelsTotal++;
 
             // Extract the struct body
             const startIdx = structMatch.index + structMatch[0].length;
             let depth = 1;
             let endIdx = startIdx;
-            for (let i = startIdx; i < content.length && depth > 0; i++) {
-                if (content[i] === '{') depth++;
-                if (content[i] === '}') depth--;
+            for (let i = startIdx; i < contentStripped.length && depth > 0; i++) {
+                if (contentStripped[i] === '{') depth++;
+                if (contentStripped[i] === '}') depth--;
                 endIdx = i;
             }
 
-            const structBody = content.slice(startIdx, endIdx);
+            const structBody = contentStripped.slice(startIdx, endIdx);
             // Count let/var property declarations (simple heuristic)
             const propMatches = structBody.match(/(?:let|var)\s+\w+\s*[:\=]/g);
             const propCount = propMatches ? propMatches.length : 0;

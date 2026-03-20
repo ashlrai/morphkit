@@ -391,7 +391,7 @@ server.tool(
             if (modelDir && viewContent) {
                 // Extract type references from the view file
                 const typeRefs = new Set<string>();
-                const statePattern = /:\s*([A-Z][A-Za-z0-9]+)[\?\s]/g;
+                const statePattern = /:\s*([A-Z][A-Za-z0-9]+)(?:[?\s]|$)/gm;
                 let match;
                 while ((match = statePattern.exec(viewContent)) !== null) {
                     const typeName = match[1];
@@ -601,7 +601,7 @@ server.tool(
         }
 
         try {
-            const result = await verifyProject(projectDir);
+            const result = verifyProject(projectDir);
             const formatted = formatVerifyResult(result);
             const jsonResult = JSON.stringify(result, null, 2);
 
@@ -629,19 +629,17 @@ server.tool(
         }
 
         try {
-            const result = await verifyProject(projectDir);
-            const todosByFile: Record<string, string[]> = (result as any).todosByFile ?? {};
+            const result = verifyProject(projectDir);
 
             // Find the file with the most TODOs
             let maxTodos = 0;
             let maxFile = '';
-            const fileTodoCounts: Array<{ file: string; count: number; todos: string[] }> = [];
+            const fileTodoCounts: Array<{ file: string; count: number }> = [];
 
-            for (const [file, todos] of Object.entries(todosByFile)) {
-                const todoList = Array.isArray(todos) ? todos : [];
-                fileTodoCounts.push({ file, count: todoList.length, todos: todoList });
-                if (todoList.length > maxTodos) {
-                    maxTodos = todoList.length;
+            for (const [file, count] of Object.entries(result.todosByFile)) {
+                fileTodoCounts.push({ file, count });
+                if (count > maxTodos) {
+                    maxTodos = count;
                     maxFile = file;
                 }
             }
@@ -714,12 +712,17 @@ server.tool(
             lines.push(`**Why:** ${reason}`);
             lines.push('');
 
-            // List TODOs for the recommended file
+            // Show TODO count for the recommended file
             const recommendedEntry = fileTodoCounts.find(f => f.file === recommendedFile);
-            if (recommendedEntry && recommendedEntry.todos.length > 0) {
-                lines.push(`### TODOs in ${screenFileName} (${recommendedEntry.todos.length})`);
-                for (const todo of recommendedEntry.todos) {
-                    lines.push(`- ${todo.trim()}`);
+            if (recommendedEntry && recommendedEntry.count > 0) {
+                lines.push(`### TODOs in ${screenFileName}: ${recommendedEntry.count}`);
+                // Show category breakdown if available
+                const categoryBreakdown = Object.entries(result.todosByCategory)
+                    .filter(([, c]) => c > 0)
+                    .map(([cat, c]) => `  - ${cat}: ${c}`)
+                    .join('\n');
+                if (categoryBreakdown) {
+                    lines.push(categoryBreakdown);
                 }
                 lines.push('');
             }

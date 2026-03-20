@@ -730,7 +730,7 @@ program
     const spinner = ora('Verifying project...').start();
 
     try {
-      const result = await verifyProject(resolvedPath);
+      const result = verifyProject(resolvedPath);
       spinner.succeed('Verification complete');
 
       if (options.json) {
@@ -759,14 +759,22 @@ program
 
     try {
       // Read existing settings or start fresh
-      let settings: Record<string, any> = {};
+      let settings: Record<string, any> = Object.create(null);
       if (existsSync(settingsPath)) {
         const raw = readFileSync(settingsPath, 'utf-8');
-        settings = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        // Only copy known safe keys to prevent prototype pollution
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          for (const key of Object.keys(parsed)) {
+            if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
+              settings[key] = parsed[key];
+            }
+          }
+        }
       }
 
       // Merge mcpServers entry
-      if (!settings.mcpServers) {
+      if (!settings.mcpServers || typeof settings.mcpServers !== 'object') {
         settings.mcpServers = {};
       }
       settings.mcpServers.morphkit = {

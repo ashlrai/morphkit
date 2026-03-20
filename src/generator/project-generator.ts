@@ -1726,8 +1726,8 @@ export async function generateXcodeProject(
             // Allow controlled parent references (e.g., ../Package.swift, ../README.md)
             // but verify the resolved path stays within the output directory
             const fullPath = resolve(appDir, file.path);
-            const resolvedOutputDir = resolve(outputPath);
-            if (!fullPath.startsWith(resolvedOutputDir)) {
+            const resolvedOutputDir = resolve(outputPath) + '/';
+            if (!fullPath.startsWith(resolvedOutputDir) && fullPath !== resolve(outputPath)) {
                 allWarnings.push(`[${file.path}] Skipped: path resolves outside output directory`);
                 continue;
             }
@@ -1738,7 +1738,7 @@ export async function generateXcodeProject(
             const fullPath = join(appDir, file.path);
             const normalizedFull = resolve(fullPath);
             // Verify resolved path is within the app directory or output directory
-            if (!normalizedFull.startsWith(resolvedAppDir) && !normalizedFull.startsWith(resolve(outputPath))) {
+            if (!normalizedFull.startsWith(resolvedAppDir + '/') && normalizedFull !== resolvedAppDir && !normalizedFull.startsWith(resolve(outputPath) + '/')) {
                 allWarnings.push(`[${file.path}] Skipped: path resolves outside output directory`);
                 continue;
             }

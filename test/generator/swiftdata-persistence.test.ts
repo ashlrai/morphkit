@@ -166,7 +166,7 @@ describe('SwiftData Persistence Layer', () => {
             const files = generateSwiftDataModels(model);
 
             expect(files.length).toBeGreaterThan(0);
-            const storeFile = files.find(f => f.path.includes('ProductStore'));
+            const storeFile = files.find(f => f.path.includes('DataStore'));
             expect(storeFile).toBeDefined();
         });
 
@@ -176,7 +176,7 @@ describe('SwiftData Persistence Layer', () => {
             const content = files[0].content;
 
             expect(content).toContain('@Model');
-            expect(content).toContain('final class ProductStore');
+            expect(content).toContain('final class ProductRecord');
         });
 
         test('SwiftData model imports SwiftData', () => {
@@ -211,12 +211,12 @@ describe('SwiftData Persistence Layer', () => {
             expect(content).toContain('@Attribute(.unique)');
         });
 
-        test('SwiftData model uses Store suffix naming', () => {
+        test('SwiftData model uses Record suffix naming', () => {
             const model = createMinimalModel([productEntity, userEntity]);
             const files = generateSwiftDataModels(model);
 
-            const productStore = files.find(f => f.content.includes('ProductStore'));
-            const userStore = files.find(f => f.content.includes('UserStore'));
+            const productStore = files.find(f => f.content.includes('ProductRecord'));
+            const userStore = files.find(f => f.content.includes('UserRecord'));
 
             expect(productStore).toBeDefined();
             expect(userStore).toBeDefined();
@@ -275,7 +275,7 @@ describe('SwiftData Persistence Layer', () => {
             const content = files[0].content;
 
             expect(content).toContain('@Relationship');
-            expect(content).toContain('[ProductStore]');
+            expect(content).toContain('[ProductRecord]');
         });
     });
 
@@ -327,7 +327,7 @@ describe('SwiftData Persistence Layer', () => {
             const file = generateDataManager(model);
             const content = file!.content;
 
-            expect(content).toContain('FetchDescriptor<ProductStore>');
+            expect(content).toContain('FetchDescriptor<ProductRecord>');
         });
 
         test('DataManager imports SwiftData', () => {
@@ -371,11 +371,11 @@ describe('SwiftData Persistence Layer', () => {
             // Verify the naming convention that project-generator uses
             const storeTypeNames = eligible.map(e => {
                 const name = e.name.charAt(0).toUpperCase() + e.name.slice(1);
-                return `${name}Store.self`;
+                return `${name}Record.self`;
             });
 
-            expect(storeTypeNames).toContain('ProductStore.self');
-            expect(storeTypeNames).toContain('UserStore.self');
+            expect(storeTypeNames).toContain('ProductRecord.self');
+            expect(storeTypeNames).toContain('UserRecord.self');
         });
     });
 });

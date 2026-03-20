@@ -61,7 +61,7 @@ function generateAppEntry(model: SemanticAppModel): GeneratedFile {
     lines.push('            ContentView()');
     lines.push('        }');
     if (hasSwiftData) {
-        const storeTypes = eligible.map(e => `${pascalCase(e.name)}Store.self`);
+        const storeTypes = eligible.map(e => `${pascalCase(e.name)}Record.self`);
         lines.push(`        .modelContainer(for: [${storeTypes.join(', ')}])`);
     }
     lines.push('    }');

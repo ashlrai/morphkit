@@ -257,6 +257,8 @@ function sanitizeSwiftTypeName(name: string | undefined): string | undefined {
     if (JS_DOM_TYPES.has(name)) return undefined;
     // Reject names containing TS syntax (generics, unions, object literals, arrow fns)
     if (/[<>|{}]|=>/.test(name)) return undefined;
+    // Reject leaked import paths (Prisma enums, relative paths, node_modules)
+    if (/Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\/|\$Enums/.test(name)) return undefined;
     return name;
 }
 
@@ -4046,6 +4048,13 @@ export function isMarketingScreen(screen: Screen): boolean {
     const matchesMarketingName = MARKETING_NAME_PATTERNS.some((p) => p.test(kebabName) || p.test(screen.name));
 
     if (matchesMarketingName) return true;
+
+    // Filter icon components — SVG/icon wrappers are not screens
+    if (/Icon$/i.test(screen.name) || /^(Arrow|Check|Play|Chart|Users|Mic|Folder|Message|Sparkles|Trophy|Map|Upload|Search|File|Status|Trend|Star|Heart|Bell|Settings|Lock|Eye|Pen|Trash|Plus|Minus|Close|Menu|Calendar|Clock|Download|Share|Link|Filter|Sort|Grid|List|Home|Mail|Phone|Camera|Video|Globe|Flag|Tag|Pin|Bookmark|Shield|Zap|Sun|Moon|Cloud|Wifi|Battery|Volume|Pause|Stop|Skip|Refresh|Rotate|Crop|Layers|Copy|Clipboard|Info|Help|Alert|Warning)Icon$/i.test(screen.name)) return true;
+
+    // Filter mockup/demo/skeleton/placeholder components — these are UI decorations, not screens
+    if (/Mockup$|Skeleton$|Placeholder$|Shimmer$|Loader$/i.test(screen.name)) return true;
+    if (/^(Animated|Loading|Skeleton|Shimmer)/i.test(screen.name) && screen.dataRequirements.length === 0 && screen.actions.length === 0) return true;
 
     // Blog-prefixed screens that are purely static (no data, state, or actions)
     const isStatic =

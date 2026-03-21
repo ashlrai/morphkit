@@ -1,0 +1,57 @@
+rules:
+  - id: dangerous-inner-html
+    pattern: |
+      <$EL dangerouslySetInnerHTML={...} />
+    message: "dangerouslySetInnerHTML usage — ensure input is sanitized (DOMPurify)."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: "A03:2021 - Injection"
+      cwe: "CWE-79: XSS"
+
+  - id: next-public-secret-leak
+    patterns:
+      - pattern-regex: "NEXT_PUBLIC_.*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL)"
+    message: "Potentially sensitive value exposed via NEXT_PUBLIC_ prefix."
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-200: Information Exposure"
+
+  - id: hardcoded-secret-pattern
+    patterns:
+      - pattern-regex: "(sk_live_|sk_test_|pk_live_|whsec_|sbp_|xai-)[a-zA-Z0-9_-]{10,}"
+    message: "Potential hardcoded secret detected. Use environment variables."
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-798: Hardcoded Credentials"
+
+  - id: ssrf-user-controlled-url
+    patterns:
+      - pattern: |
+          fetch($REQ.$PROP, ...)
+    paths:
+      include:
+        - app/api/
+        - src/app/api/
+    message: "Possible SSRF — server-side fetch with potentially user-controlled URL."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: "A10:2021 - SSRF"
+
+  - id: unsafe-ast-manipulation
+    patterns:
+      - pattern: |
+          $SOURCE.insertText($POS, $INPUT)
+    message: "Direct AST text insertion — validate input to prevent code injection in generated files."
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: "CWE-94: Code Injection"

@@ -1,0 +1,49 @@
+title = "Morphkit Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-key"
+description = "Supabase service role key"
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'''
+tags = ["key", "supabase"]
+keywords = ["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"]
+
+[[rules]]
+id = "xai-api-key"
+description = "xAI API key"
+regex = '''xai-[a-zA-Z0-9]{20,}'''
+tags = ["key", "xai"]
+keywords = ["xai-"]
+
+[[rules]]
+id = "stripe-secret"
+description = "Stripe secret key"
+regex = '''(sk_live_|sk_test_|whsec_)[a-zA-Z0-9_-]{10,}'''
+tags = ["key", "stripe"]
+keywords = ["sk_live_", "sk_test_", "whsec_"]
+
+[[rules]]
+id = "sendgrid-api-key"
+description = "SendGrid API key"
+regex = '''SG\.[a-zA-Z0-9_-]{22,}\.[a-zA-Z0-9_-]{43,}'''
+tags = ["key", "sendgrid"]
+keywords = ["SG."]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+tags = ["key", "anthropic"]
+keywords = ["sk-ant-"]
+
+[allowlist]
+paths = [
+  '''node_modules''',
+  '''package-lock\.json''',
+  '''\.env\.example''',
+  '''dist/''',
+  '''\.next/''',
+  '''bun.lock''',
+]

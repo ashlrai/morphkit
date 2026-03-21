@@ -831,11 +831,20 @@ server.tool(
             const apiClientFile = allSwiftFiles.find(f => f.endsWith('APIClient.swift'));
             const apiContent = apiClientFile ? readFileSync(apiClientFile, 'utf-8') : '';
 
-            // Find model files
-            const modelFiles = allSwiftFiles.filter(f => f.includes('/Models/'));
+            // Find model files referenced by the view (limit context size)
+            const allModelFiles = allSwiftFiles.filter(f => f.includes('/Models/'));
             const modelContents: string[] = [];
-            for (const mf of modelFiles) {
-                modelContents.push(`// === ${basename(mf)} ===\n${readFileSync(mf, 'utf-8')}`);
+            // Extract type names from view to filter relevant models
+            const viewTypeRefs = new Set(
+                (viewContent.match(/\b[A-Z][A-Za-z0-9]+\b/g) ?? [])
+                    .filter(t => !['State', 'View', 'String', 'Int', 'Double', 'Bool', 'Date', 'UUID', 'Color', 'Image', 'Text', 'Button', 'VStack', 'HStack', 'List', 'NavigationStack', 'ScrollView', 'ForEach', 'Group', 'Section', 'Spacer', 'ProgressView', 'AsyncImage', 'NavigationLink', 'Picker', 'Menu', 'ToolbarItem', 'SwiftUI', 'Foundation', 'Observation', 'Observable'].includes(t))
+            );
+            for (const mf of allModelFiles) {
+                const modelName = basename(mf, '.swift');
+                // Include if the model name matches a type referenced in the view, or limit to 10 files max
+                if (viewTypeRefs.has(modelName) || modelContents.length < 10) {
+                    modelContents.push(`// === ${basename(mf)} ===\n${readFileSync(mf, 'utf-8')}`);
+                }
             }
 
             // Find reference implementation (REFERENCE IMPL marker)

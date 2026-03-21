@@ -9,7 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join, basename, dirname, relative } from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 
 import { verifyProject, getDetailedTodos, type DetailedTodo } from './verify.js';
 
@@ -81,12 +81,15 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
         }
     }
 
-    // Find CLAUDE.md
-    const claudeMdPath = join(projectPath, 'CLAUDE.md');
-    const claudeSubPath = allFiles.map(f => join(dirname(f), '..', 'CLAUDE.md')).find(p => existsSync(p));
-    const claudeContent = existsSync(claudeMdPath)
-        ? readFileSync(claudeMdPath, 'utf-8')
-        : claudeSubPath ? readFileSync(claudeSubPath, 'utf-8') : '';
+    // Find CLAUDE.md — check project root, one level up, and inside app subdirectories
+    const claudeCandidates = [
+        join(projectPath, 'CLAUDE.md'),
+        join(projectPath, '..', 'CLAUDE.md'),
+        ...new Set(allFiles.map(f => join(dirname(f), '..', 'CLAUDE.md'))),
+        ...new Set(allFiles.map(f => join(dirname(f), '..', '..', 'CLAUDE.md'))),
+    ];
+    const claudeMdFound = claudeCandidates.find(p => existsSync(p));
+    const claudeContent = claudeMdFound ? readFileSync(claudeMdFound, 'utf-8') : '';
 
     const parts: string[] = [];
     if (claudeContent) {
@@ -192,6 +195,8 @@ export async function completeProject(
     const client = new Anthropic({ apiKey });
     const filesCompleted: string[] = [];
     let todosResolved = 0;
+    let consecutiveNoProgress = 0;
+    const MAX_NO_PROGRESS = 3;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         // Check current state
@@ -258,13 +263,18 @@ export async function completeProject(
 
         if (!completedCode || completedCode.length < 50) {
             if (verbose) console.log(`  Skipping — response too short`);
+            consecutiveNoProgress++;
+            if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
+                if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
+                break;
+            }
             continue;
         }
 
         // Validate syntax before writing
         let syntaxValid = true;
         try {
-            execFileSync('which swiftc', { stdio: 'pipe' });
+            execSync('which swiftc', { stdio: 'pipe' });
             syntaxValid = validateSwiftSyntax(completedCode, bestFile);
         } catch {
             // swiftc not available, skip validation
@@ -272,6 +282,11 @@ export async function completeProject(
 
         if (!syntaxValid) {
             if (verbose) console.log(`  Skipping — syntax validation failed`);
+            consecutiveNoProgress++;
+            if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
+                if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
+                break;
+            }
             continue;
         }
 
@@ -281,6 +296,11 @@ export async function completeProject(
 
         if (newTodoCount >= oldTodoCount) {
             if (verbose) console.log(`  Skipping — no TODOs resolved (${oldTodoCount} → ${newTodoCount})`);
+            consecutiveNoProgress++;
+            if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
+                if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
+                break;
+            }
             continue;
         }
 
@@ -292,6 +312,7 @@ export async function completeProject(
         const resolved = oldTodoCount - newTodoCount;
         todosResolved += resolved;
         filesCompleted.push(relPath);
+        consecutiveNoProgress = 0;
 
         if (verbose) {
             console.log(`  Resolved ${resolved} TODOs (${newTodoCount} remaining in file)`);

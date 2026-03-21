@@ -1772,9 +1772,12 @@ final class PaymentManager {
         request.httpBody = try JSONEncoder().encode(["amount": amount])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await APIConfiguration.secureSession.data(for: request)
         let response = try JSONDecoder().decode(CheckoutResponse.self, from: data)
-        checkoutURL = URL(string: response.url)
+        guard let url = URL(string: response.url), url.scheme == "https" else {
+            throw URLError(.badURL)
+        }
+        checkoutURL = url
     }
 }
 

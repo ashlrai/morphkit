@@ -160,20 +160,23 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
   const supabasePkg = deps['@supabase/supabase-js'] ?? deps['@supabase/ssr'];
   if (supabasePkg) {
     const features: string[] = [];
-    // Scan source files to detect which Supabase features are used
+    // Scan only files that import from Supabase to avoid false positives
+    // (.from() is too common in non-Supabase code like Prisma, RxJS, etc.)
     for (const file of sourceFiles) {
       try {
         const content = fs.readFileSync(file.absolutePath, 'utf-8');
+        // Only scan files that reference Supabase
+        if (!content.includes('supabase') && !content.includes('Supabase')) continue;
         if (content.includes('.auth.') || content.includes('createClient')) features.push('auth');
         if (content.includes('.from(') || content.includes('.rpc(')) features.push('database');
-        if (content.includes('.storage.')) features.push('storage');
-        if (content.includes('.channel(') || content.includes('.on(')) features.push('realtime');
+        if (content.includes('.storage.from(')) features.push('storage');
+        if (content.includes('.channel(')) features.push('realtime');
       } catch { /* skip unreadable files */ }
     }
     services.push({
       kind: 'supabase',
       sdkPackage: '@supabase/supabase-js',
-      version: supabasePkg.replace(/[\^~]/, ''),
+      version: supabasePkg.replace(/[\^~>=<]/g, '').trim(),
       features: [...new Set(features)],
     });
   }
@@ -184,7 +187,7 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
     services.push({
       kind: 'stripe',
       sdkPackage: stripePkg === deps['stripe'] ? 'stripe' : '@stripe/stripe-js',
-      version: (deps['stripe'] ?? deps['@stripe/stripe-js'] ?? '').replace(/[\^~]/, ''),
+      version: (deps['stripe'] ?? deps['@stripe/stripe-js'] ?? '').replace(/[\^~>=<]/g, '').trim(),
       features: ['payments'],
     });
   }
@@ -195,7 +198,7 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
     services.push({
       kind: 'firebase',
       sdkPackage: 'firebase',
-      version: firebasePkg.replace(/[\^~]/, ''),
+      version: firebasePkg.replace(/[\^~>=<]/g, '').trim(),
       features: deps['firebase-admin'] ? ['auth', 'database', 'admin'] : ['auth', 'database'],
     });
   }
@@ -206,7 +209,7 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
     services.push({
       kind: 'clerk',
       sdkPackage: deps['@clerk/nextjs'] ? '@clerk/nextjs' : '@clerk/clerk-react',
-      version: clerkPkg.replace(/[\^~]/, ''),
+      version: clerkPkg.replace(/[\^~>=<]/g, '').trim(),
       features: ['auth'],
     });
   }
@@ -216,7 +219,7 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
     services.push({
       kind: 'openai',
       sdkPackage: 'openai',
-      version: (deps['openai'] ?? '').replace(/[\^~]/, ''),
+      version: (deps['openai'] ?? '').replace(/[\^~>=<]/g, '').trim(),
       features: ['ai'],
     });
   }
@@ -226,7 +229,7 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
     services.push({
       kind: 'anthropic',
       sdkPackage: '@anthropic-ai/sdk',
-      version: (deps['@anthropic-ai/sdk'] ?? '').replace(/[\^~]/, ''),
+      version: (deps['@anthropic-ai/sdk'] ?? '').replace(/[\^~>=<]/g, '').trim(),
       features: ['ai'],
     });
   }

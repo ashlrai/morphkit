@@ -23,7 +23,7 @@ import { generateProject } from '../generator/index.js';
 import { adaptForPlatform } from '../semantic/adapter.js';
 import { buildSemanticModel } from '../semantic/builder.js';
 import type { SemanticAppModel } from '../semantic/model.js';
-import { verifyProject, formatVerifyResult } from '../verify.js';
+import { verifyProject, formatVerifyResult, getDetailedTodos } from '../verify.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -748,6 +748,267 @@ server.tool(
         }
     },
 );
+
+// ---------------------------------------------------------------------------
+// Tool: morphkit_completion_status
+// ---------------------------------------------------------------------------
+
+server.tool(
+    'morphkit_completion_status',
+    'Returns machine-readable JSON with exact TODO locations, categories, line numbers, and completion percentages. Designed for automated completion loops.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+    },
+    async ({ project_path }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            const result = verifyProject(projectDir);
+            const todos = getDetailedTodos(projectDir);
+
+            const status = {
+                buildStatus: result.buildStatus,
+                buildErrors: result.buildErrors,
+                totalTodos: result.totalTodos,
+                todosByCategory: result.todosByCategory,
+                overallPercentage: result.overallPercentage,
+                screenCompletion: result.screenCompletion,
+                apiCoverage: result.apiCoverage,
+                modelCompleteness: result.modelCompleteness,
+                nextStep: result.nextStep,
+                todos: todos.map(t => ({
+                    file: t.relativePath,
+                    line: t.line,
+                    category: t.category,
+                    screen: t.screenName,
+                    hint: t.hint,
+                })),
+            };
+
+            return { content: [{ type: 'text' as const, text: JSON.stringify(status, null, 2) }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Completion status failed: ${msg}` }] };
+        }
+    },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: morphkit_complete_screen
+// ---------------------------------------------------------------------------
+
+server.tool(
+    'morphkit_complete_screen',
+    'Returns the full context needed to complete a single screen in a generated iOS project. Includes the view file content, relevant API client methods, model structs, and the reference implementation. Use this context to write the completed file.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+        screen_name: z.string().describe('Screen name (e.g., "Products", "ProductsDetail")'),
+    },
+    async ({ project_path, screen_name }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            // Find the view file
+            const allSwiftFiles = findSwiftFilesInDir(projectDir);
+            const viewFile = allSwiftFiles.find(f =>
+                f.toLowerCase().includes(`${screen_name.toLowerCase()}view.swift`) ||
+                f.toLowerCase().endsWith(`${screen_name.toLowerCase()}.swift`)
+            );
+
+            if (!viewFile) {
+                return { content: [{ type: 'text' as const, text: `Error: Could not find view file for screen "${screen_name}"` }] };
+            }
+
+            const viewContent = readFileSync(viewFile, 'utf-8');
+
+            // Find APIClient
+            const apiClientFile = allSwiftFiles.find(f => f.endsWith('APIClient.swift'));
+            const apiContent = apiClientFile ? readFileSync(apiClientFile, 'utf-8') : '';
+
+            // Find model files
+            const modelFiles = allSwiftFiles.filter(f => f.includes('/Models/'));
+            const modelContents: string[] = [];
+            for (const mf of modelFiles) {
+                modelContents.push(`// === ${basename(mf)} ===\n${readFileSync(mf, 'utf-8')}`);
+            }
+
+            // Find reference implementation (REFERENCE IMPL marker)
+            const refFile = allSwiftFiles.find(f => {
+                const content = readFileSync(f, 'utf-8');
+                return content.includes('REFERENCE IMPLEMENTATION') || content.includes('REFERENCE IMPL');
+            });
+            const refContent = refFile ? `// === Reference: ${basename(refFile)} ===\n${readFileSync(refFile, 'utf-8')}` : '';
+
+            // Find CLAUDE.md
+            const claudeMdPaths = [
+                join(projectDir, 'CLAUDE.md'),
+                ...allSwiftFiles.map(f => join(f, '..', '..', 'CLAUDE.md')).filter(p => existsSync(p)),
+            ];
+            const claudeMd = claudeMdPaths.find(p => existsSync(p));
+            const claudeContent = claudeMd ? readFileSync(claudeMd, 'utf-8') : '';
+
+            // Get TODOs for this screen
+            const todos = getDetailedTodos(projectDir).filter(t =>
+                t.relativePath.toLowerCase().includes(screen_name.toLowerCase())
+            );
+
+            const lines: string[] = [];
+            lines.push(`# Context for completing: ${screen_name}`);
+            lines.push('');
+            lines.push(`## TODOs (${todos.length})`);
+            for (const todo of todos) {
+                lines.push(`- Line ${todo.line}: [${todo.category}] ${todo.hint || todo.context.split('\n')[0]}`);
+            }
+            lines.push('');
+            lines.push('## View File');
+            lines.push('```swift');
+            lines.push(viewContent);
+            lines.push('```');
+            lines.push('');
+            if (apiContent) {
+                lines.push('## APIClient Methods (relevant)');
+                lines.push('```swift');
+                // Only include func signatures, not the full implementation
+                const funcLines = apiContent.split('\n').filter(l => l.trim().startsWith('func ') || l.trim().startsWith('// MARK'));
+                lines.push(funcLines.join('\n'));
+                lines.push('```');
+                lines.push('');
+            }
+            if (modelContents.length > 0) {
+                lines.push('## Model Structs');
+                lines.push('```swift');
+                lines.push(modelContents.join('\n\n'));
+                lines.push('```');
+                lines.push('');
+            }
+            if (refContent) {
+                lines.push('## Reference Implementation');
+                lines.push('```swift');
+                lines.push(refContent);
+                lines.push('```');
+                lines.push('');
+            }
+
+            return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Screen context failed: ${msg}` }] };
+        }
+    },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: morphkit_fix_build_error
+// ---------------------------------------------------------------------------
+
+server.tool(
+    'morphkit_fix_build_error',
+    'Parses Swift build errors and returns structured context for fixing them. Reads the offending files and suggests fix patterns.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+        error_output: z.string().describe('The stderr output from a failed swift build'),
+    },
+    async ({ project_path, error_output }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            // Parse Swift compiler errors
+            const errorLines = error_output.split('\n').filter(l => l.includes('error:'));
+            const parsedErrors: Array<{ file: string; line: number; message: string }> = [];
+
+            for (const line of errorLines) {
+                const match = line.match(/([^/\s]+\.swift):(\d+):\d+:\s*error:\s*(.+)$/);
+                if (match) {
+                    parsedErrors.push({
+                        file: match[1],
+                        line: parseInt(match[2], 10),
+                        message: match[3],
+                    });
+                }
+            }
+
+            if (parsedErrors.length === 0) {
+                return { content: [{ type: 'text' as const, text: 'No parseable Swift errors found in the output.' }] };
+            }
+
+            // Group by file
+            const byFile = new Map<string, typeof parsedErrors>();
+            for (const err of parsedErrors) {
+                const existing = byFile.get(err.file) ?? [];
+                existing.push(err);
+                byFile.set(err.file, existing);
+            }
+
+            const lines: string[] = [];
+            lines.push(`# Build Errors (${parsedErrors.length})`);
+            lines.push('');
+
+            for (const [fileName, errors] of byFile) {
+                lines.push(`## ${fileName}`);
+
+                // Try to find and read the file
+                const allSwiftFiles = findSwiftFilesInDir(projectDir);
+                const fullPath = allSwiftFiles.find(f => f.endsWith(fileName));
+                if (fullPath) {
+                    const content = readFileSync(fullPath, 'utf-8');
+                    const fileLines = content.split('\n');
+
+                    for (const err of errors) {
+                        lines.push(`### Line ${err.line}: ${err.message}`);
+                        // Show context: 3 lines before and after
+                        const start = Math.max(0, err.line - 4);
+                        const end = Math.min(fileLines.length, err.line + 3);
+                        lines.push('```swift');
+                        for (let i = start; i < end; i++) {
+                            const marker = i === err.line - 1 ? '>>>' : '   ';
+                            lines.push(`${marker} ${i + 1}: ${fileLines[i]}`);
+                        }
+                        lines.push('```');
+                        lines.push('');
+                    }
+                } else {
+                    for (const err of errors) {
+                        lines.push(`- Line ${err.line}: ${err.message}`);
+                    }
+                }
+                lines.push('');
+            }
+
+            return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Error parsing build output: ${msg}` }] };
+        }
+    },
+);
+
+// Helper for MCP tools - find all .swift files recursively
+function findSwiftFilesInDir(dir: string): string[] {
+    const results: string[] = [];
+    if (!existsSync(dir)) return results;
+    try {
+        const entries = readdirSync(dir);
+        for (const entry of entries) {
+            if (entry.startsWith('.') || entry === 'Build' || entry === '.build') continue;
+            const full = join(dir, entry);
+            try {
+                const s = statSync(full);
+                if (s.isDirectory()) results.push(...findSwiftFilesInDir(full));
+                else if (entry.endsWith('.swift')) results.push(full);
+            } catch { /* skip */ }
+        }
+    } catch { /* skip */ }
+    return results;
+}
 
 // ---------------------------------------------------------------------------
 // Start server

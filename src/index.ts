@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execSync } from 'child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, join, dirname } from 'path';
@@ -370,11 +371,18 @@ program
         process.exit(1);
       }
       if (auth.error) {
-        // Offline mode warning
-        console.warn(chalk.yellow(`\n${auth.error}`));
+        // Offline mode warning — make it visible
+        console.warn('');
+        console.warn(chalk.yellow('  ⚠  ' + auth.error));
+        console.warn(chalk.yellow('  ⚠  Usage will not be tracked. Get a free API key at:'));
+        console.warn(chalk.yellow('  ⚠  https://morphkit.dev/dashboard'));
+        console.warn('');
       } else {
         console.log(chalk.dim(`  Authenticated (${auth.tier} tier${auth.remaining > 0 ? `, ${auth.remaining} conversions remaining` : ''})`));
       }
+    } else {
+      console.log(chalk.dim('  No API key set — running in offline mode'));
+      console.log(chalk.dim('  Get a free key (20 conversions/month) at https://morphkit.dev/dashboard'));
     }
 
     const startTime = performance.now();
@@ -794,6 +802,189 @@ program
       console.error(chalk.red(`\nError: ${error instanceof Error ? error.message : error}`));
       process.exit(1);
     }
+  });
+
+// ---------------------------------------------------------------------------
+// complete — AI-powered TODO resolution
+// ---------------------------------------------------------------------------
+
+program
+  .command('complete')
+  .description('Auto-complete all MORPHKIT-TODOs in a generated iOS project using Claude API')
+  .argument('<project-path>', 'Path to the generated iOS project')
+  .option('--model <model>', 'Claude model to use', 'claude-sonnet-4-6')
+  .option('--max-iterations <n>', 'Maximum completion iterations', '30')
+  .option('--dry-run', 'Preview changes without writing files')
+  .option('-v, --verbose', 'Show detailed completion output', false)
+  .action(async (projectPath: string, options: { model: string; maxIterations: string; dryRun?: boolean; verbose?: boolean }) => {
+    const resolvedPath = resolve(projectPath);
+
+    if (!existsSync(resolvedPath)) {
+      console.error(chalk.red(`Error: Directory not found: ${resolvedPath}`));
+      process.exit(1);
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error(chalk.red('Error: ANTHROPIC_API_KEY environment variable is required'));
+      console.error(chalk.dim('Set it with: export ANTHROPIC_API_KEY=sk-ant-...'));
+      process.exit(1);
+    }
+
+    const { completeProject } = await import('./complete.js');
+    const { getDetailedTodos } = await import('./verify.js');
+
+    // Show initial state
+    const initialTodos = getDetailedTodos(resolvedPath);
+    console.log('');
+    console.log(chalk.bold('Morphkit Complete'));
+    console.log(chalk.dim('─'.repeat(40)));
+    console.log(`  Project:        ${chalk.cyan(resolvedPath)}`);
+    console.log(`  Model:          ${chalk.cyan(options.model)}`);
+    console.log(`  TODOs found:    ${chalk.yellow(String(initialTodos.length))}`);
+    console.log(`  Max iterations: ${options.maxIterations}`);
+    if (options.dryRun) console.log(`  Mode:           ${chalk.yellow('DRY RUN')}`);
+    console.log('');
+
+    if (initialTodos.length === 0) {
+      console.log(chalk.green('No TODOs found — project is already complete!'));
+      return;
+    }
+
+    const spinner = ora('Completing TODOs...').start();
+
+    try {
+      const result = await completeProject(resolvedPath, {
+        model: options.model,
+        maxIterations: parseInt(options.maxIterations, 10),
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+
+      spinner.stop();
+      console.log('');
+      console.log(chalk.bold('Completion Results'));
+      console.log(chalk.dim('─'.repeat(40)));
+      console.log(`  Iterations:     ${result.iterations}`);
+      console.log(`  TODOs resolved: ${chalk.green(String(result.todosResolved))}`);
+      console.log(`  TODOs remaining:${result.todosRemaining > 0 ? chalk.yellow(` ${result.todosRemaining}`) : chalk.green(' 0')}`);
+      console.log(`  Files completed:${chalk.cyan(` ${result.filesCompleted.length}`)}`);
+      console.log(`  Build status:   ${result.buildStatus === 'pass' ? chalk.green('pass') : result.buildStatus === 'fail' ? chalk.red('fail') : chalk.dim('skipped')}`);
+      console.log('');
+
+      if (result.filesCompleted.length > 0) {
+        console.log(chalk.bold('  Completed files:'));
+        for (const file of result.filesCompleted) {
+          console.log(`    ${chalk.green('✓')} ${file}`);
+        }
+        console.log('');
+      }
+
+      if (result.success) {
+        console.log(chalk.green('All TODOs resolved! Run `swift build` to verify.'));
+      } else {
+        console.log(chalk.yellow(`${result.todosRemaining} TODOs remaining. Run again or complete manually.`));
+      }
+    } catch (error) {
+      spinner.stop();
+      console.error(chalk.red(`\nCompletion failed: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// doctor — diagnose configuration issues
+// ---------------------------------------------------------------------------
+
+program
+  .command('doctor')
+  .description('Diagnose Morphkit configuration and environment')
+  .action(async () => {
+    console.log('');
+    console.log(chalk.bold('Morphkit Doctor'));
+    console.log(chalk.dim('─'.repeat(40)));
+
+    const checks: Array<{ name: string; status: 'ok' | 'warn' | 'error'; message: string }> = [];
+
+    // Check Bun
+    try {
+      const bunVersion = execSync('bun --version', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      checks.push({ name: 'Bun runtime', status: 'ok', message: `v${bunVersion}` });
+    } catch {
+      checks.push({ name: 'Bun runtime', status: 'warn', message: 'Not found (npm/node fallback active)' });
+    }
+
+    // Check Swift
+    try {
+      const swiftVersion = execSync('swift --version', { encoding: 'utf-8', stdio: 'pipe' }).split('\n')[0].trim();
+      checks.push({ name: 'Swift toolchain', status: 'ok', message: swiftVersion });
+    } catch {
+      checks.push({ name: 'Swift toolchain', status: 'warn', message: 'Not found — compilation validation will be skipped' });
+    }
+
+    // Check API key
+    const apiKey = resolveApiKey();
+    if (apiKey) {
+      const auth = await validateApiKey(apiKey);
+      if (auth.valid) {
+        checks.push({ name: 'Morphkit API key', status: 'ok', message: `${auth.tier} tier${auth.remaining > 0 ? ` (${auth.remaining} remaining)` : ''}` });
+      } else {
+        checks.push({ name: 'Morphkit API key', status: 'error', message: auth.error ?? 'Invalid' });
+      }
+    } else {
+      checks.push({ name: 'Morphkit API key', status: 'warn', message: 'Not set — running in offline mode' });
+    }
+
+    // Check AI providers
+    if (process.env.ANTHROPIC_API_KEY) {
+      checks.push({ name: 'Claude (Anthropic)', status: 'ok', message: 'API key set' });
+    } else if (process.env.OPENAI_API_KEY) {
+      checks.push({ name: 'OpenAI', status: 'ok', message: 'API key set' });
+    } else if (process.env.XAI_API_KEY) {
+      checks.push({ name: 'Grok (xAI)', status: 'ok', message: 'API key set' });
+    } else {
+      checks.push({ name: 'AI provider', status: 'warn', message: 'No API key set — using heuristic analysis only' });
+    }
+
+    // Check config file
+    const configPath = join(homedir(), '.morphkit', 'config');
+    if (existsSync(configPath)) {
+      checks.push({ name: 'Config file', status: 'ok', message: configPath });
+    } else {
+      checks.push({ name: 'Config file', status: 'warn', message: 'Not found (~/.morphkit/config)' });
+    }
+
+    // Check MCP registration
+    const mcpPath = join(process.cwd(), '.claude', 'settings.json');
+    const globalMcpPath = join(homedir(), '.claude', 'settings.json');
+    const hasMcp = [mcpPath, globalMcpPath].some(p => {
+      try {
+        return existsSync(p) && readFileSync(p, 'utf-8').includes('morphkit');
+      } catch { return false; }
+    });
+    if (hasMcp) {
+      checks.push({ name: 'MCP server', status: 'ok', message: 'Registered in Claude Code' });
+    } else {
+      checks.push({ name: 'MCP server', status: 'warn', message: 'Not registered — run `morphkit setup`' });
+    }
+
+    // Print results
+    for (const check of checks) {
+      const icon = check.status === 'ok' ? chalk.green('✓') : check.status === 'warn' ? chalk.yellow('⚠') : chalk.red('✗');
+      const msg = check.status === 'ok' ? chalk.green(check.message) : check.status === 'warn' ? chalk.yellow(check.message) : chalk.red(check.message);
+      console.log(`  ${icon} ${check.name.padEnd(20)} ${msg}`);
+    }
+
+    const hasErrors = checks.some(c => c.status === 'error');
+    const hasWarns = checks.some(c => c.status === 'warn');
+    console.log('');
+    if (hasErrors) {
+      console.log(chalk.red('Issues found that need attention.'));
+    } else if (hasWarns) {
+      console.log(chalk.yellow('Some optional features are not configured. Morphkit will still work.'));
+    } else {
+      console.log(chalk.green('All checks passed!'));
+    }
+    console.log('');
   });
 
 function printModelSummary(model: SemanticAppModel): void {

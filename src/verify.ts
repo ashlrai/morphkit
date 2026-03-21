@@ -452,3 +452,86 @@ export function formatVerifyResult(result: VerifyResult): string {
 
     return lines.join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Detailed TODO extraction for AI completion loop
+// ---------------------------------------------------------------------------
+
+export interface DetailedTodo {
+    /** Absolute file path */
+    file: string;
+    /** Relative file path from project root */
+    relativePath: string;
+    /** Line number (1-indexed) */
+    line: number;
+    /** MORPHKIT-TODO category (wire-api-fetch, wire-api-action, complete-model, implement-auth) */
+    category: string;
+    /** Screen name extracted from the TODO comment */
+    screenName: string;
+    /** The full TODO comment block (may be multi-line) */
+    context: string;
+    /** Implementation hint (e.g., "Pattern: try await APIClient.shared.fetchProducts()") */
+    hint: string;
+}
+
+/**
+ * Extract all MORPHKIT-TODO markers with full context for AI completion.
+ * Returns structured data that can be used by `morphkit complete` or MCP tools.
+ */
+export function getDetailedTodos(projectPath: string): DetailedTodo[] {
+    const todos: DetailedTodo[] = [];
+    const allSwiftFiles = findSwiftFiles(projectPath);
+
+    for (const filePath of allSwiftFiles) {
+        const content = safeReadFile(filePath);
+        if (!content) continue;
+        const relPath = relative(projectPath, filePath);
+        const lines = content.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+            const todoMatch = lines[i].match(/\/\/\s*MORPHKIT-TODO:\s*(\S+)/);
+            if (!todoMatch) continue;
+
+            const category = todoMatch[1];
+
+            // Collect the full TODO comment block (consecutive comment lines)
+            const contextLines: string[] = [lines[i]];
+            let j = i + 1;
+            while (j < lines.length && lines[j].trimStart().startsWith('//')) {
+                contextLines.push(lines[j]);
+                j++;
+            }
+            const context = contextLines.map(l => l.trim()).join('\n');
+
+            // Extract screen name from "Screen: <name>" pattern
+            const screenMatch = context.match(/Screen:\s*(\S+)/);
+            const screenName = screenMatch ? screenMatch[1] : relPath.replace(/^Views\//, '').replace(/\.swift$/, '');
+
+            // Extract hint (Pattern: or APIClient method:)
+            const patternMatch = context.match(/Pattern:\s*(.+)/);
+            const methodMatch = context.match(/APIClient method:\s*(.+)/);
+            const hint = patternMatch?.[1] ?? methodMatch?.[1] ?? '';
+
+            todos.push({
+                file: filePath,
+                relativePath: relPath,
+                line: i + 1,
+                category,
+                screenName,
+                context,
+                hint,
+            });
+        }
+    }
+
+    // Sort by priority: wire-api-fetch > wire-api-action > complete-model > implement-auth
+    const priorityOrder: Record<string, number> = {
+        'wire-api-fetch': 0,
+        'wire-api-action': 1,
+        'complete-model': 2,
+        'implement-auth': 3,
+    };
+    todos.sort((a, b) => (priorityOrder[a.category] ?? 99) - (priorityOrder[b.category] ?? 99));
+
+    return todos;
+}

@@ -688,6 +688,15 @@ function extractThemeFromScan(scanResult: RepoScanResult): ThemeConfig {
           theme.colors.primary = extractedColor;
           theme.colors.accent = extractedColor;
         }
+        // Extract additional colors from theme.extend.colors
+        const colorKeys = ['secondary', 'background', 'surface', 'error', 'success', 'warning'] as const;
+        for (const key of colorKeys) {
+          const pattern = new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]?(#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?)`, 'i');
+          const colorMatch = configText.match(pattern);
+          if (colorMatch?.[1]) {
+            (theme.colors as Record<string, unknown>)[key] = colorMatch[1];
+          }
+        }
       } catch {
         // If we can't read the config, fall through to defaults
       }

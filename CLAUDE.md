@@ -83,7 +83,8 @@ CLI → Analyzer (ts-morph) → Builder (→ SemanticAppModel) → Adapter (→ 
 - Generated networking includes a `KeychainHelper.swift` for secure iOS Keychain token storage
 - Generated `APIConfiguration` enforces HTTPS in production with TLS 1.2+ minimum
 - Generated `APIClient` uses `APIConfiguration.secureSession` with proper timeout/TLS config
-- Swift syntax validation runs `swiftc -parse` on all generated .swift files after generation (graceful fallback if Swift toolchain not installed)
+- Swift validation runs both `swiftc -parse` (per-file syntax) and `swift build` (cross-file types) after generation
+- Generated output compiles with zero errors across all 6 test fixtures (compilation guarantee)
 - `ForEach` closures use explicit type annotations `(item: Entity) in` to avoid Swift 6 type inference issues with complex view builders
 
 ### Testing
@@ -100,6 +101,7 @@ bun run src/index.ts analyze ./app          # Analyze a Next.js app
 bun run src/index.ts generate ./app -o ./ios # Generate SwiftUI project
 bun run src/index.ts preview ./app          # Preview without writing files
 bun run src/index.ts verify ./ios           # Check completion status of generated project
+bun run src/index.ts complete ./ios         # Auto-complete all TODOs using Claude API
 bun run src/index.ts setup                  # Register MCP server in Claude Code
 bun run src/index.ts sync ./app ./ios       # Re-sync after web app changes
 bun run src/index.ts watch ./app            # Watch mode — re-generate on changes
@@ -147,7 +149,7 @@ bun run src/index.ts watch ./app            # Watch mode — re-generate on chan
 
 ### MCP Server (`src/mcp/server.ts`)
 
-6 tools exposed via the Model Context Protocol for Claude Code integration:
+9 tools exposed via the Model Context Protocol for Claude Code integration:
 
 | Tool | Description |
 |------|-------------|
@@ -157,6 +159,9 @@ bun run src/index.ts watch ./app            # Watch mode — re-generate on chan
 | `morphkit_screen_context` | Return everything needed to complete a specific screen (view, models, API methods, reference patterns) |
 | `morphkit_verify` | Check project completion: build status, TODO census, screen/API/model completion % |
 | `morphkit_next_task` | Recommend the next screen to implement based on TODO count and dependency order |
+| `morphkit_completion_status` | Machine-readable JSON with exact TODO locations, line numbers, hints for automated loops |
+| `morphkit_complete_screen` | Full context for completing a single screen (view, APIClient, models, reference impl) |
+| `morphkit_fix_build_error` | Parse Swift build errors and return structured context with surrounding code |
 
 Register with `morphkit setup` — writes to `.claude/settings.json`.
 
@@ -182,6 +187,17 @@ Categories:
 
 Each generated view also has `// MORPHKIT-TODO-COUNT: N` for quick completeness checks.
 
+### AI Completion Engine (`src/complete.ts`)
+
+`morphkit complete <project-path>` iteratively resolves all MORPHKIT-TODOs using the Claude API:
+1. Calls `getDetailedTodos()` to find remaining TODOs with exact file/line/context
+2. Builds structured context: view file + APIClient + models + reference implementation + CLAUDE.md
+3. Calls Claude with a system prompt enforcing iOS 17+ patterns (@Observable, .task, NavigationStack)
+4. Validates completed code with `swiftc --parse` before writing
+5. Repeats until all TODOs are resolved or max iterations reached
+
+Requires `ANTHROPIC_API_KEY` environment variable.
+
 ### Generated `.claude/commands/`
 
 The generator creates slash commands for Claude Code in the output project:
@@ -200,3 +216,24 @@ The generator creates slash commands for Claude Code in the output project:
 - `ForEach` with complex view builders (AsyncImage, multiple modifiers) requires explicit closure type annotations in Swift 6 — the generators handle this automatically
 - `.onDelete` on ForEach requires Binding arrays in Swift 6 — cart views use `.swipeActions` instead
 - Generated endpoint methods use plural names for list fetches (`fetchProducts()`) and singular for detail fetches (`fetchProduct(id:)`)
+
+---
+
+## Central Documentation Vault
+
+Ashlr AI maintains a central documentation vault at `~/Desktop/documentation project/`.
+
+- **This product's vault path**: `01-products/morphkit/`
+- **Agent briefing**: `~/Desktop/documentation project/01-products/morphkit/agent-briefing.md`
+- **Sales context**: `~/Desktop/documentation project/01-products/morphkit/sales-context.md`
+- **Full vault navigation**: `~/Desktop/documentation project/CLAUDE.md`
+
+### Update Triggers
+
+When working in this repo, update the vault when:
+- **Feature shipped** → update `changelog.md` + `agent-briefing.md` (Current Priorities, Current State)
+- **Architecture change** → update `architecture.md` + `agent-briefing.md` (Architecture section)
+- **Pricing change** → update `sales-context.md` + `agent-briefing.md` (Business Context)
+- **Priority shift** → update `roadmap.md` + `agent-briefing.md` (Current Priorities)
+
+Commit convention: `vault: update morphkit/{file} — {reason}`

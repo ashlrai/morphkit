@@ -15,8 +15,8 @@ import type {
     Field,
 } from '../semantic/model';
 
-import { isJunkEntity } from './model-generator';
-import { generateFunctionName, extractPathParams, cleanURL } from './api-naming';
+import { isJunkEntity, isSwiftDataEligible } from './model-generator';
+import { generateFunctionName, extractPathParams, cleanURL, singularize } from './api-naming';
 
 export interface GeneratedFile {
     path: string;
@@ -684,8 +684,12 @@ function forEachHeader(arrayExpr: string, varName: string, entityName: string, m
 function resolveEntityCasing(name: string, model: SemanticAppModel): string {
     const entities = model.entities ?? [];
     const lower = name.toLowerCase();
+    const singLower = singularize(lower);
+    const plurLower = pluralize(lower);
     for (const e of entities) {
-        if (!isJunkEntity(e) && pascalCase(e.name).toLowerCase() === lower) {
+        if (isJunkEntity(e)) continue;
+        const eLower = pascalCase(e.name).toLowerCase();
+        if (eLower === lower || eLower === singLower || eLower === plurLower) {
             return pascalCase(e.name);
         }
     }
@@ -732,17 +736,26 @@ function resolveEntity(screen: Screen, model: SemanticAppModel): Entity | null {
     const entities = model.entities ?? [];
     if (entities.length === 0) return null;
 
+    // Helper: try exact, singular, and plural forms against entity names
+    const findByName = (name: string): Entity | undefined => {
+        const pc = pascalCase(name);
+        const sing = pascalCase(singularize(name));
+        const plur = pascalCase(pluralize(name));
+        return entities.find(e => {
+            const eName = pascalCase(e.name);
+            return eName === pc || eName === sing || eName === plur;
+        });
+    };
+
     // 1. Match by data requirement source
     const entityName = deriveEntityName(screen, model);
     if (entityName) {
-        const match = entities.find((e) => pascalCase(e.name) === entityName);
+        const match = findByName(entityName);
         if (match) return match;
     }
 
-    // 2. Match by screen name (e.g., "Products" screen -> "Products" entity)
-    const screenEntity = entities.find(
-        (e) => pascalCase(e.name) === pascalCase(screen.name),
-    );
+    // 2. Match by screen name (e.g., "Products" screen -> "Product" entity)
+    const screenEntity = findByName(screen.name);
     if (screenEntity) return screenEntity;
 
     // 3. For detail screens (e.g. "ProductsDetail"), strip suffix and try
@@ -3189,8 +3202,20 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
     // Struct declaration
     lines.push(`struct ${viewName}: View {`);
 
+    // Pre-compute the detail entity variable name so we can skip conflicting stateBindings.
+    // Detail screens need their entity typed as Entity? not String.
+    let detailEntityVarName: string | null = null;
+    if (screen.layout === 'detail' || isDetailScreen(screen, model)) {
+        const inferredName = inferEntityFromScreen(screen);
+        const de = resolveDetailEntity(screen, model);
+        detailEntityVarName = de ? camelCase(de.name) : camelCase(inferredName);
+    }
+
     // State properties from stateBindings (resolved via model.stateManagement)
     for (const binding of bindings) {
+        // Skip bindings that conflict with the detail entity variable — the detail
+        // resolution will declare this with the correct entity type (Entity? not String)
+        if (detailEntityVarName && binding.name === detailEntityVarName) continue;
         if (binding.wrapper === '@Environment') {
             lines.push(`    @Environment(\\${binding.environmentKey ? '.' + binding.environmentKey : '.' + binding.name}) private var ${binding.name}`);
         } else if (binding.wrapper === '@Binding') {
@@ -3202,7 +3227,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
 
     // Data requirement-driven state properties
     const dataReqs = screen.dataRequirements ?? [];
-    const declaredNames = new Set(bindings.map((b) => b.name));
+    const declaredNames = new Set(bindings.filter(b => !(detailEntityVarName && b.name === detailEntityVarName)).map((b) => b.name));
     const declaredTypes = new Map<string, string>(); // Track declared types for loadData compat checks
     for (const b of bindings) {
         declaredTypes.set(b.name, b.type);
@@ -3711,13 +3736,44 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
+    // Detect SwiftData-eligible entities for cache-first loading
+    const persistenceEntities = new Set<string>();
+    for (const entity of (model.entities ?? [])) {
+        if (isSwiftDataEligible(entity)) {
+            persistenceEntities.add(pascalCase(entity.name));
+        }
+    }
+
+    // Determine the primary entity for cache-first loading
+    let cacheEntityName: string | null = null;
+    let cacheArrayVar: string | null = null;
+    if (screen.layout === 'list' || screen.layout === 'grid') {
+        const derivedName = deriveEntityName(screen, model) ?? inferEntityFromScreen(screen);
+        const resolved = resolveEntityNameInOutput(derivedName, model);
+        if (resolved && persistenceEntities.has(resolved)) {
+            cacheEntityName = resolved;
+            const varName = camelCase(derivedName);
+            cacheArrayVar = varName.endsWith('s') ? varName : `${varName}s`;
+        }
+    }
+
     // Generate loadData function for screens with API data requirements
     if (hasApiData) {
         lines.push('');
         lines.push('    // MARK: - Data Loading');
         lines.push('');
         lines.push('    private func loadData() async {');
-        lines.push('        isLoading = true');
+
+        // Cache-first: load from SwiftData before hitting the API
+        if (cacheEntityName && cacheArrayVar) {
+            lines.push(`        // Load cached data immediately for instant display`);
+            lines.push(`        if let cached = try? DataManager.shared.fetchCached${cacheEntityName}s(), !cached.isEmpty {`);
+            lines.push(`            ${cacheArrayVar} = cached`);
+            lines.push(`        }`);
+            lines.push(`        isLoading = ${cacheArrayVar}.isEmpty`);
+        } else {
+            lines.push('        isLoading = true');
+        }
         lines.push('        defer { isLoading = false }');
         lines.push('');
         lines.push('        do {');
@@ -3912,6 +3968,12 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 lines.push(`            // Configure fetch${pascalCase(pluralName)}() in APIClient`);
                 lines.push(`            // ${entArrayVar} = try await APIClient.shared.fetch${pascalCase(pluralName)}()`);
             }
+        }
+
+        // Persist fetched data to SwiftData for offline access
+        if (cacheEntityName && cacheArrayVar) {
+            lines.push(`            // Persist to SwiftData for offline access`);
+            lines.push(`            try? DataManager.shared.save${cacheEntityName}s(${cacheArrayVar})`);
         }
 
         if (isReference) {

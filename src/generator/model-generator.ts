@@ -621,7 +621,8 @@ function swiftDataFieldType(swiftType: string): string {
         return isOpt ? 'Data?' : 'Data';
     }
     if (base.startsWith('[') && base.includes(':')) return isOpt ? 'Data?' : 'Data';
-    return isOpt ? 'String?' : 'String';
+    // Non-native entity types (e.g. Product, User) stored as JSON Data for round-tripping
+    return isOpt ? 'Data?' : 'Data';
 }
 
 function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string {
@@ -631,6 +632,19 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const hasId = fields.some((f) => f.isId);
     const relationships = entity.relationships ?? [];
     const relationshipFieldNames = new Set(relationships.map(r => camelCase(r.fieldName)));
+    // Determine which relationship fields are actual entity references (not plain FK strings)
+    // Plain FKs (postId: String) should be kept as regular fields in SwiftData
+    const entityRelationshipFields = new Set<string>();
+    for (const rel of relationships) {
+        const fieldName = camelCase(rel.fieldName);
+        const field = fields.find(f => f.name === fieldName);
+        if (field) {
+            const baseType = field.type.replace('?', '').replace(/^\[/, '').replace(/\]$/, '');
+            if (!['String', 'Int', 'Double', 'UUID'].includes(baseType)) {
+                entityRelationshipFields.add(fieldName);
+            }
+        }
+    }
     const lines: string[] = [];
 
     // SwiftData @Model macro conflicts with property named 'description' (CustomStringConvertible)
@@ -646,7 +660,11 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
         if (field.isPrimaryKey || field.isId) lines.push('    @Attribute(.unique)');
         if (relationshipFieldNames.has(field.name)) {
             const rel = relationships.find(r => camelCase(r.fieldName) === field.name);
-            if (rel) {
+            // Only create @Relationship when the original field type is an entity reference,
+            // not when it's a plain FK string (e.g., postId: String should stay as String)
+            const baseFieldType = field.type.replace('?', '').replace(/^\[/, '').replace(/\]$/, '');
+            const isPlainFK = ['String', 'Int', 'Double', 'UUID'].includes(baseFieldType);
+            if (rel && !isPlainFK) {
                 const targetStore = `${pascalCase(rel.targetEntity)}Record`;
                 if (rel.type === 'one-to-many' || rel.type === 'many-to-many') {
                     lines.push(`    @Relationship var ${field.name}: [${targetStore}]`);
@@ -664,7 +682,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const initParams: string[] = [];
     if (!hasId) initParams.push('id: UUID = UUID()');
     for (const field of fields) {
-        if (relationshipFieldNames.has(field.name)) continue;
+        if (entityRelationshipFields.has(field.name)) continue;
         const sdType = swiftDataFieldType(field.type);
         const pName = sdFieldName(field.name);
         if (field.isOptional) initParams.push(`${pName}: ${sdType} = nil`);
@@ -674,7 +692,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     lines.push(`    init(${initParams.join(', ')}) {`);
     if (!hasId) lines.push('        self.id = id');
     for (const field of fields) {
-        if (relationshipFieldNames.has(field.name)) continue;
+        if (entityRelationshipFields.has(field.name)) continue;
         const pName = sdFieldName(field.name);
         lines.push(`        self.${pName} = ${pName}`);
     }
@@ -686,7 +704,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const convArgs: string[] = [];
     if (!hasId) convArgs.push('id: model.id');
     for (const field of fields) {
-        if (relationshipFieldNames.has(field.name)) continue;
+        if (entityRelationshipFields.has(field.name)) continue;
         const pName = sdFieldName(field.name);
         const sdType = swiftDataFieldType(field.type);
         if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
@@ -695,8 +713,6 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
             } else {
                 convArgs.push(`${pName}: (try? JSONEncoder().encode(model.${field.name})) ?? Data()`);
             }
-        } else if (sdType.replace('?', '') === 'String' && field.type.replace('?', '') !== 'String' && !field.type.startsWith('[')) {
-            convArgs.push(`${pName}: String(describing: model.${field.name})`);
         } else {
             convArgs.push(`${pName}: model.${field.name}`);
         }
@@ -710,7 +726,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const modelArgs: string[] = [];
     if (!hasId) modelArgs.push('id: id');
     for (const field of fields) {
-        if (relationshipFieldNames.has(field.name)) continue;
+        if (entityRelationshipFields.has(field.name)) continue;
         const pName = sdFieldName(field.name);
         const sdType = swiftDataFieldType(field.type);
         if (sdType.replace('?', '') === 'Data' && field.type.replace('?', '') !== 'Data') {
@@ -725,7 +741,19 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
                     'Date': '.now', 'UUID': 'UUID()', '[String]': '[]', '[Int]': '[]',
                     '[String: String]': '[:]',
                 };
-                const fallback = simpleDefaults[baseType] ?? `${baseType}(id: UUID().uuidString)`;
+                // Arrays default to [], dictionaries to [:], everything else gets a safe default
+                let fallback = simpleDefaults[baseType];
+                if (!fallback) {
+                    if (baseType.startsWith('[') && baseType.endsWith(']')) {
+                        fallback = '[]';
+                    } else if (baseType.startsWith('[') && baseType.includes(':')) {
+                        fallback = '[:]';
+                    } else {
+                        // Non-native struct — use fatalError to surface data corruption at runtime
+                        // rather than producing an invalid instance silently
+                        fallback = `{ fatalError("Failed to decode ${baseType} from SwiftData") }()`;
+                    }
+                }
                 modelArgs.push(`${field.name}: (try? JSONDecoder().decode(${baseType}.self, from: ${pName})) ?? ${fallback}`);
             }
         } else {

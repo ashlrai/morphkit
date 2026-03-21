@@ -1278,8 +1278,9 @@ function inferReturnTypeFromEntities(
 
     if (!matchedEntityName) return null;
 
-    // Use PascalCase for the Swift type name, and always use the singular form
-    const swiftTypeName = pascalCase(singularize(matchedEntityName));
+    // Use the matched entity name as-is (PascalCase) — the model generator uses the original
+    // entity name, so the return type must match exactly.
+    const swiftTypeName = pascalCase(matchedEntityName);
 
     // Determine if we should return an array or a single item
     // GET without path param → array (list endpoint)

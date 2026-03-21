@@ -82,6 +82,7 @@ import type { ExtractedComponent } from './component-extractor.js';
 import type { RepoScanResult } from './repo-scanner.js';
 import type { ExtractedRoute } from './route-extractor.js';
 import type { ExtractedState } from './state-extractor.js';
+import type { ExtractedStyles } from './style-extractor.js';
 
 export interface AnalysisResult {
   /** Repository scan metadata */
@@ -96,6 +97,8 @@ export interface AnalysisResult {
   statePatterns: ExtractedState[];
   /** API endpoints and data-fetching patterns */
   apiEndpoints: ExtractedApi[];
+  /** Tailwind/CSS styles extracted from components, keyed by file path */
+  componentStyles: Map<string, ExtractedStyles[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +112,8 @@ import { extractRoutes } from './route-extractor.js';
 import { extractReactRoutes } from './react-route-extractor.js';
 import { extractPagesRoutes } from './pages-route-extractor.js';
 import { extractStatePatterns } from './state-extractor.js';
+import { extractStylesFromSource } from './style-extractor.js';
+import { readFileSync } from 'fs';
 
 /**
  * Run the complete Morphkit analysis pipeline on a repository.
@@ -137,6 +142,7 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
       routes: [],
       statePatterns: [],
       apiEndpoints: [],
+      componentStyles: new Map(),
     };
   }
 
@@ -155,6 +161,7 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
       routes: [],
       statePatterns: [],
       apiEndpoints: [],
+      componentStyles: new Map(),
     };
   }
 
@@ -178,6 +185,20 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
     ...scan.components.map((f) => f.absolutePath),
   ];
   const components = extractComponents(project, componentFilePaths);
+
+  // Step 4b: Extract Tailwind/CSS styles from component files
+  const componentStyles = new Map<string, ExtractedStyles[]>();
+  if (scan.hasTailwind) {
+    for (const filePath of componentFilePaths) {
+      try {
+        const source = readFileSync(filePath, 'utf-8');
+        const styles = extractStylesFromSource(source);
+        if (styles.length > 0) {
+          componentStyles.set(filePath, styles);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+  }
 
   // Step 5: Extract routes (framework-aware)
   let routes: ExtractedRoute[];
@@ -212,5 +233,6 @@ export async function analyzeRepo(repoPath: string): Promise<AnalysisResult> {
     routes,
     statePatterns,
     apiEndpoints,
+    componentStyles,
   };
 }

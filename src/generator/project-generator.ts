@@ -1320,6 +1320,27 @@ This project was automatically generated and may need manual adjustments:
 
 function generatePackageSwift(model: SemanticAppModel): GeneratedFile {
     const appName = pascalCase(model.appName ?? 'MyApp');
+    const integrations = model.backendIntegrations ?? [];
+
+    // Conditionally add package dependencies based on detected backend services
+    const packageDeps: string[] = [];
+    const targetDeps: string[] = [];
+
+    if (integrations.some(b => b.kind === 'supabase')) {
+        packageDeps.push('        .package(url: "https://github.com/supabase/supabase-swift", from: "2.0.0"),');
+        targetDeps.push('            .product(name: "Supabase", package: "supabase-swift"),');
+    }
+    if (model.hasMarkdownRendering) {
+        packageDeps.push('        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.0.0"),');
+        targetDeps.push('            .product(name: "MarkdownUI", package: "swift-markdown-ui"),');
+    }
+
+    const depsSection = packageDeps.length > 0
+        ? `\n    dependencies: [\n${packageDeps.join('\n')}\n    ],`
+        : '';
+    const targetDepsSection = targetDeps.length > 0
+        ? `\n            dependencies: [\n${targetDeps.join('\n')}\n            ],`
+        : '';
 
     return {
         path: '../Package.swift',
@@ -1328,10 +1349,10 @@ import PackageDescription
 
 let package = Package(
     name: "${appName}",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS(.v17), .macOS(.v14)],${depsSection}
     targets: [
         .executableTarget(
-            name: "${appName}",
+            name: "${appName}",${targetDepsSection}
             path: "${appName}",
             exclude: ["Info.plist"],
             resources: [

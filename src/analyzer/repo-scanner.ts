@@ -57,6 +57,17 @@ export interface RepoScanResult {
   hasTailwind: boolean;
   /** Detected UI libraries based on package.json */
   uiLibraries: string[];
+  /** Detected backend services (Supabase, Stripe, etc.) */
+  backendServices: DetectedService[];
+  /** Whether react-markdown or similar is used */
+  hasMarkdownRendering: boolean;
+}
+
+export interface DetectedService {
+  kind: 'supabase' | 'stripe' | 'firebase' | 'clerk' | 'openai' | 'anthropic' | 'other';
+  sdkPackage: string;
+  version: string;
+  features: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +142,99 @@ function detectUiLibraries(packageJson: Record<string, unknown>): string[] {
     if (lib) found.add(lib);
   }
   return [...found];
+}
+
+/**
+ * Detect backend services from package.json dependencies.
+ * Returns a list of detected services with their SDK package and version.
+ */
+function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles: FileEntry[]): { services: DetectedService[]; hasMarkdownRendering: boolean } {
+  const deps: Record<string, string> = {
+    ...(packageJson.dependencies as Record<string, string> | undefined),
+    ...(packageJson.devDependencies as Record<string, string> | undefined),
+  };
+
+  const services: DetectedService[] = [];
+
+  // Supabase detection
+  const supabasePkg = deps['@supabase/supabase-js'] ?? deps['@supabase/ssr'];
+  if (supabasePkg) {
+    const features: string[] = [];
+    // Scan source files to detect which Supabase features are used
+    for (const file of sourceFiles) {
+      try {
+        const content = fs.readFileSync(file.absolutePath, 'utf-8');
+        if (content.includes('.auth.') || content.includes('createClient')) features.push('auth');
+        if (content.includes('.from(') || content.includes('.rpc(')) features.push('database');
+        if (content.includes('.storage.')) features.push('storage');
+        if (content.includes('.channel(') || content.includes('.on(')) features.push('realtime');
+      } catch { /* skip unreadable files */ }
+    }
+    services.push({
+      kind: 'supabase',
+      sdkPackage: '@supabase/supabase-js',
+      version: supabasePkg.replace(/[\^~]/, ''),
+      features: [...new Set(features)],
+    });
+  }
+
+  // Stripe detection
+  const stripePkg = deps['stripe'] ?? deps['@stripe/stripe-js'];
+  if (stripePkg) {
+    services.push({
+      kind: 'stripe',
+      sdkPackage: stripePkg === deps['stripe'] ? 'stripe' : '@stripe/stripe-js',
+      version: (deps['stripe'] ?? deps['@stripe/stripe-js'] ?? '').replace(/[\^~]/, ''),
+      features: ['payments'],
+    });
+  }
+
+  // Firebase detection
+  const firebasePkg = deps['firebase'] ?? deps['firebase-admin'];
+  if (firebasePkg) {
+    services.push({
+      kind: 'firebase',
+      sdkPackage: 'firebase',
+      version: firebasePkg.replace(/[\^~]/, ''),
+      features: deps['firebase-admin'] ? ['auth', 'database', 'admin'] : ['auth', 'database'],
+    });
+  }
+
+  // Clerk detection
+  const clerkPkg = deps['@clerk/nextjs'] ?? deps['@clerk/clerk-react'];
+  if (clerkPkg) {
+    services.push({
+      kind: 'clerk',
+      sdkPackage: deps['@clerk/nextjs'] ? '@clerk/nextjs' : '@clerk/clerk-react',
+      version: clerkPkg.replace(/[\^~]/, ''),
+      features: ['auth'],
+    });
+  }
+
+  // OpenAI detection
+  if (deps['openai']) {
+    services.push({
+      kind: 'openai',
+      sdkPackage: 'openai',
+      version: (deps['openai'] ?? '').replace(/[\^~]/, ''),
+      features: ['ai'],
+    });
+  }
+
+  // Anthropic detection
+  if (deps['@anthropic-ai/sdk']) {
+    services.push({
+      kind: 'anthropic',
+      sdkPackage: '@anthropic-ai/sdk',
+      version: (deps['@anthropic-ai/sdk'] ?? '').replace(/[\^~]/, ''),
+      features: ['ai'],
+    });
+  }
+
+  // Markdown rendering detection
+  const hasMarkdownRendering = !!(deps['react-markdown'] || deps['remark-gfm'] || deps['@mdx-js/react']);
+
+  return { services, hasMarkdownRendering };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,11 +367,16 @@ export async function scanRepo(repoPath: string): Promise<RepoScanResult> {
   );
 
   let uiLibraries: string[] = [];
+  let backendServices: DetectedService[] = [];
+  let hasMarkdownRendering = false;
   try {
     const pkgPath = path.join(resolvedRoot, 'package.json');
     const pkgContent = fs.readFileSync(pkgPath, 'utf-8');
     const pkg = JSON.parse(pkgContent) as Record<string, unknown>;
     uiLibraries = detectUiLibraries(pkg);
+    const detected = detectBackendServices(pkg, allFiles);
+    backendServices = detected.services;
+    hasMarkdownRendering = detected.hasMarkdownRendering;
   } catch {
     // ignore
   }
@@ -292,5 +401,7 @@ export async function scanRepo(repoPath: string): Promise<RepoScanResult> {
     jsonFiles,
     hasTailwind,
     uiLibraries,
+    backendServices,
+    hasMarkdownRendering,
   };
 }

@@ -328,6 +328,62 @@ program
     }
   });
 
+// ---------------------------------------------------------------------------
+// plan — intelligent mobile scope planning (always free)
+// ---------------------------------------------------------------------------
+
+program
+  .command('plan')
+  .description('Analyze a web app and generate an iOS conversion plan')
+  .argument('<repo-path>', 'Path to the web app repository')
+  .option('-o, --output <file>', 'Output plan to a file instead of stdout')
+  .action(async (repoPath: string, options: { output?: string }) => {
+    const absolutePath = resolve(repoPath);
+    validateDirectoryExists(absolutePath);
+
+    const spinner = ora('Analyzing codebase...').start();
+
+    try {
+      const { analyzeRepo } = await import('./analyzer/index.js');
+      const { buildSemanticModel } = await import('./semantic/builder.js');
+      const { generatePlan } = await import('./planner.js');
+
+      spinner.text = 'Scanning repository...';
+      const analysis = await analyzeRepo(absolutePath);
+
+      spinner.text = 'Building semantic model...';
+      const model = await buildSemanticModel(analysis);
+
+      spinner.text = 'Generating conversion plan...';
+      const plan = generatePlan(model);
+
+      spinner.stop();
+
+      if (options.output) {
+        const { writeFileSync } = await import('fs');
+        writeFileSync(resolve(options.output), plan.markdownPlan, 'utf-8');
+        console.log(chalk.green(`\nPlan written to ${options.output}`));
+      } else {
+        console.log(plan.markdownPlan);
+      }
+
+      // Summary
+      console.log('');
+      console.log(chalk.bold('Plan Summary'));
+      console.log(chalk.dim('─'.repeat(40)));
+      console.log(`  Screens included: ${chalk.green(String(plan.includedScreens))} of ${plan.totalScreens}`);
+      console.log(`  Screens excluded: ${chalk.dim(String(plan.excludedScreens.length))}`);
+      console.log(`  Integrations:     ${chalk.cyan(plan.integrations.map(i => i.kind).join(', ') || 'none')}`);
+      console.log(`  SSE endpoints:    ${plan.sseEndpointCount > 0 ? chalk.yellow(String(plan.sseEndpointCount)) : '0'}`);
+      console.log('');
+      console.log(chalk.dim('This command is always free. Run `morphkit generate` to create the iOS project.'));
+    } catch (error) {
+      spinner.stop();
+      console.error(chalk.red(`\nPlan generation failed: ${error instanceof Error ? error.message : error}`));
+      process.exit(1);
+    }
+  });
+
 program
   .command('generate')
   .description(

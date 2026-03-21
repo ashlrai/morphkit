@@ -99,6 +99,10 @@ export interface ExtractedApi {
   requestType: string | undefined;
   /** Inferred response type (from TypeScript types) */
   responseType: string | undefined;
+  /** Whether this endpoint uses SSE streaming */
+  isStreaming?: boolean;
+  /** SSE event types detected in the endpoint */
+  streamEventTypes?: string[];
   /** Specific info based on kind */
   fetch: FetchCallInfo | undefined;
   axios: AxiosCallInfo | undefined;
@@ -663,6 +667,24 @@ function extractNextApiRoutes(
 
       if (methods.length === 0) continue;
 
+      // Detect SSE streaming patterns in the source
+      const sourceText = sourceFile.getFullText();
+      const isStreaming = (
+        sourceText.includes('text/event-stream') ||
+        (sourceText.includes('ReadableStream') && sourceText.includes('TextEncoder'))
+      );
+
+      // Extract SSE event types from writer.write/encoder.encode patterns
+      const streamEventTypes: string[] = [];
+      if (isStreaming) {
+        const eventTypeMatches = sourceText.matchAll(/(?:event|type)['"]?\s*[:=]\s*['"](\w+)['"]/g);
+        for (const m of eventTypeMatches) {
+          if (m[1] && !streamEventTypes.includes(m[1])) {
+            streamEventTypes.push(m[1]);
+          }
+        }
+      }
+
       results.push({
         kind: 'next-api-route',
         protocol: 'rest',
@@ -671,6 +693,8 @@ function extractNextApiRoutes(
         line: 1,
         requestType,
         responseType,
+        isStreaming,
+        streamEventTypes,
         fetch: undefined,
         axios: undefined,
         nextApiRoute: {

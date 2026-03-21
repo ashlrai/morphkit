@@ -68,6 +68,7 @@ export interface AnalysisResult {
   routes: ExtractedRoute[];
   statePatterns: ExtractedState[];
   apiEndpoints: ExtractedApi[];
+  componentStyles?: Map<string, Array<{ element: string; classes: string[]; swiftUIModifiers: string[] }>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -996,6 +997,8 @@ async function buildScreenFromRouteAndComponent(
     name: child.name,
     props: {},
     count: child.count > 1 ? ('repeated' as const) : ('single' as const),
+    styleModifiers: [],
+    cssClasses: [],
   }));
 
   // Build user actions from event handlers
@@ -1212,6 +1215,8 @@ async function buildScreenFromComponent(
       name: c.name,
       props: {},
       count: c.count > 1 ? ('repeated' as const) : ('single' as const),
+      styleModifiers: [],
+      cssClasses: [],
     })),
     dataRequirements,
     actions: [],
@@ -1432,6 +1437,9 @@ function buildApiEndpoints(apis: ExtractedApi[]): ApiEndpoint[] {
       caching: (api.kind === 'react-query' || api.kind === 'swr')
         ? { type: 'stale-while-revalidate' as const, ttlSeconds: null, invalidateOn: [] }
         : null,
+      streaming: api.isStreaming
+        ? { type: 'sse' as const, eventTypes: api.streamEventTypes ?? [] }
+        : { type: 'none' as const, eventTypes: [] },
       description: '',
       sourceFile: api.filePath,
       confidence: 'medium' as ConfidenceLevel,
@@ -1976,7 +1984,7 @@ function inferRelationships(entities: Entity[]): void {
 export async function buildSemanticModel(
   analysisResult: AnalysisResult,
 ): Promise<SemanticAppModel> {
-  const { scanResult: scan, parsedFiles, components, routes, statePatterns, apiEndpoints } = analysisResult;
+  const { scanResult: scan, parsedFiles, components, routes, statePatterns, apiEndpoints, componentStyles } = analysisResult;
 
   // Wire up AI: try provider-agnostic interface first, fall back to legacy GrokClient
   const aiProvider = await getAIProviderSafe();
@@ -1987,6 +1995,29 @@ export async function buildSemanticModel(
 
   // 1. Build screens by merging component + route data
   const screens = await buildScreens(components, routes, statePatterns, apiEndpoints, aiClient, appName, aiProvider);
+
+  // 1b. Attach extracted style modifiers to screen components
+  if (componentStyles && componentStyles.size > 0) {
+    for (const screen of screens) {
+      // Find styles for this screen's source file
+      const sourceFile = screen.sourceFile;
+      if (!sourceFile) continue;
+      const styles = componentStyles.get(sourceFile);
+      if (!styles || styles.length === 0) continue;
+      // Collect all unique SwiftUI modifiers from extracted styles
+      const allModifiers = new Set<string>();
+      for (const style of styles) {
+        for (const mod of style.swiftUIModifiers) {
+          if (mod) allModifiers.add(mod);
+        }
+      }
+      // Attach to the first component (primary view content)
+      if (screen.components.length > 0 && allModifiers.size > 0) {
+        screen.components[0].styleModifiers = [...allModifiers];
+        screen.components[0].cssClasses = styles.flatMap((s: { classes: string[] }) => s.classes);
+      }
+    }
+  }
 
   // 2. Build navigation structure from routes
   const navigation = buildNavigation(routes, screens);
@@ -1999,6 +2030,23 @@ export async function buildSemanticModel(
 
   // 5. Detect authentication patterns
   const auth = detectAuthPattern(routes, apiEndpoints, components);
+
+  // 5b. Detect backend integrations from scan
+  const backendIntegrations = (scan.backendServices ?? []).map(svc => ({
+    kind: svc.kind as 'supabase' | 'stripe' | 'firebase' | 'clerk' | 'openai' | 'anthropic' | 'markdown' | 'other',
+    sdkPackage: svc.sdkPackage,
+    features: svc.features,
+    configEnvVars: [] as string[],
+  }));
+  if (scan.hasMarkdownRendering) {
+    backendIntegrations.push({ kind: 'markdown', sdkPackage: 'react-markdown', features: ['rendering'], configEnvVars: [] });
+  }
+
+  // If Supabase detected, set auth provider
+  if (auth && backendIntegrations.some(b => b.kind === 'supabase' && b.features.includes('auth'))) {
+    auth.provider = 'supabase';
+    auth.type = 'jwt';
+  }
 
   // 6. Extract theme information
   const theme = extractThemeFromScan(scan);
@@ -2030,6 +2078,8 @@ export async function buildSemanticModel(
     stateManagement,
     apiEndpoints: apiEndpointModels,
     auth,
+    backendIntegrations,
+    hasMarkdownRendering: scan.hasMarkdownRendering ?? false,
     theme,
     confidence,
     metadata: {

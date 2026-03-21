@@ -66,6 +66,30 @@ cd ios-app
 | `morphkit_screen_context` | Get full context for completing a specific screen |
 | `morphkit_verify` | Check project completion: build status, TODO census, completion % |
 | `morphkit_next_task` | Get the next recommended screen to implement |
+| `morphkit_completion_status` | Machine-readable JSON with exact TODO locations for automated loops |
+| `morphkit_complete_screen` | Full context for completing a single screen (view, API, models, reference) |
+| `morphkit_fix_build_error` | Parse Swift build errors and return structured context for fixes |
+
+### Plan Command
+
+```bash
+# Analyze your app and get a comprehensive iOS conversion plan (always free)
+npx morphkit plan ./my-webapp
+```
+
+### Complete Command
+
+```bash
+# Auto-complete all MORPHKIT-TODOs using Claude API
+npx morphkit complete ./ios-app
+```
+
+### Doctor Command
+
+```bash
+# Diagnose your Morphkit configuration
+npx morphkit doctor
+```
 
 ### Verify Command
 
@@ -127,6 +151,23 @@ Every generated file includes a source mapping comment tracing back to the origi
 - **Preview data factories** — `#if DEBUG` extensions with `.preview()` methods for every model, so SwiftUI previews work out of the box.
 - **AI-enhanced analysis (optional)** — Connect Claude, OpenAI, or Grok for deeper intent extraction, smarter component mapping, and navigation planning.
 - **Zero runtime dependencies** — Generated Swift code uses only Foundation and SwiftUI. No third-party pods or packages.
+
+---
+
+## Auto-Detected Integrations
+
+Morphkit automatically detects your backend services and generates the right iOS SDK integration:
+
+| Web Service | iOS Output | Detection |
+|-------------|-----------|-----------|
+| Supabase | Supabase Swift SDK (`SupabaseManager.swift`) | `@supabase/supabase-js` in package.json |
+| Stripe | WKWebView Checkout (`PaymentManager.swift`) | `stripe` in package.json |
+| SSE Streaming | URLSession AsyncBytes (`SSEClient.swift`) | `text/event-stream` in API routes |
+| react-markdown | MarkdownUI package | `react-markdown` in package.json |
+| Firebase | Firebase iOS SDK | `firebase` in package.json |
+| Clerk | Clerk iOS | `@clerk/nextjs` in package.json |
+
+No configuration needed — Morphkit reads your `package.json` and source files to determine what to generate.
 
 ---
 
@@ -450,8 +491,8 @@ If multiple API keys are set, Morphkit auto-detects the best available provider.
 | Framework | Status | Notes |
 |-----------|--------|-------|
 | Next.js App Router | Supported | Full support for file-based routing, layouts, loading states, API routes |
-| Next.js Pages Router | Planned | Route detection works; component analysis coming |
-| React + Vite | Planned | Component and state extraction works; routing TBD |
+| Next.js Pages Router | Partial | Route detection, component/state extraction, generation working |
+| React + Vite | Partial | Component/state extraction, React Router detection working |
 | React + CRA | Planned | Same as Vite support |
 
 ### Supported Web Patterns
@@ -521,7 +562,7 @@ bun install
 ### Commands
 
 ```bash
-# Run all tests (67 tests, 508 assertions)
+# Run all tests (263 tests, 1422 assertions)
 bun test
 
 # TypeScript strict type checking
@@ -544,7 +585,7 @@ The test suite covers the full pipeline with a sample Next.js e-commerce app (`t
 - **Swift quality tests** — Validates generated code compiles and follows iOS conventions
 
 ```
-67 pass | 0 fail | 508 expect() calls
+263 pass | 0 fail | 1422 expect() calls
 ```
 
 ### Project Conventions

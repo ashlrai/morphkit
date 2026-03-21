@@ -150,6 +150,10 @@ export const ComponentRefSchema = z.object({
   props: z.record(z.string(), TypeDefinitionSchema).default({}),
   /** How many times it appears on the screen (1 = single, >1 = repeated/list) */
   count: z.enum(['single', 'repeated']).default('single'),
+  /** SwiftUI modifiers extracted from Tailwind/CSS classes */
+  styleModifiers: z.array(z.string()).default([]),
+  /** Raw CSS classes found on this component */
+  cssClasses: z.array(z.string()).default([]),
 });
 
 export const DataRequirementSchema = z.object({
@@ -287,6 +291,11 @@ export const ApiEndpointSchema = z.object({
   /** Whether this endpoint requires authentication */
   auth: z.boolean().default(false),
   caching: CacheStrategySchema.nullable().default(null),
+  /** Streaming type for this endpoint */
+  streaming: z.object({
+    type: z.enum(['sse', 'websocket', 'none']),
+    eventTypes: z.array(z.string()),
+  }).default({ type: 'none', eventTypes: [] }),
   /** Human-readable description of what this endpoint does */
   description: z.string().default(''),
   /** Source file where this call was found */
@@ -414,6 +423,15 @@ export const SemanticAppModelSchema = z.object({
   stateManagement: z.array(StatePatternSchema).default([]),
   apiEndpoints: z.array(ApiEndpointSchema).default([]),
   auth: AuthPatternSchema.nullable().default(null),
+  /** Detected backend service integrations (Supabase, Stripe, etc.) */
+  backendIntegrations: z.array(z.object({
+    kind: z.enum(['supabase', 'stripe', 'firebase', 'clerk', 'openai', 'anthropic', 'markdown', 'other']),
+    sdkPackage: z.string(),
+    features: z.array(z.string()),
+    configEnvVars: z.array(z.string()).default([]),
+  })).default([]),
+  /** Whether the app renders markdown content */
+  hasMarkdownRendering: z.boolean().default(false),
   theme: ThemeConfigSchema,
   /** Overall confidence in the extracted model */
   confidence: ConfidenceLevelSchema.default('medium'),
@@ -465,3 +483,4 @@ export type TypographyScale = z.infer<typeof TypographyScaleSchema>;
 export type SpacingScale = z.infer<typeof SpacingScaleSchema>;
 export type ThemeConfig = z.infer<typeof ThemeConfigSchema>;
 export type SemanticAppModel = z.infer<typeof SemanticAppModelSchema>;
+export type BackendIntegration = SemanticAppModel['backendIntegrations'][number];

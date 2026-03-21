@@ -7,7 +7,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join, basename, dirname, relative } from 'path';
 import { execFileSync } from 'child_process';
 
@@ -40,7 +40,6 @@ export interface CompleteResult {
 function findSwiftFiles(dir: string): string[] {
     const results: string[] = [];
     if (!existsSync(dir)) return results;
-    const { readdirSync, statSync } = require('fs');
     try {
         for (const entry of readdirSync(dir)) {
             if (entry.startsWith('.') || entry === 'Build' || entry === '.build') continue;
@@ -169,7 +168,7 @@ function validateSwiftSyntax(code: string, filePath: string): boolean {
             execFileSync('swiftc', ['-parse', tmpPath], { stdio: 'pipe', timeout: 15_000 });
             return true;
         } finally {
-            try { require('fs').unlinkSync(tmpPath); } catch { /* ignore */ }
+            try { unlinkSync(tmpPath); } catch { /* ignore */ }
         }
     } catch {
         return false;

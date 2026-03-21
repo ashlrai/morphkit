@@ -287,7 +287,7 @@ export function verifyProject(projectPath: string): VerifyResult {
 
             const structBody = contentStripped.slice(startIdx, endIdx);
             // Count let/var property declarations (simple heuristic)
-            const propMatches = structBody.match(/(?:let|var)\s+\w+\s*[:\=]/g);
+            const propMatches = structBody.match(/(?:let|var)\s+\w+\s*[:=]/g);
             const propCount = propMatches ? propMatches.length : 0;
 
             if (propCount >= 2) {

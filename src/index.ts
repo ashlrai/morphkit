@@ -767,7 +767,7 @@ program
 
     try {
       // Read existing settings or start fresh
-      let settings: Record<string, any> = Object.create(null);
+      const settings: Record<string, any> = Object.create(null);
       if (existsSync(settingsPath)) {
         const raw = readFileSync(settingsPath, 'utf-8');
         const parsed = JSON.parse(raw);

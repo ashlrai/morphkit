@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { resolve, join, basename } from 'path';
+import { resolve, join, basename, dirname } from 'path';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -854,12 +854,18 @@ server.tool(
             });
             const refContent = refFile ? `// === Reference: ${basename(refFile)} ===\n${readFileSync(refFile, 'utf-8')}` : '';
 
-            // Find CLAUDE.md
-            const claudeMdPaths = [
-                join(projectDir, 'CLAUDE.md'),
-                ...allSwiftFiles.map(f => join(f, '..', '..', 'CLAUDE.md')).filter(p => existsSync(p)),
-            ];
-            const claudeMd = claudeMdPaths.find(p => existsSync(p));
+            // Find CLAUDE.md — bounded to project directory and its parent
+            const resolvedProjectDir = resolve(projectDir);
+            const projectParentDir = resolve(projectDir, '..');
+            const claudeMdCandidates = [
+                join(resolvedProjectDir, 'CLAUDE.md'),
+                join(projectParentDir, 'CLAUDE.md'),
+                ...new Set(allSwiftFiles.map(f => join(dirname(dirname(f)), 'CLAUDE.md'))),
+            ].filter(p => {
+                const rp = resolve(p);
+                return rp.startsWith(resolvedProjectDir) || rp.startsWith(projectParentDir);
+            });
+            const claudeMd = claudeMdCandidates.find(p => existsSync(p));
             const claudeContent = claudeMd ? readFileSync(claudeMd, 'utf-8') : '';
 
             // Get TODOs for this screen

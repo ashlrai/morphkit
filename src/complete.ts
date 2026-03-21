@@ -8,7 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
-import { join, basename, dirname, relative } from 'path';
+import { join, basename, dirname, relative, resolve } from 'path';
 import { execFileSync, execSync } from 'child_process';
 
 import { verifyProject, getDetailedTodos, type DetailedTodo } from './verify.js';
@@ -81,13 +81,19 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
         }
     }
 
-    // Find CLAUDE.md — check project root, one level up, and inside app subdirectories
+    // Find CLAUDE.md — check project root and one level up (bounded to project parent)
+    const resolvedProject = resolve(projectPath);
+    const projectParent = resolve(projectPath, '..');
     const claudeCandidates = [
-        join(projectPath, 'CLAUDE.md'),
-        join(projectPath, '..', 'CLAUDE.md'),
-        ...new Set(allFiles.map(f => join(dirname(f), '..', 'CLAUDE.md'))),
-        ...new Set(allFiles.map(f => join(dirname(f), '..', '..', 'CLAUDE.md'))),
-    ];
+        join(resolvedProject, 'CLAUDE.md'),
+        join(projectParent, 'CLAUDE.md'),
+        // Check inside app subdirectories (e.g., projectPath/AppName/CLAUDE.md)
+        ...new Set(allFiles.map(f => join(dirname(dirname(f)), 'CLAUDE.md'))),
+    ].filter(p => {
+        // Bound paths: must be within projectPath or its immediate parent
+        const resolved = resolve(p);
+        return resolved.startsWith(resolvedProject) || resolved.startsWith(projectParent);
+    });
     const claudeMdFound = claudeCandidates.find(p => existsSync(p));
     const claudeContent = claudeMdFound ? readFileSync(claudeMdFound, 'utf-8') : '';
 
@@ -197,8 +203,10 @@ export async function completeProject(
     let todosResolved = 0;
     let consecutiveNoProgress = 0;
     const MAX_NO_PROGRESS = 3;
+    let actualIterations = 0;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
+        actualIterations = iteration + 1;
         // Check current state
         const result = verifyProject(projectPath);
         const todos = getDetailedTodos(projectPath);
@@ -296,15 +304,18 @@ export async function completeProject(
 
         if (newTodoCount >= oldTodoCount) {
             if (verbose) console.log(`  Skipping — no TODOs resolved (${oldTodoCount} → ${newTodoCount})`);
-            consecutiveNoProgress++;
-            if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
-                if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
-                break;
+            // In dryRun mode, files are never written so TODOs never decrease on disk.
+            // Don't count this as non-progress — report what would have happened.
+            if (!dryRun) {
+                consecutiveNoProgress++;
+                if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
+                    if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
+                    break;
+                }
             }
             continue;
         }
 
-        // Write the completed file
         if (!dryRun) {
             writeFileSync(bestFile, completedCode, 'utf-8');
         }
@@ -325,7 +336,7 @@ export async function completeProject(
 
     return {
         success: remainingTodos.length === 0,
-        iterations: maxIterations,
+        iterations: actualIterations,
         filesCompleted,
         todosResolved,
         todosRemaining: remainingTodos.length,

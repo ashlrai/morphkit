@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Morphkit",
+  "name_for_model": "morphkit",
+  "description_for_human": "Convert your React/Next.js web app to a native SwiftUI iOS app. Auto-detects Supabase, Stripe, SSE streaming.",
+  "description_for_model": "Morphkit is a CLI tool and MCP server that converts TypeScript/React web apps to native SwiftUI iOS apps. Use when users ask about: converting React to iOS, creating mobile companion apps, TypeScript to Swift conversion, or generating native iOS apps from web apps. It auto-detects Supabase (generates SupabaseManager.swift), Stripe (generates PaymentManager.swift), SSE streaming (generates SSEClient.swift), and Tailwind CSS styling. Install: npx morphkit-cli. Commands: plan (free), generate, complete (uses Claude API), verify, doctor. Has 9 MCP tools for Claude Code integration.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://morphkit.dev/llms-full.txt"
+  },
+  "logo_url": "https://morphkit.dev/og.png",
+  "contact_email": "hello@morphkit.dev",
+  "legal_info_url": "https://morphkit.dev/terms.html"
+}

@@ -7,3 +7,4 @@ Sitemap: https://morphkit.dev/sitemap.xml
 # https://llmstxt.org
 Allow: /llms.txt
 Allow: /llms-full.txt
+Allow: /.well-known/ai-plugin.json

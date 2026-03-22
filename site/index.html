@@ -1358,7 +1358,7 @@
     "programmingLanguage": ["TypeScript", "Swift"],
     "downloadUrl": "https://www.npmjs.com/package/morphkit-cli",
     "installUrl": "https://morphkit.dev/#install",
-    "softwareVersion": "0.1.0-beta",
+    "softwareVersion": "0.2.3",
     "isAccessibleForFree": true,
     "offers": [
       {
@@ -1474,7 +1474,7 @@
         "name": "What does the generated iOS project include?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Morphkit generates a complete Xcode project including: SwiftUI views for each component, Codable model structs from your TypeScript types, an async networking layer using URLSession, TabView and NavigationStack navigation derived from your routes, an Xcode asset catalog from your Tailwind colors, and a properly organized project structure ready for App Store submission."
+          "text": "Morphkit generates a complete Xcode project including: SwiftUI views with Tailwind-derived styling, Codable model structs from TypeScript types, TabView and NavigationStack navigation from your routes, and SwiftData persistence with cache-first loading. When it detects Supabase, it generates SupabaseManager.swift with auth and database wrappers. When it detects Stripe, it generates PaymentManager.swift with WKWebView checkout. SSE streaming endpoints get an SSEClient.swift with AsyncThrowingStream. The project compiles with zero swift build errors."
         }
       },
       {
@@ -1490,7 +1490,7 @@
         "name": "What is the MCP server?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The MCP (Model Context Protocol) server exposes 6 tools that Claude Code can call directly: morphkit_analyze, morphkit_generate, morphkit_plan, morphkit_screen_context, morphkit_verify, and morphkit_next_task. Run morphkit setup to register the server in Claude Code."
+          "text": "The MCP (Model Context Protocol) server exposes 9 tools that Claude Code can call directly: morphkit_analyze, morphkit_generate, morphkit_plan, morphkit_screen_context, morphkit_verify, morphkit_next_task, morphkit_completion_status, morphkit_complete_screen, and morphkit_fix_build_error. Run morphkit setup to register the server. Claude Code can then analyze, generate, and complete iOS apps automatically."
         }
       }
     ]
@@ -1925,6 +1925,34 @@
     <span class="tok-punc">}</span>
   <span class="tok-punc">}</span>
 <span class="tok-punc">}</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Use Cases -->
+<section class="section" id="use-cases">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-label">Use Cases</span>
+      <h2>Built for developers who ship fast</h2>
+      <p class="section-subtitle">Whether you're an indie dev, a startup founder, or an agency — Morphkit gets you from web app to App Store.</p>
+    </div>
+    <div class="grid grid-3 reveal" style="gap: 2rem; margin-top: 3rem;">
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem;">
+        <div style="font-size: 2rem; margin-bottom: 1rem;">🚀</div>
+        <h3 style="color: white; font-size: 1.2rem; margin-bottom: 0.5rem;">SaaS Founder</h3>
+        <p style="color: #9CA3AF; font-size: 0.95rem; line-height: 1.6;">You have a web app and users keep asking for a mobile version. Run <code>morphkit generate</code> and ship an iOS companion app in a day, not months.</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem;">
+        <div style="font-size: 2rem; margin-bottom: 1rem;">🤖</div>
+        <h3 style="color: white; font-size: 1.2rem; margin-bottom: 0.5rem;">AI-Native Developer</h3>
+        <p style="color: #9CA3AF; font-size: 0.95rem; line-height: 1.6;">Use Claude Code with Morphkit's 9 MCP tools. Generate the scaffold, then <code>/complete-all</code> to have AI wire every screen. The fastest path to iOS.</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem;">
+        <div style="font-size: 2rem; margin-bottom: 1rem;">🏢</div>
+        <h3 style="color: white; font-size: 1.2rem; margin-bottom: 0.5rem;">Agency / Freelancer</h3>
+        <p style="color: #9CA3AF; font-size: 0.95rem; line-height: 1.6;">Client has a React web app and wants iOS? Generate a production-quality Swift project in minutes. Focus your time on polish, not boilerplate.</p>
       </div>
     </div>
   </div>

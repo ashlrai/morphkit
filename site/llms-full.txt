@@ -116,8 +116,7 @@ Package.swift automatically includes Supabase Swift SDK and MarkdownUI when dete
 
 ### Registration
 
-Command: `npx morphkit mcp`
-Register: `morphkit setup` writes to `.claude/settings.json`:
+Register with: `npx morphkit-cli setup` (writes to `.claude/settings.json`):
 
 ```json
 {
@@ -221,6 +220,50 @@ Parameters:
   - error_output: string (required) — stderr from a failed `swift build`
 
 Returns: Parsed errors with file, line, message, and surrounding code context.
+
+---
+
+## Example Workflows
+
+### Convert a Next.js app to iOS (CLI)
+
+```bash
+# Step 1: See what Morphkit will build
+npx morphkit-cli plan ./my-saas-app
+# Output: Detected Stack (Supabase, Stripe), 14 recommended screens, 8 excluded
+
+# Step 2: Generate the iOS project
+npx morphkit-cli generate ./my-saas-app -o ./ios-app -n MySaas
+# Output: 45 Swift files generated, zero build errors
+
+# Step 3: Auto-complete remaining TODOs
+ANTHROPIC_API_KEY=sk-ant-... npx morphkit-cli complete ./ios-app --verbose
+# Output: 6 TODOs resolved, 0 remaining, build: pass
+
+# Step 4: Open in Xcode
+cd ios-app && open Package.swift
+```
+
+### Use with Claude Code (MCP)
+
+```bash
+# Register MCP server
+npx morphkit-cli setup
+
+# Then in Claude Code, ask:
+# "Convert my React app at ./my-webapp to an iOS app"
+# Claude Code will call morphkit_plan → morphkit_generate → morphkit_complete_screen
+```
+
+### Check project status
+
+```bash
+npx morphkit-cli verify ./ios-app
+# Build:   PASS (0 errors)
+# Screen:  44/47 (94%)
+# API:     165/165 (100%)
+# Overall: 97% complete
+```
 
 ---
 

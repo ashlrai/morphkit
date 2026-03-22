@@ -1800,7 +1800,9 @@ struct CheckoutView: View {
         NavigationStack {
             WebView(url: url)
                 .navigationTitle("Checkout")
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
@@ -1810,6 +1812,7 @@ struct CheckoutView: View {
     }
 }
 
+#if os(iOS)
 struct WebView: UIViewRepresentable {
     let url: URL
 
@@ -1821,6 +1824,19 @@ struct WebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
+#elseif os(macOS)
+struct WebView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+}
+#endif
 `;
 }
 
@@ -1835,7 +1851,7 @@ function generateSSEClient(sseEndpoints: Array<{ url: string; method: string; st
     lines.push('import Foundation');
     lines.push('');
     lines.push('/// Generic SSE event received from the server.');
-    lines.push('struct SSEEvent: Identifiable {');
+    lines.push('struct StreamEvent: Identifiable {');
     lines.push('    let id = UUID()');
     lines.push('    let type: String');
     lines.push('    let data: String');
@@ -1857,7 +1873,7 @@ function generateSSEClient(sseEndpoints: Array<{ url: string; method: string; st
     lines.push('    }');
     lines.push('');
     lines.push('    /// Stream SSE events from the given URL. Returns an AsyncThrowingStream of events.');
-    lines.push('    func stream(url: URL, method: String = "GET", body: Data? = nil, headers: [String: String] = [:]) -> AsyncThrowingStream<SSEEvent, Error> {');
+    lines.push('    func stream(url: URL, method: String = "GET", body: Data? = nil, headers: [String: String] = [:]) -> AsyncThrowingStream<StreamEvent, Error> {');
     lines.push('        AsyncThrowingStream { continuation in');
     lines.push('            Task {');
     lines.push('                do {');
@@ -1888,7 +1904,7 @@ function generateSSEClient(sseEndpoints: Array<{ url: string; method: string; st
     lines.push('                        } else if line.isEmpty {');
     lines.push('                            // Empty line = end of event');
     lines.push('                            if !dataBuffer.isEmpty {');
-    lines.push('                                let event = SSEEvent(type: eventType, data: dataBuffer)');
+    lines.push('                                let event = StreamEvent(type: eventType, data: dataBuffer)');
     lines.push('                                continuation.yield(event)');
     lines.push('                                dataBuffer = ""');
     lines.push('                                eventType = "message"');
@@ -1898,7 +1914,7 @@ function generateSSEClient(sseEndpoints: Array<{ url: string; method: string; st
     lines.push('');
     lines.push('                    // Yield any remaining buffered data');
     lines.push('                    if !dataBuffer.isEmpty {');
-    lines.push('                        continuation.yield(SSEEvent(type: eventType, data: dataBuffer))');
+    lines.push('                        continuation.yield(StreamEvent(type: eventType, data: dataBuffer))');
     lines.push('                    }');
     lines.push('                    continuation.finish()');
     lines.push('                } catch {');

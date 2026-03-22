@@ -569,6 +569,10 @@ function mapTsTypeToSwift(tsType: string): string {
         return 'String';
     }
 
+    // Tuple types: [string, string] or [number, string] — not Codable in Swift, use [String]
+    const tupleMatch = tsType.match(/^\[([^\[\]]+,\s*[^\[\]]+)\]$/);
+    if (tupleMatch) return '[String]';
+
     // Array types: T[] or Array<T>
     const arrayMatch = tsType.match(/^(.+)\[\]$/) ?? tsType.match(/^Array<(.+)>$/);
     if (arrayMatch) return `[${mapTsTypeToSwift(arrayMatch[1])}]`;
@@ -578,7 +582,7 @@ function mapTsTypeToSwift(tsType: string): string {
     if (recordMatch) return `[${mapTsTypeToSwift(recordMatch[1])}: ${mapTsTypeToSwift(recordMatch[2])}]`;
 
     // Catch-all: if the type still contains TS syntax chars, fall back to Any
-    if (/[<>{}]|=>/.test(tsType)) return 'Any';
+    if (/[<>{}()\[\],]|=>/.test(tsType)) return 'Any';
 
     return tsType;
 }

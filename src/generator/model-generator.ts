@@ -30,7 +30,9 @@ interface SwiftField {
 }
 
 /** Regex matching TS/JS syntax or leaked import paths that must not appear in Swift types */
-const INVALID_SWIFT_TYPE = /[<>|{}]|=>|Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\/|\$Enums/;
+const INVALID_SWIFT_TYPE = /[<>|{}()]|=>|Import\(|import\(|node_modules|\.prisma|\.\/|\.\.\/|\$Enums/;
+/** TypeScript tuple-like types: [type, type] — not representable as Codable in Swift */
+const TS_TUPLE_TYPE = /^\[.+,.+\]$/;
 
 /**
  * Convert a TypeDefinition to a Swift type string via typeDefToSwift,
@@ -39,6 +41,11 @@ const INVALID_SWIFT_TYPE = /[<>|{}]|=>|Import\(|import\(|node_modules|\.prisma|\
 function typeDefinitionToSwiftType(td: TypeDefinition): string {
     const result = typeDefToSwift(td);
     if (INVALID_SWIFT_TYPE.test(result)) return 'String';
+    if (TS_TUPLE_TYPE.test(result)) return '[String]';
+    // Catch lowercase TS primitives that leaked through (string, number, boolean)
+    if (result === 'string') return 'String';
+    if (result === 'number') return 'Double';
+    if (result === 'boolean') return 'Bool';
     return result;
 }
 
@@ -198,6 +205,31 @@ function generateStruct(entity: Entity, model: SemanticAppModel): string {
     const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
     const hasId = fields.some((f) => f.isId);
     const needsCodingKeys = fields.some((f) => f.needsCodingKey);
+
+    // Validate field types: any type that isn't a Swift primitive, array, dictionary,
+    // or known entity name gets replaced with String for safe Codable conformance
+    const SWIFT_SAFE_TYPES = new Set([
+        'String', 'Int', 'Double', 'Float', 'Bool', 'Date', 'UUID', 'Data', 'URL', 'Any',
+    ]);
+    const entityNames = new Set((model.entities ?? []).map(e => pascalCase(e.name)));
+    const relFieldNames = new Set((entity.relationships ?? []).map(r => camelCase(r.fieldName)));
+    for (const field of fields) {
+        // Skip relationship fields — they get special treatment in SwiftData
+        if (relFieldNames.has(field.name)) continue;
+        // Flatten nested complex types that can't conform to Codable/Hashable
+        if (field.type === '[[String: String]]' || field.type === '[[String]]') {
+            field.type = field.isOptional ? 'String?' : 'String';
+            continue;
+        }
+        const baseType = field.type.replace(/\?$/, '').replace(/^\[+/, '').replace(/\]+$/, '').trim();
+        // Strip dictionary key type if present
+        const dictValueType = baseType.includes(':') ? baseType.split(':').pop()?.trim() : null;
+        const checkType = dictValueType ?? baseType;
+        if (checkType && !SWIFT_SAFE_TYPES.has(checkType) && !entityNames.has(checkType)) {
+            // Unknown type — replace with String to ensure Codable/Hashable conformance
+            field.type = field.isOptional ? 'String?' : 'String';
+        }
+    }
 
     const protocols: string[] = ['Codable', 'Identifiable', 'Hashable'];
 
@@ -630,6 +662,7 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const storeName = `${structName}Record`;
     const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
     const hasId = fields.some((f) => f.isId);
+
     const relationships = entity.relationships ?? [];
     const relationshipFieldNames = new Set(relationships.map(r => camelCase(r.fieldName)));
     // Determine which relationship fields are actual entity references (not plain FK strings)
@@ -645,6 +678,23 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
             }
         }
     }
+
+    // Validate field types — same as generateStruct to keep types in sync.
+    // Skip relationship fields since they get @Relationship treatment.
+    const SWIFT_SAFE_TYPES_SD = new Set([
+        'String', 'Int', 'Double', 'Float', 'Bool', 'Date', 'UUID', 'Data', 'URL', 'Any',
+    ]);
+    const entityNamesSD = new Set((model.entities ?? []).map(e => pascalCase(e.name)));
+    for (const field of fields) {
+        if (entityRelationshipFields.has(field.name)) continue;
+        const baseType = field.type.replace(/\?$/, '').replace(/^\[+/, '').replace(/\]+$/, '').trim();
+        const dictValueType = baseType.includes(':') ? baseType.split(':').pop()?.trim() : null;
+        const checkType = dictValueType ?? baseType;
+        if (checkType && !SWIFT_SAFE_TYPES_SD.has(checkType) && !entityNamesSD.has(checkType)) {
+            field.type = field.isOptional ? 'String?' : 'String';
+        }
+    }
+
     const lines: string[] = [];
 
     // SwiftData @Model macro conflicts with property named 'description' (CustomStringConvertible)

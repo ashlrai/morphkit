@@ -1476,8 +1476,8 @@ function generateGridLayout(screen: Screen, model: SemanticAppModel, components:
         }
         lines.push(`            ${gi}}`);
         lines.push(`            ${gi}.background(Color.clear)`);
-        lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
         lines.push(`            ${gi}.shadow(color: .black.opacity(0.1), radius: 4, y: 2)`);
+        lines.push(`            ${gi}.clipShape(RoundedRectangle(cornerRadius: 12))`);
     } else {
         // Inline a basic card instead of referencing a non-existent CardView
         const fbEntity = (model.entities ?? []).find(e => pascalCase(e.name) === entityName);

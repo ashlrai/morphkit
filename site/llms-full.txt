@@ -2,7 +2,7 @@
 
 > Semantic AI compiler that converts TypeScript/React web apps to native SwiftUI iOS apps. Auto-detects Supabase, Stripe, SSE streaming, and generates the right iOS SDK integrations.
 
-npm: `morphkit-cli` (v0.2.2)
+npm: `morphkit-cli` (v0.2.3)
 Homepage: https://morphkit.dev
 GitHub: https://github.com/ashlrai/morphkit
 License: MIT

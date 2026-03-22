@@ -1817,6 +1817,7 @@ function generateClaudeSettings(): GeneratedFile {
 export async function generateXcodeProject(
     model: SemanticAppModel,
     outputPath: string,
+    options?: { aiProvider?: any; onViewProgress?: (screen: string, status: 'ai' | 'template' | 'error') => void },
 ): Promise<GeneratedProject> {
     const appName = pascalCase(model.appName ?? 'MyApp');
     const appDir = join(outputPath, appName);
@@ -1838,7 +1839,7 @@ export async function generateXcodeProject(
     if (dataManager) allFiles.push(dataManager);
 
     // 2. Views
-    const viewFiles = generateSwiftUIViews(model);
+    const viewFiles = await generateSwiftUIViews(model, options?.aiProvider, options?.onViewProgress);
     allFiles.push(...viewFiles);
 
     // 3. Navigation

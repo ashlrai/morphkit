@@ -17,6 +17,7 @@ import type {
   AIComponentMapResult,
   AIStateArchitectureResult,
   AIEntityFieldsResult,
+  AIViewGenerationInput,
 } from '../provider.js';
 import {
   AIIntentResultSchema,
@@ -221,5 +222,31 @@ export class OpenAIProvider implements AIProvider {
       );
     }
     return false;
+  }
+
+  async generateViewCode(input: AIViewGenerationInput): Promise<string | null> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert at converting React/Next.js components to native SwiftUI for iOS 17+. Rules: ${input.rules.join('. ')}. Available types: ${input.entityTypes}. Fetch pattern: ${input.fetchPattern}. Return ONLY the Swift code for a complete SwiftUI View struct. No markdown fences or explanations.`,
+          },
+          {
+            role: 'user',
+            content: `Convert this React component "${input.screenName}" to SwiftUI:\n\n${input.reactSource}`,
+          },
+        ],
+      });
+
+      const text = response.choices[0]?.message?.content;
+      if (!text || text.length < 30) return null;
+      return text.replace(/^```swift\n?/, '').replace(/\n?```$/, '').trim();
+    } catch (error) {
+      console.log(`[morphkit] AI view generation failed for ${input.screenName}: ${(error as Error).message}`);
+      return null;
+    }
   }
 }

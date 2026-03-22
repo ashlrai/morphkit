@@ -478,9 +478,29 @@ program
       spinner.text = 'Adapting for iOS platform...';
       const adapted = adaptForPlatform(model, 'ios');
 
-      // Stage 4: Generate
+      // Stage 4: Generate (with AI view generation when provider available)
       spinner.text = 'Generating SwiftUI project...';
-      const project = await generateProject(adapted, outputPath);
+      let viewAiProvider: any = null;
+      if (!process.env.MORPHKIT_NO_AI && process.env.ANTHROPIC_API_KEY) {
+        try {
+          const { ClaudeProvider } = await import('./ai/providers/claude.js');
+          viewAiProvider = new ClaudeProvider(process.env.ANTHROPIC_API_KEY);
+          spinner.text = 'Generating SwiftUI project (AI-powered views)...';
+        } catch { /* AI provider not available, use templates */ }
+      } else if (!process.env.MORPHKIT_NO_AI && process.env.OPENAI_API_KEY) {
+        try {
+          const { OpenAIProvider } = await import('./ai/providers/openai.js');
+          viewAiProvider = new OpenAIProvider(process.env.OPENAI_API_KEY);
+          spinner.text = 'Generating SwiftUI project (AI-powered views)...';
+        } catch { /* AI provider not available, use templates */ }
+      }
+      const project = await generateProject(adapted, outputPath, {
+        aiProvider: viewAiProvider,
+        onViewProgress: (screen, status) => {
+          if (status === 'ai') spinner.text = `Generated ${screen} (AI)`;
+          else spinner.text = `Generated ${screen} (template)`;
+        },
+      });
 
       const elapsed = formatElapsed(Math.round(performance.now() - startTime));
       spinner.succeed('Generation complete!');

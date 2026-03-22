@@ -16,6 +16,7 @@ import type {
   AIComponentMapResult,
   AIStateArchitectureResult,
   AIEntityFieldsResult,
+  AIViewGenerationInput,
 } from '../provider.js';
 import {
   AIIntentResultSchema,
@@ -307,5 +308,54 @@ export class ClaudeProvider implements AIProvider {
       );
     }
     return false;
+  }
+
+  async generateViewCode(input: AIViewGenerationInput): Promise<string | null> {
+    const systemPrompt = `You are an expert at converting React/Next.js components to native SwiftUI for iOS 17+.
+
+Given a React component's source code, generate the equivalent SwiftUI view body.
+
+Rules:
+${input.rules.map(r => `- ${r}`).join('\n')}
+
+Available model types:
+${input.entityTypes}
+
+Data fetching pattern: ${input.fetchPattern}
+
+IMPORTANT:
+- Return ONLY the Swift code for the complete struct (import, struct declaration, body, and any helper methods)
+- Do NOT include markdown code fences or explanations
+- The view must be a valid SwiftUI View struct
+- Include @State properties for any local state
+- Include a loadData() async function if the component fetches data
+- Use .task { await loadData() } for initial data loading
+- Handle loading and error states`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{
+          role: 'user',
+          content: `Convert this React component "${input.screenName}" to SwiftUI:\n\n${input.reactSource}`,
+        }],
+      });
+
+      const text = response.content
+        .filter(block => block.type === 'text')
+        .map(block => (block as { type: 'text'; text: string }).text)
+        .join('');
+
+      if (!text || text.length < 30) return null;
+
+      // Strip markdown code fences if present
+      const cleaned = text.replace(/^```swift\n?/, '').replace(/\n?```$/, '').trim();
+      return cleaned;
+    } catch (error) {
+      console.log(`[morphkit] AI view generation failed for ${input.screenName}: ${(error as Error).message}`);
+      return null;
+    }
   }
 }

@@ -62,42 +62,42 @@ function createAuthScreen(name: string, extraOverrides: Record<string, any> = {}
 // ---------------------------------------------------------------------------
 
 describe('Auth Flow Generation', () => {
-    test('login screen generates email field', () => {
+    test('login screen generates email field', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('TextField("Email", text: $email)');
     });
 
-    test('login screen generates SecureField for password', () => {
+    test('login screen generates SecureField for password', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('SecureField("Password", text: $password)');
     });
 
-    test('login screen generates password show/hide toggle', () => {
+    test('login screen generates password show/hide toggle', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('showPassword.toggle()');
         expect(loginView!.content).toContain('@State private var showPassword = false');
     });
 
-    test('login screen generates sign in button with loading state', () => {
+    test('login screen generates sign in button with loading state', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('Text("Sign In")');
@@ -106,33 +106,33 @@ describe('Auth Flow Generation', () => {
         expect(loginView!.content).toContain('.disabled(email.isEmpty || password.isEmpty || isLoading)');
     });
 
-    test('login screen generates async login function wired to AuthManager', () => {
+    test('login screen generates async login function wired to AuthManager', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('private func login() async {');
         expect(loginView!.content).toContain('AuthManager.shared.login(email: email, password: password)');
     });
 
-    test('login screen generates error message display', () => {
+    test('login screen generates error message display', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('if let errorMessage {');
         expect(loginView!.content).toContain('@State private var errorMessage: String?');
     });
 
-    test('login screen generates navigation to register', () => {
+    test('login screen generates navigation to register', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('NavigationLink("Sign Up")');
@@ -140,11 +140,11 @@ describe('Auth Flow Generation', () => {
         expect(loginView!.content).toContain('View()');
     });
 
-    test('register screen generates name, email, password, confirm password fields', () => {
+    test('register screen generates name, email, password, confirm password fields', async () => {
         const model = createModel({
             screens: [createAuthScreen('Register')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const registerView = files.find(f => f.path.includes('Register'));
         expect(registerView).toBeDefined();
         expect(registerView!.content).toContain('TextField("Full Name", text: $name)');
@@ -154,33 +154,33 @@ describe('Auth Flow Generation', () => {
         expect(registerView!.content).toContain('@State private var confirmPassword = ""');
     });
 
-    test('register screen generates password mismatch validation', () => {
+    test('register screen generates password mismatch validation', async () => {
         const model = createModel({
             screens: [createAuthScreen('Register')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const registerView = files.find(f => f.path.includes('Register'));
         expect(registerView).toBeDefined();
         expect(registerView!.content).toContain('password != confirmPassword');
         expect(registerView!.content).toContain('Passwords do not match');
     });
 
-    test('register screen generates async register function wired to AuthManager', () => {
+    test('register screen generates async register function wired to AuthManager', async () => {
         const model = createModel({
             screens: [createAuthScreen('Register')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const registerView = files.find(f => f.path.includes('Register'));
         expect(registerView).toBeDefined();
         expect(registerView!.content).toContain('private func register() async {');
         expect(registerView!.content).toContain('AuthManager.shared.register(name: name, email: email, password: password)');
     });
 
-    test('signup screen name is detected as register layout', () => {
+    test('signup screen name is detected as register layout', async () => {
         const model = createModel({
             screens: [createAuthScreen('SignUp')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const signupView = files.find(f => f.path.includes('SignUp'));
         expect(signupView).toBeDefined();
         expect(signupView!.content).toContain('Create Account');
@@ -193,7 +193,7 @@ describe('Auth Flow Generation', () => {
 // ---------------------------------------------------------------------------
 
 describe('Auth API Methods', () => {
-    test('generates login method when auth is detected', () => {
+    test('generates login method when auth is detected', async () => {
         const model = createModel({
             auth: {
                 type: 'jwt',
@@ -209,7 +209,7 @@ describe('Auth API Methods', () => {
         expect(apiClient!.content).toContain('func login(email: String, password: String) async throws -> AuthResponse');
     });
 
-    test('generates register method when auth is detected', () => {
+    test('generates register method when auth is detected', async () => {
         const model = createModel({
             auth: {
                 type: 'jwt',
@@ -228,7 +228,7 @@ describe('Auth API Methods', () => {
         expect(apiClient!.content).toContain('func register(name: String, email: String, password: String) async throws -> AuthResponse');
     });
 
-    test('generates logout method when auth is detected', () => {
+    test('generates logout method when auth is detected', async () => {
         const model = createModel({
             auth: {
                 type: 'jwt',
@@ -244,7 +244,7 @@ describe('Auth API Methods', () => {
         expect(apiClient!.content).toContain('func logout()');
     });
 
-    test('generates AuthResponse struct when auth is detected', () => {
+    test('generates AuthResponse struct when auth is detected', async () => {
         const model = createModel({
             auth: {
                 type: 'jwt',
@@ -262,7 +262,7 @@ describe('Auth API Methods', () => {
         expect(authResponse!.content).toContain('let user: AuthUser?');
     });
 
-    test('AuthResponse references User entity when one exists', () => {
+    test('AuthResponse references User entity when one exists', async () => {
         const model = createModel({
             entities: [
                 {
@@ -293,7 +293,7 @@ describe('Auth API Methods', () => {
         expect(authResponse!.content).not.toContain('struct AuthUser');
     });
 
-    test('generates refreshToken method when refresh endpoint exists', () => {
+    test('generates refreshToken method when refresh endpoint exists', async () => {
         const model = createModel({
             auth: {
                 type: 'jwt',
@@ -329,7 +329,7 @@ describe('Auth API Methods', () => {
 // ---------------------------------------------------------------------------
 
 describe('Auth Manager Generation', () => {
-    test('AuthManager is generated when auth is detected', () => {
+    test('AuthManager is generated when auth is detected', async () => {
         // We can't directly call generateStateLayer (it's not exported),
         // so we test via the project-generator's orchestration or check
         // the networking layer files generated
@@ -355,11 +355,11 @@ describe('Auth Manager Generation', () => {
 // ---------------------------------------------------------------------------
 
 describe('Accessibility', () => {
-    test('login screen includes accessibilityLabel on key elements', () => {
+    test('login screen includes accessibilityLabel on key elements', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('.accessibilityLabel("Email address")');
@@ -367,51 +367,51 @@ describe('Accessibility', () => {
         expect(loginView!.content).toContain('.accessibilityLabel("App logo")');
     });
 
-    test('login screen includes accessibilityHint on sign up link', () => {
+    test('login screen includes accessibilityHint on sign up link', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('.accessibilityHint("Navigates to registration screen")');
     });
 
-    test('login screen includes accessible password toggle', () => {
+    test('login screen includes accessible password toggle', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('.accessibilityLabel(showPassword ? "Hide password" : "Show password")');
     });
 
-    test('login screen includes accessible error message', () => {
+    test('login screen includes accessible error message', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('.accessibilityLabel("Error: \\(errorMessage)")');
     });
 
-    test('login screen includes accessible loading state', () => {
+    test('login screen includes accessible loading state', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         expect(loginView!.content).toContain('.accessibilityLabel("Signing in")');
     });
 
-    test('register screen includes accessibilityLabel on form fields', () => {
+    test('register screen includes accessibilityLabel on form fields', async () => {
         const model = createModel({
             screens: [createAuthScreen('Register')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const registerView = files.find(f => f.path.includes('Register'));
         expect(registerView).toBeDefined();
         expect(registerView!.content).toContain('.accessibilityLabel("Full name")');
@@ -420,7 +420,7 @@ describe('Accessibility', () => {
         expect(registerView!.content).toContain('.accessibilityLabel("Create account")');
     });
 
-    test('custom view action buttons include accessibilityLabel', () => {
+    test('custom view action buttons include accessibilityLabel', async () => {
         const model = createModel({
             screens: [{
                 name: 'Dashboard',
@@ -445,13 +445,13 @@ describe('Accessibility', () => {
                 confidence: 'high' as const,
             }],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const dashView = files.find(f => f.path.includes('Dashboard'));
         expect(dashView).toBeDefined();
         expect(dashView!.content).toContain('.accessibilityLabel("Add Item")');
     });
 
-    test('custom view navigation buttons include accessibilityHint', () => {
+    test('custom view navigation buttons include accessibilityHint', async () => {
         const model = createModel({
             screens: [{
                 name: 'Dashboard',
@@ -476,17 +476,17 @@ describe('Accessibility', () => {
                 confidence: 'high' as const,
             }],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const dashView = files.find(f => f.path.includes('Dashboard'));
         expect(dashView).toBeDefined();
         expect(dashView!.content).toContain('.accessibilityHint("Navigates to Profile")');
     });
 
-    test('generated views use Dynamic Type-safe system fonts', () => {
+    test('generated views use Dynamic Type-safe system fonts', async () => {
         const model = createModel({
             screens: [createAuthScreen('Login')],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const loginView = files.find(f => f.path.includes('Login'));
         expect(loginView).toBeDefined();
         // Should use system semantic fonts, not hard-coded sizes
@@ -495,7 +495,7 @@ describe('Accessibility', () => {
         expect(loginView!.content).toContain('.font(.subheadline)');
     });
 
-    test('loading overlay includes accessibility label', () => {
+    test('loading overlay includes accessibility label', async () => {
         const model = createModel({
             screens: [{
                 name: 'Products',
@@ -512,7 +512,7 @@ describe('Accessibility', () => {
                 confidence: 'high' as const,
             }],
         });
-        const files = generateSwiftUIViews(model);
+        const files = await generateSwiftUIViews(model);
         const productsView = files.find(f => f.path.includes('Products'));
         expect(productsView).toBeDefined();
         expect(productsView!.content).toContain('.accessibilityLabel("Loading content")');

@@ -128,6 +128,29 @@ export interface AIProvider {
     entityName: string,
     context: AIEntityContext,
   ): Promise<AIEntityFieldsResult>;
+
+  /**
+   * Convert a React component's JSX to SwiftUI view body code.
+   * Used during generation to produce views that match the web app's visual structure.
+   * Returns the SwiftUI code string, or null if conversion fails.
+   */
+  generateViewCode?(input: AIViewGenerationInput): Promise<string | null>;
+}
+
+/** Input for AI-powered view generation. */
+export interface AIViewGenerationInput {
+  /** The full React/TSX component source code */
+  reactSource: string;
+  /** Screen name (e.g., "Dashboard", "ProductsDetail") */
+  screenName: string;
+  /** Detected layout type */
+  layout: string;
+  /** Available Swift entity types as code snippets */
+  entityTypes: string;
+  /** Data fetching pattern to use (SupabaseManager or APIClient) */
+  fetchPattern: string;
+  /** SwiftUI rules and conventions to follow */
+  rules: string[];
 }
 
 // ---------------------------------------------------------------------------

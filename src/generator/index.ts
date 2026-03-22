@@ -36,6 +36,7 @@ import { generateXcodeProject } from './project-generator';
 export async function generateProject(
     model: SemanticAppModel,
     outputPath: string,
+    options?: { aiProvider?: any; onViewProgress?: (screen: string, status: 'ai' | 'template' | 'error') => void },
 ): Promise<GeneratedProject> {
-    return generateXcodeProject(model, outputPath);
+    return generateXcodeProject(model, outputPath, options);
 }

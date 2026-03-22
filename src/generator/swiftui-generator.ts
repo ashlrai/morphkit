@@ -1,6 +1,8 @@
 // Morphkit SwiftUI View Generator
 // Transforms Semantic App Model screens into idiomatic SwiftUI views
 
+import { readFileSync, existsSync } from 'fs';
+
 import type {
     SemanticAppModel,
     Screen,
@@ -14,6 +16,8 @@ import type {
     ComponentRef,
     Field,
 } from '../semantic/model';
+
+import type { AIProvider } from '../ai/provider';
 
 import { isJunkEntity, isSwiftDataEligible } from './model-generator';
 import { generateFunctionName, extractPathParams, cleanURL, singularize } from './api-naming';
@@ -4765,7 +4769,11 @@ struct OfflineBannerView: View {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
+export async function generateSwiftUIViews(
+    model: SemanticAppModel,
+    aiProvider?: AIProvider | null,
+    onProgress?: (screen: string, status: 'ai' | 'template' | 'error') => void,
+): Promise<GeneratedFile[]> {
     const files: GeneratedFile[] = [];
     const allScreens = model.screens ?? [];
 
@@ -4773,18 +4781,114 @@ export function generateSwiftUIViews(model: SemanticAppModel): GeneratedFile[] {
     const screens = allScreens.filter((s) => !isMarketingScreen(s));
 
     for (const screen of screens) {
-        // Main view file
-        files.push(generateViewFile(screen, model));
+        // Try AI-first view generation when provider is available
+        const aiFile = await tryAIViewGeneration(screen, model, aiProvider);
+        if (aiFile) {
+            files.push(aiFile);
+            onProgress?.(screen.name, 'ai');
+        } else {
+            // Fallback: template-based scaffolding
+            files.push(generateViewFile(screen, model));
+            onProgress?.(screen.name, 'template');
+        }
 
         // Supporting sub-views (only generated when entity is not resolved inline)
-        const rowView = generateRowView(screen, model);
-        if (rowView) files.push(rowView);
+        if (!aiFile) {
+            const rowView = generateRowView(screen, model);
+            if (rowView) files.push(rowView);
 
-        const cardView = generateCardView(screen, model);
-        if (cardView) files.push(cardView);
+            const cardView = generateCardView(screen, model);
+            if (cardView) files.push(cardView);
+        }
     }
 
     return files;
+}
+
+/**
+ * Try to generate a view using AI by reading the original React source
+ * and converting it to SwiftUI. Returns null if AI is unavailable or fails.
+ */
+async function tryAIViewGeneration(
+    screen: Screen,
+    model: SemanticAppModel,
+    aiProvider?: AIProvider | null,
+): Promise<GeneratedFile | null> {
+    if (!aiProvider?.generateViewCode) return null;
+    if (!screen.sourceFile) return null;
+
+    // Check if the source file exists
+    let reactSource: string;
+    try {
+        if (!existsSync(screen.sourceFile)) return null;
+        reactSource = readFileSync(screen.sourceFile, 'utf-8');
+    } catch {
+        return null;
+    }
+
+    // Skip very short files (likely re-exports or layouts)
+    if (reactSource.length < 100) return null;
+
+    const viewName = `${pascalCase(screen.name)}View`;
+
+    // Build entity type context
+    const entityTypes = (model.entities ?? [])
+        .filter(e => !isJunkEntity(e))
+        .slice(0, 20) // Limit to avoid token overflow
+        .map(e => {
+            const fields = (e.fields ?? []).slice(0, 8).map(f => `    var ${camelCase(f.name)}: String`).join('\n');
+            return `struct ${pascalCase(e.name)}: Codable, Identifiable {\n    let id: String\n${fields}\n}`;
+        })
+        .join('\n\n');
+
+    const useSupabase = hasSupabaseDatabase(model);
+    const fetchPattern = useSupabase
+        ? 'SupabaseManager.shared.fetch("table_name", type: EntityType.self) for lists, SupabaseManager.shared.fetchById("table_name", id: id, type: EntityType.self) for detail'
+        : 'APIClient.shared.fetchEntityName() for API calls';
+
+    const rules = [
+        'Use @Observable (not ObservableObject) for state management',
+        'Use .task { await loadData() } for async data loading',
+        'Use NavigationStack (not NavigationView) for navigation',
+        'Use async/await with try/catch for all network calls',
+        'Include @State properties for local state (isLoading, errorMessage, data arrays)',
+        'Include a private func loadData() async for data fetching',
+        'Handle loading states with ProgressView() and error states with error messages',
+        'Use SwiftUI native components: List, Form, NavigationLink, AsyncImage, etc.',
+        useSupabase ? 'Use SupabaseManager.shared for all data operations' : 'Use APIClient.shared for API calls',
+    ];
+
+    try {
+        const swiftCode = await aiProvider.generateViewCode({
+            reactSource,
+            screenName: viewName,
+            layout: screen.layout ?? 'custom',
+            entityTypes,
+            fetchPattern,
+            rules,
+        });
+
+        if (!swiftCode || swiftCode.length < 50) return null;
+
+        // Ensure the code starts with proper imports
+        let finalCode = swiftCode;
+        if (!finalCode.includes('import SwiftUI')) {
+            finalCode = `// Generated by Morphkit (AI) from: ${screen.sourceFile}\n\nimport SwiftUI\n\n${finalCode}`;
+        } else {
+            finalCode = `// Generated by Morphkit (AI) from: ${screen.sourceFile}\n\n${finalCode}`;
+        }
+
+        return {
+            path: `Views/${viewName}.swift`,
+            content: finalCode,
+            sourceMapping: screen.sourceFile ?? 'unknown',
+            confidence: 'high' as const,
+            warnings: [`${viewName} was AI-generated from React source — review and test`],
+        };
+    } catch (error) {
+        console.log(`[morphkit] AI view generation failed for ${screen.name}: ${(error as Error).message}`);
+        return null;
+    }
 }
 
 // Re-export helpers for use by other generators

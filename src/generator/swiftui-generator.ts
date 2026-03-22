@@ -182,6 +182,48 @@ function pluralize(word: string): string {
     return word + 's';
 }
 
+/** Convert PascalCase to snake_case for Supabase table names */
+function toSnakeCase(str: string): string {
+    return str.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/**
+ * Check if the model uses Supabase with database feature.
+ * When true, views should call SupabaseManager instead of APIClient.
+ */
+function hasSupabaseDatabase(model: SemanticAppModel): boolean {
+    return (model.backendIntegrations ?? []).some(
+        b => b.kind === 'supabase' && b.features.includes('database')
+    );
+}
+
+/**
+ * Generate a fetch call — routes through SupabaseManager when Supabase is detected
+ * AND the entity type exists as a generated model. Falls back to APIClient otherwise.
+ */
+function generateFetchCall(
+    model: SemanticAppModel,
+    entityName: string,
+    varName: string,
+    fetchFnName: string,
+    options: { isDetail?: boolean; idParam?: string } = {},
+): string {
+    // Only use SupabaseManager when: Supabase is detected AND the entity exists in the model
+    const entityExists = entityExistsInOutput(pascalCase(entityName), model);
+    if (hasSupabaseDatabase(model) && entityExists) {
+        const tableName = toSnakeCase(pluralize(entityName));
+        if (options.isDetail && options.idParam) {
+            return `${varName} = try await SupabaseManager.shared.fetchById("${tableName}", id: ${options.idParam}, type: ${pascalCase(entityName)}.self)`;
+        }
+        return `${varName} = try await SupabaseManager.shared.fetch("${tableName}", type: ${pascalCase(entityName)}.self)`;
+    }
+    // Fallback to APIClient
+    if (options.isDetail && options.idParam) {
+        return `${varName} = try await APIClient.shared.${fetchFnName}(${options.idParam}: id)`;
+    }
+    return `${varName} = try await APIClient.shared.${fetchFnName}()`;
+}
+
 /**
  * Clean a Zustand/Redux store name for Swift:
  *   - Strip leading 'Use'/'use' prefix (React hook convention)
@@ -3811,10 +3853,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const paramName = pathParams.length > 0 ? camelCase(pathParams[0]) : 'id';
                 // If matching endpoint has path params, include them in the call
                 if (matchingEp && pathParams.length > 0) {
-                    lines.push(`            ${detailVarName} = try await APIClient.shared.${exactFnName}(${paramName}: id)`);
+                    lines.push(`            ${generateFetchCall(model, pascalCase(detailEntityName), detailVarName, exactFnName, { isDetail: true, idParam: paramName })}`);
                 } else {
-                    // No path param endpoint found — use singular fetch with id
-                    lines.push(`            ${detailVarName} = try await APIClient.shared.fetch${pascalCase(detailEntityName)}(${paramName}: id)`);
+                    lines.push(`            ${generateFetchCall(model, pascalCase(detailEntityName), detailVarName, `fetch${pascalCase(detailEntityName)}`, { isDetail: true, idParam: paramName })}`);
                 }
             } else {
                 todoCount++;
@@ -3890,7 +3931,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                             lines.push(`            // Issue: declared as ${declaredType}, API returns ${returnType} — types differ`);
                             lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         } else {
-                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                            lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), arrayVarName, exactFetchFnName)}`);
                         }
                     } else if (fetchReturnsArray && !declaredIsArray) {
                         // Auto-fix: declared as Entity? but fetch returns [Entity] — take .first
@@ -3951,7 +3992,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 });
                 if (matchingDashEp) {
                     const dashFetchFnName = generateFunctionName(matchingDashEp);
-                    lines.push(`            ${dashArrayVar} = try await APIClient.shared.${dashFetchFnName}()`);
+                    lines.push(`            ${generateFetchCall(model, dashEntityName, dashArrayVar, dashFetchFnName)}`);
                 } else {
                     lines.push(`            // Configure fetch${pascalCase(dashPluralName)}() in APIClient`);
                     lines.push(`            // ${dashArrayVar} = try await APIClient.shared.fetch${pascalCase(dashPluralName)}()`);
@@ -3978,9 +4019,9 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 const fetchFnName = generateFunctionName(matchingListEp);
                 const declaredType = declaredTypes.get(entArrayVar) ?? '';
                 if (dataReqDeclaredNames.has(entArrayVar)) {
-                    lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}()`);
+                    lines.push(`            ${generateFetchCall(model, derivedEntityName, entArrayVar, fetchFnName)}`);
                 } else {
-                    lines.push(`            ${entArrayVar} = try await APIClient.shared.${fetchFnName}() // Verify return type matches ${declaredType}`);
+                    lines.push(`            ${generateFetchCall(model, derivedEntityName, entArrayVar, fetchFnName)}`);
                 }
             } else {
                 lines.push(`            // Configure fetch${pascalCase(pluralName)}() in APIClient`);

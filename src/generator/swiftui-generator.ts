@@ -392,6 +392,20 @@ const WEB_ONLY_STATE_NAMES = new Set([
     'iscopied', 'copied', 'clipboardtext',
     // Ref-based state (React internals)
     'ref', 'inputref', 'containerref', 'scrollref',
+    // Demo/marketing state
+    'demoshown', 'showdemo', 'demovisible', 'isdemoactive',
+    // CSS animation state (not needed on iOS)
+    'refreshspin', 'spinanimation', 'animationclass',
+    // Web-specific UX patterns
+    'spendinglimitwarning', 'showwarningbanner', 'bannervisible',
+    // Randomization state (handle differently on iOS)
+    'shuffledtemplates', 'shuffled',
+    // Web toast state (use iOS .alert or .sheet instead)
+    'topupsuccess', 'showsuccesstoast', 'toastmessage', 'showtoast',
+    // History/navigation loaded flags (SwiftUI handles differently)
+    'historyloaded', 'dataloaded', 'pageloaded',
+    // Web-specific analytics tips
+    'showanalyticstip', 'showtip', 'tipvisible',
 ]);
 
 function isWebOnlyState(name: string): boolean {
@@ -401,6 +415,9 @@ function isWebOnlyState(name: string): boolean {
     if (lower.startsWith('hover') || lower.endsWith('hovered')) return true;
     if (lower.startsWith('tooltip')) return true;
     if (lower.endsWith('ref') && lower.length > 3) return true;
+    if (lower.includes('spin') && lower.includes('refresh')) return true;
+    if (lower.includes('demo') && (lower.includes('shown') || lower.includes('visible'))) return true;
+    if (lower.includes('toast') && (lower.includes('show') || lower.includes('success'))) return true;
     return false;
 }
 
@@ -1200,28 +1217,50 @@ function generateLayoutBody(screen: Screen, model: SemanticAppModel, indentLevel
         return generateCartLayout(screen, model, components, indentLevel);
     }
 
+    let layoutBody: string;
     switch (layout) {
         case 'list':
-            return generateListLayout(screen, model, components, indentLevel);
+            layoutBody = generateListLayout(screen, model, components, indentLevel);
+            break;
         case 'grid':
-            return generateGridLayout(screen, model, components, indentLevel);
+            layoutBody = generateGridLayout(screen, model, components, indentLevel);
+            break;
         case 'form':
-            return generateFormLayout(screen, model, components, indentLevel);
+            layoutBody = generateFormLayout(screen, model, components, indentLevel);
+            break;
         case 'detail':
-            return generateDetailLayout(screen, model, components, indentLevel);
+            layoutBody = generateDetailLayout(screen, model, components, indentLevel);
+            break;
         case 'dashboard':
-            return generateDashboardLayout(screen, model, components, indentLevel);
+            layoutBody = generateDashboardLayout(screen, model, components, indentLevel);
+            break;
         case 'settings':
-            return generateSettingsLayout(screen, model, components, indentLevel);
+            layoutBody = generateSettingsLayout(screen, model, components, indentLevel);
+            break;
         case 'profile':
-            return generateProfileLayout(screen, model, components, indentLevel);
+            layoutBody = generateProfileLayout(screen, model, components, indentLevel);
+            break;
         case 'auth':
-            return generateAuthLayout(screen, model, components, indentLevel);
+            layoutBody = generateAuthLayout(screen, model, components, indentLevel);
+            break;
         case 'custom':
-            return generateCustomLayout(screen, model, components, indentLevel);
+            layoutBody = generateCustomLayout(screen, model, components, indentLevel);
+            break;
         default:
-            return generateCustomLayout(screen, model, components, indentLevel);
+            layoutBody = generateCustomLayout(screen, model, components, indentLevel);
+            break;
     }
+
+    // Apply extracted Tailwind style modifiers to the layout body
+    const primaryComponent = components[0];
+    if (primaryComponent?.styleModifiers?.length) {
+        // Deduplicate and append modifiers to the outermost view
+        const uniqueModifiers = [...new Set(primaryComponent.styleModifiers)];
+        const modifierLines = uniqueModifiers.map(mod => `${' '.repeat((indentLevel + 1) * 4)}${mod}`).join('\n');
+        layoutBody = layoutBody.trimEnd() + '\n' + modifierLines;
+    }
+
+    return layoutBody;
 }
 
 function generateListLayout(screen: Screen, model: SemanticAppModel, components: ComponentRef[], indentLevel: number): string {

@@ -130,7 +130,7 @@ async function logUsage(apiKey: string, sourceRepo: string, status: 'success' | 
 // Constants
 // ---------------------------------------------------------------------------
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 
 const BANNER = `
   ${chalk.cyan('╔═══════════════════════════════════════╗')}

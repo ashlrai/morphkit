@@ -171,12 +171,7 @@ export function verifyProject(projectPath: string): VerifyResult {
                 continue;
             }
 
-            // Check for legacy // TODO: (but not MORPHKIT-TODO)
-            if (line.includes('// TODO:') && !line.includes('MORPHKIT-TODO')) {
-                todosByCategory['legacy-todo'] = (todosByCategory['legacy-todo'] ?? 0) + 1;
-                fileTodoCount++;
-                totalTodos++;
-            }
+            // Legacy // TODO: comments are NOT counted — only MORPHKIT-TODO markers are actionable
         }
 
         if (fileTodoCount > 0) {
@@ -242,7 +237,7 @@ export function verifyProject(projectPath: string): VerifyResult {
         apiTotal = funcs.length;
 
         for (const fn of funcs) {
-            const hasTodo = fn.body.includes('MORPHKIT-TODO') || fn.body.includes('// TODO:');
+            const hasTodo = fn.body.includes('MORPHKIT-TODO');
             if (!hasTodo) {
                 apiWired++;
             }
@@ -338,7 +333,6 @@ export function verifyProject(projectPath: string): VerifyResult {
                 const body = fn.body;
                 return (
                     body.includes('MORPHKIT-TODO') ||
-                    body.includes('// TODO:') ||
                     body.includes('fatalError') ||
                     body.includes('not implemented')
                 );

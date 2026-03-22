@@ -8,3 +8,4 @@ test/analyzer/__fixtures__/mock-nextjs-app/
 /tmp/
 .env
 .env.local
+site/_env.js

@@ -1,0 +1,6 @@
+// Deploy-time environment config — copy to _env.js and fill in real values.
+window.__ENV__ = {
+  SUPABASE_URL: 'https://YOUR_PROJECT.supabase.co',
+  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+  STRIPE_CHECKOUT_URL: 'https://buy.stripe.com/YOUR_CHECKOUT_ID',
+};

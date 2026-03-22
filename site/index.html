@@ -1510,6 +1510,7 @@
     });
   </script>
   <!-- Supabase JS Client -->
+  <script src="/_env.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -2187,9 +2188,10 @@
   }
 
   // Supabase client
+  // Injected at deploy time via site/_env.js — never hardcode secrets here
   const sb = window.supabase.createClient(
-    'https://kvuxgjjlmhmhbpqfvqeo.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dXhnampsbWhtaGJwcWZ2cWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTI2NzAsImV4cCI6MjA4OTM4ODY3MH0.hJ_zY4_J6etZj-iQjcOUub3TrrM4RSBx1XMQ6VVLfss'
+    window.__ENV__?.SUPABASE_URL || 'YOUR_SUPABASE_URL',
+    window.__ENV__?.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY'
   );
 
   // Sign-up form — Supabase Auth magic link

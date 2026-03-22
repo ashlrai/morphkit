@@ -192,7 +192,7 @@ const server = new McpServer({
 
 server.tool(
     'morphkit_analyze',
-    'Analyze a TypeScript/React web app and return its semantic model (entities, screens, API endpoints, auth patterns, navigation structure). Use this to understand what a web app does before generating an iOS version.',
+    'Analyze a TypeScript/React web app and return its semantic model. Use when a user wants to understand their web app structure before creating an iOS version. Detects entities, screens, API endpoints, auth patterns, backend services (Supabase, Stripe, SSE streaming), and Tailwind styling.',
     {
         path: z.string().describe('Path to the web app directory (Next.js, React, etc.)'),
         verbose: z.boolean().optional().default(false).describe('Include detailed analysis output'),
@@ -224,7 +224,7 @@ server.tool(
 
 server.tool(
     'morphkit_generate',
-    'Generate a complete SwiftUI iOS project from a TypeScript/React web app. Creates an Xcode-ready project with models, views, navigation, networking, and a CLAUDE.md with full API contract and implementation guide.',
+    'Generate a native SwiftUI iOS app from a TypeScript/React web app. Use when a user says they want an iOS version of their web app, a mobile companion app, or to convert React to Swift. Auto-detects Supabase (generates SupabaseManager), Stripe (generates PaymentManager), SSE streaming (generates SSEClient), and Markdown rendering (adds MarkdownUI). Creates a compilable Xcode project.',
     {
         path: z.string().describe('Path to the web app directory'),
         output: z.string().describe('Output directory for the generated iOS project'),
@@ -285,7 +285,7 @@ server.tool(
 
 server.tool(
     'morphkit_plan',
-    'Generate a prioritized implementation plan for a web app\'s iOS conversion. Analyzes the web app and returns a step-by-step guide for what to implement first, what API endpoints to wire, and what models need fields added.',
+    'Generate a comprehensive iOS conversion plan for a web app. Scores each screen as essential/recommended/optional/skip for mobile, estimates complexity, detects backend integrations, and recommends which screens to build. Use before morphkit_generate to preview what will be created.',
     {
         path: z.string().describe('Path to the web app directory'),
     },

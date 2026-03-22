@@ -130,7 +130,7 @@ async function logUsage(apiKey: string, sourceRepo: string, status: 'success' | 
 // Constants
 // ---------------------------------------------------------------------------
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 
 const BANNER = `
   ${chalk.cyan('╔═══════════════════════════════════════╗')}
@@ -519,13 +519,10 @@ program
       console.log(chalk.dim('─'.repeat(40)));
       console.log(`  1. ${chalk.cyan(`open ${outputPath}/Package.swift`)}  — Open in Xcode`);
       console.log(`  2. ${chalk.cyan(`swift build`)}  — Verify compilation`);
-      console.log(`  3. Set API URL in ${chalk.dim('Networking/APIConfiguration.swift')}`);
-      console.log(`  4. Study the ${chalk.green('REFERENCE IMPL')} views for the canonical data loading pattern`);
-      console.log(`  5. Wire remaining screens by following the reference pattern`);
-      console.log(`  6. Read ${chalk.dim('CLAUDE.md')} for full architecture and API contract docs`);
+      console.log(`  3. ${chalk.cyan(`morphkit complete ${outputPath}`)}  — Auto-complete TODOs with AI`);
+      console.log(`  4. ${chalk.cyan(`morphkit verify ${outputPath}`)}  — Check completion status`);
       console.log('');
-      console.log(chalk.dim('Tip: Use Claude Code or another AI assistant with the generated CLAUDE.md'));
-      console.log(chalk.dim('for the fastest path to a complete app.'));
+      console.log(chalk.dim('Using Claude Code? Run `morphkit setup` to enable AI-assisted development.'));
     } catch (error) {
       spinner.fail('Generation failed');
       if (apiKey) {

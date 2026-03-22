@@ -1251,15 +1251,6 @@ function generateLayoutBody(screen: Screen, model: SemanticAppModel, indentLevel
             break;
     }
 
-    // Apply extracted Tailwind style modifiers to the layout body
-    const primaryComponent = components[0];
-    if (primaryComponent?.styleModifiers?.length) {
-        // Deduplicate and append modifiers to the outermost view
-        const uniqueModifiers = [...new Set(primaryComponent.styleModifiers)];
-        const modifierLines = uniqueModifiers.map(mod => `${' '.repeat((indentLevel + 1) * 4)}${mod}`).join('\n');
-        layoutBody = layoutBody.trimEnd() + '\n' + modifierLines;
-    }
-
     return layoutBody;
 }
 

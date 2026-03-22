@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morphkit Tutorial: Convert a React App to iOS in 5 Minutes</title>
+<meta name="description" content="Step-by-step guide to converting a React/Next.js web app to a native SwiftUI iOS app using Morphkit. Plan, generate, complete, and build.">
+<meta name="keywords" content="react to ios tutorial, convert react to swift, nextjs to swiftui, morphkit tutorial, mobile app from web app">
+<link rel="canonical" href="https://morphkit.dev/tutorial">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #0A0A0C; color: #E5E7EB; line-height: 1.7; }
+  .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+  h1 { color: white; font-size: 2.5rem; margin-bottom: 0.5rem; }
+  h2 { color: #3ECF8E; font-size: 1.5rem; margin: 3rem 0 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; }
+  h3 { color: white; font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+  p { margin-bottom: 1rem; color: #9CA3AF; }
+  a { color: #3ECF8E; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.9em; color: #E5E7EB; }
+  pre { background: #1A1A2E; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; overflow-x: auto; margin: 1rem 0 1.5rem; }
+  pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.6; }
+  .step { background: rgba(62,207,142,0.05); border-left: 3px solid #3ECF8E; padding: 1.5rem; margin: 1.5rem 0; border-radius: 0 8px 8px 0; }
+  .step-number { color: #3ECF8E; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+  .output { background: #111; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 1rem; margin: 0.5rem 0 1rem; font-family: monospace; font-size: 0.8rem; color: #6B7280; white-space: pre-wrap; }
+  .badge { display: inline-block; background: rgba(62,207,142,0.15); color: #3ECF8E; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+  .breadcrumb { color: #6B7280; font-size: 0.85rem; margin-bottom: 2rem; }
+  .breadcrumb a { color: #6B7280; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  th { color: #9CA3AF; font-size: 0.85rem; font-weight: 600; }
+  .cta { display: inline-block; background: #3ECF8E; color: #0A0A0C; padding: 12px 24px; border-radius: 8px; font-weight: 600; margin: 1rem 0; text-decoration: none; }
+  .cta:hover { background: #34B87D; text-decoration: none; }
+  .nav { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .nav a { color: #9CA3AF; font-size: 0.9rem; }
+  .time { color: #6B7280; font-size: 0.9rem; }
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Convert a React App to a Native iOS App with Morphkit",
+  "description": "Step-by-step tutorial showing how to use Morphkit to convert a Next.js e-commerce app to a native SwiftUI iOS app in under 5 minutes.",
+  "totalTime": "PT5M",
+  "tool": {
+    "@type": "SoftwareApplication",
+    "name": "Morphkit",
+    "url": "https://morphkit.dev"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "position": 1,
+      "name": "Plan the conversion",
+      "text": "Run morphkit plan to see what Morphkit will generate. This is always free.",
+      "url": "https://morphkit.dev/tutorial#step-1"
+    },
+    {
+      "@type": "HowToStep",
+      "position": 2,
+      "name": "Generate the iOS project",
+      "text": "Run morphkit generate to create a complete SwiftUI Xcode project.",
+      "url": "https://morphkit.dev/tutorial#step-2"
+    },
+    {
+      "@type": "HowToStep",
+      "position": 3,
+      "name": "Build and verify",
+      "text": "Run swift build to compile, then morphkit verify to check completion status.",
+      "url": "https://morphkit.dev/tutorial#step-3"
+    },
+    {
+      "@type": "HowToStep",
+      "position": 4,
+      "name": "Complete with AI",
+      "text": "Run morphkit complete to auto-resolve any remaining TODOs using Claude API.",
+      "url": "https://morphkit.dev/tutorial#step-4"
+    },
+    {
+      "@type": "HowToStep",
+      "position": 5,
+      "name": "Open in Xcode",
+      "text": "Open Package.swift in Xcode, select a simulator, and run your iOS app.",
+      "url": "https://morphkit.dev/tutorial#step-5"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/">Morphkit</a>
+  <div>
+    <a href="/#pricing" style="margin-right: 1.5rem;">Pricing</a>
+    <a href="https://github.com/ashlrai/morphkit">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<p class="breadcrumb"><a href="/">Home</a> / Tutorial</p>
+
+<h1>Convert a React App to iOS</h1>
+<p class="time">5-minute tutorial</p>
+<p>This walkthrough takes a Next.js e-commerce app and converts it to a native SwiftUI iOS app using Morphkit. Every command shown is real output from the tool.</p>
+
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul style="color: #9CA3AF; margin-bottom: 1.5rem; padding-left: 1.5rem;">
+  <li>Node.js 18+ or Bun</li>
+  <li>Xcode 15+ (for building the iOS app)</li>
+  <li>A React/Next.js web app with TypeScript</li>
+</ul>
+
+<h2 id="step-1">Step 1: Plan the Conversion</h2>
+
+<p>Start with <code>morphkit plan</code> to see what Morphkit will build. This is <span class="badge">always free</span> — no API key needed.</p>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>npx morphkit-cli plan ./my-nextjs-shop</code></pre>
+</div>
+
+<div class="output"># iOS Conversion Plan: ShopKit
+
+## Detected Stack
+No special backend integrations detected — using standard URLSession.
+
+## Summary
+| Total screens analyzed | 4 |
+| Screens included       | 3 |
+| Screens excluded       | 1 |
+
+## Recommended Screens
+- Products (list) [MEDIUM] — list layout maps well to mobile
+- Cart (list) — list layout maps well to mobile
+- ProductsDetail (detail) — detail layout maps well to mobile
+
+## Excluded Screens
+- Home — marketing page, not needed on mobile</div>
+
+<p>Morphkit analyzed 13 TypeScript files, found 4 routes, 8 components, 7 state patterns, and 3 API endpoints. It recommends 3 screens for mobile and excludes the marketing homepage.</p>
+
+<p><strong>If your app uses Supabase, Stripe, or SSE streaming</strong>, Morphkit auto-detects them here and generates the right iOS SDK integrations automatically.</p>
+
+<h2 id="step-2">Step 2: Generate the iOS Project</h2>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>npx morphkit-cli generate ./my-nextjs-shop -o ./ios-app -n ShopKit</code></pre>
+</div>
+
+<div class="output">Generated Project Summary
+  App name:       ShopKit
+  Output:         ./ios-app/ShopKit
+  Total files:    38
+  High confidence:   32
+  Medium confidence: 4
+
+Generated 38 files in 743ms</div>
+
+<p>Morphkit generated a complete Xcode project with:</p>
+
+<table>
+<tr><th>Directory</th><th>Contents</th></tr>
+<tr><td><code>Models/</code></td><td>Codable structs from your TypeScript interfaces (Product, CartItem, Cart)</td></tr>
+<tr><td><code>Views/</code></td><td>SwiftUI views for each screen (ProductsView, CartView, ProductsDetailView)</td></tr>
+<tr><td><code>Navigation/</code></td><td>TabView + NavigationStack with typed routes</td></tr>
+<tr><td><code>Networking/</code></td><td>URLSession API client with async/await, retry logic, TLS 1.2+</td></tr>
+<tr><td><code>State/</code></td><td>@Observable stores mapped from your Zustand/Redux state</td></tr>
+<tr><td><code>Theme/</code></td><td>Color+Theme.swift from your Tailwind config colors</td></tr>
+</table>
+
+<h3>What a generated view looks like</h3>
+
+<p>Here's the ProductsView.swift that Morphkit generated from your <code>app/products/page.tsx</code>:</p>
+
+<pre><code>// Generated by Morphkit from: app/products/page.tsx
+
+import SwiftUI
+
+struct ProductsView: View {
+    @State private var products: [Product] = []
+    @State private var searchQuery: String = ""
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            ForEach(products) { (product: Product) in
+                NavigationLink(value: AppRoute.productsDetail(id: String(describing: product.id))) {
+                    HStack(spacing: 12) {
+                        AsyncImage(url: URL(string: product.imageUrl)) { image in
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Image(systemName: "photo.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        VStack(alignment: .leading) {
+                            Text(product.name)
+                                .font(.headline)
+                            Text(product.price, format: .currency(code: "USD"))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+            }
+        }
+        .searchable(text: $searchQuery)
+        .refreshable { await loadData() }
+        .navigationTitle("Products")
+        .task { await loadData() }
+    }
+
+    private func loadData() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            products = try await APIClient.shared.fetchProducts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}</code></pre>
+
+<p>Notice: proper SwiftUI idioms (NavigationStack, @State, .task, async/await), product images via AsyncImage, search, pull-to-refresh, and type-safe navigation.</p>
+
+<h2 id="step-3">Step 3: Build and Verify</h2>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>cd ios-app && swift build</code></pre>
+</div>
+
+<div class="output">Build complete! (10.77s)</div>
+
+<p><strong>Zero errors.</strong> Morphkit guarantees the generated project compiles on first build.</p>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>npx morphkit-cli verify ./ios-app</code></pre>
+</div>
+
+<div class="output">Build Status:        PASS (0 errors)
+Screen Completion:   4/4 (100%)
+API Wiring:          12/12 (100%)
+Model Completeness:  3/3 (100%)
+Overall:             100% complete</div>
+
+<p>For simple apps, Morphkit generates everything — 100% complete. For complex apps (like a SaaS with Supabase + Stripe), you'll see MORPHKIT-TODO markers that the AI completion step resolves.</p>
+
+<h2 id="step-4">Step 4: Complete with AI (Optional)</h2>
+
+<p>If your project has remaining TODOs, run <code>morphkit complete</code> to have Claude resolve them automatically:</p>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>ANTHROPIC_API_KEY=sk-ant-... npx morphkit-cli complete ./ios-app --verbose</code></pre>
+</div>
+
+<div class="output">Morphkit Complete
+  TODOs found:    9
+  Completing ProductsView (3/12 screens, 7 TODOs remaining)
+  Resolved 2 TODOs (5 remaining in file)
+  ...
+  TODOs resolved: 9
+  TODOs remaining: 0
+  Build status:   pass</div>
+
+<p>The AI reads each view file, the APIClient, and the model structs, then writes the implementation. It validates syntax with <code>swiftc</code> before writing and stops after 3 consecutive non-progress iterations.</p>
+
+<h2 id="step-5">Step 5: Open in Xcode</h2>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>open ios-app/Package.swift</code></pre>
+</div>
+
+<p>Select an iOS Simulator (iPhone 16 Pro recommended), hit Run, and see your app.</p>
+
+<h2 id="with-supabase">Bonus: Apps with Supabase</h2>
+
+<p>If your web app uses Supabase for auth and database, Morphkit auto-detects it and generates <code>SupabaseManager.swift</code>:</p>
+
+<pre><code>// Generated by Morphkit — Supabase Swift SDK integration
+import Supabase
+
+@Observable
+final class SupabaseManager {
+    static let shared = SupabaseManager()
+    let client: SupabaseClient
+
+    func signIn(email: String, password: String) async throws { ... }
+    func fetch&lt;T: Decodable&gt;(_ table: String, type: T.Type) async throws -> [T] { ... }
+    func insert&lt;T: Encodable&gt;(_ table: String, value: T) async throws { ... }
+}
+
+// Views call SupabaseManager directly:
+products = try await SupabaseManager.shared.fetch("products", type: Product.self)</code></pre>
+
+<p>The generated <code>Package.swift</code> automatically includes the Supabase Swift SDK as a dependency. Just add your Supabase URL and anon key to <code>SupabaseManager.swift</code> and you're connected.</p>
+
+<h2 id="with-claude-code">Bonus: Using with Claude Code</h2>
+
+<p>Register Morphkit's MCP server for the ultimate AI-powered workflow:</p>
+
+<div class="step">
+<div class="step-number">Terminal</div>
+<pre><code>npx morphkit-cli setup</code></pre>
+</div>
+
+<p>Then in Claude Code, just ask: <em>"Convert my web app at ./my-saas to iOS"</em></p>
+<p>Claude Code will call <code>morphkit_plan</code>, <code>morphkit_generate</code>, and then use <code>morphkit_complete_screen</code> to wire up every screen automatically.</p>
+
+<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 3rem 0;">
+
+<h2>Ready to try it?</h2>
+
+<a href="/#install" class="cta">Get Started Free</a>
+<p style="margin-top: 0.5rem;">20 conversions/month free. No credit card required.</p>
+
+</div>
+
+</body>
+</html>

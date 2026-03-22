@@ -3868,9 +3868,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     const fetchReturnsArray = isArrayReq || (req.cardinality !== 'one' && fetchName.endsWith('s'));
 
                     if (fetchReturnsArray && declaredIsArray) {
-                        // Both agree on array — compatible, emit assignment
+                        // Both agree on array — check element type compatibility
                         const elementType = declaredType.slice(1, -1);
                         const entityExists = entityExistsInOutput(elementType, model);
+                        const returnElementType = pascalCase(reqSource);
+                        const typesMatch = elementType === returnElementType || elementType === pascalCase(fetchName);
                         if (!entityExists && declaredType !== '[String]') {
                             // The declared type references an entity the API client doesn't know about
                             todoCount++;
@@ -3880,6 +3882,13 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                             lines.push(`            // Issue: declared as ${declaredType}, but ${elementType} may not match API return type`);
                             lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                             if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
+                        } else if (!typesMatch && entityExists) {
+                            // Types exist but mismatch — emit TODO to avoid compilation error
+                            todoCount++;
+                            lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
+                            lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
+                            lines.push(`            // Issue: declared as ${declaredType}, API returns ${returnType} — types differ`);
+                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         } else {
                             lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         }
@@ -3900,8 +3909,13 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                         // Auto-fix: declared as [Entity] but fetch returns Entity — wrap in array
                         lines.push(`            ${arrayVarName} = [try await APIClient.shared.${exactFetchFnName}()]`);
                     } else {
-                        // Both scalar — compatible
-                        lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                        // Both scalar — check if declared type matches expected return type
+                        // If declared as String but fetch likely returns array, use .first for safety
+                        if (declaredIsScalar && fetchName.endsWith('s') && !declaredType.startsWith('[')) {
+                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
+                        } else {
+                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                        }
                     }
                 } else {
                     // Variable not declared — emit as TODO

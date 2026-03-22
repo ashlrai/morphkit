@@ -68,6 +68,10 @@ function analyseField(field: Field): SwiftField {
     if (swiftType === 'Any?') swiftType = 'String?';
     if (swiftType === '[Any]') swiftType = '[String]';
     if (swiftType.includes('[String: Any]')) swiftType = swiftType.replace('[String: Any]', '[String: String]');
+    // Nested complex types that can't conform to Codable/Hashable — flatten to String
+    // Only flatten types that are clearly NOT entity relationships (arrays of primitives/dictionaries)
+    // [[String: String]] may be array-of-objects for entity relationships, so handle in generateStruct with relationship context
+    if (swiftType === '[[String]]' || swiftType === '[[Int]]' || swiftType === '[[Double]]') swiftType = 'String';
 
     // Detect integer types from hints or naming
     const isInteger =
@@ -87,6 +91,10 @@ function analyseField(field: Field): SwiftField {
     if (isOptional && !swiftType.endsWith('?')) {
         swiftType = `${swiftType}?`;
     }
+
+    // Note: entity-level type validation (unknown PascalCase types → String) happens
+    // in generateStruct/generateSwiftDataModel/generatePreviewExtension where entity
+    // context is available. analyseField only handles primitive and structural sanitization.
 
     const isId = name === 'id' || field.isPrimaryKey === true;
     const isPrimaryKey = field.isPrimaryKey === true;
@@ -216,8 +224,8 @@ function generateStruct(entity: Entity, model: SemanticAppModel): string {
     for (const field of fields) {
         // Skip relationship fields — they get special treatment in SwiftData
         if (relFieldNames.has(field.name)) continue;
-        // Flatten nested complex types that can't conform to Codable/Hashable
-        if (field.type === '[[String: String]]' || field.type === '[[String]]') {
+        // Flatten [[String: String]] to String (non-relationship context)
+        if (field.type === '[[String: String]]') {
             field.type = field.isOptional ? 'String?' : 'String';
             continue;
         }
@@ -367,8 +375,8 @@ function previewValue(field: SwiftField, entityName: string, enumNames?: Map<str
     // Optional fields → nil
     if (field.isOptional) return 'nil';
 
-    // Array fields → empty array
-    if (field.isArray) return '[]';
+    // Array fields → empty array (but NOT if the type was sanitized to String/non-array)
+    if (field.isArray && baseSwiftType.startsWith('[')) return '[]';
 
     // Type-based overrides FIRST — prevents name heuristics from producing
     // wrong types (e.g., field named "email" with type Bool)
@@ -450,6 +458,27 @@ function generatePreviewExtension(entity: Entity, model: SemanticAppModel): stri
     const structName = pascalCase(entity.name);
     const fields = filterSwiftFields(entity.fields ?? []).map(analyseField);
     const hasId = fields.some((f) => f.isId);
+
+    // Apply the same type validation as generateStruct — unknown types → String
+    const SWIFT_SAFE_TYPES_PREVIEW = new Set([
+        'String', 'Int', 'Double', 'Float', 'Bool', 'Date', 'UUID', 'Data', 'URL', 'Any',
+    ]);
+    const entityNamesPreview = new Set((model.entities ?? []).map(e => pascalCase(e.name)));
+    for (const field of fields) {
+        // Flatten nested complex types first
+        if (field.type === '[[String: String]]' || /^\[\[.+\]\]$/.test(field.type)) {
+            field.type = field.isOptional ? 'String?' : 'String';
+            field.isArray = false; // Override so preview doesn't emit []
+            continue;
+        }
+        const baseType = field.type.replace(/\?$/, '').replace(/^\[+/, '').replace(/\]+$/, '').trim();
+        const dictValueType = baseType.includes(':') ? baseType.split(':').pop()?.trim() : null;
+        const checkType = dictValueType ?? baseType;
+        if (checkType && !SWIFT_SAFE_TYPES_PREVIEW.has(checkType) && !entityNamesPreview.has(checkType)) {
+            field.type = field.isOptional ? 'String?' : 'String';
+            field.isArray = false;
+        }
+    }
 
     // Build enum lookup: PascalCase entity name → first case name
     const enumNames = new Map<string, string>();
@@ -687,6 +716,10 @@ function generateSwiftDataModel(entity: Entity, model: SemanticAppModel): string
     const entityNamesSD = new Set((model.entities ?? []).map(e => pascalCase(e.name)));
     for (const field of fields) {
         if (entityRelationshipFields.has(field.name)) continue;
+        if (field.type === '[[String: String]]') {
+            field.type = field.isOptional ? 'String?' : 'String';
+            continue;
+        }
         const baseType = field.type.replace(/\?$/, '').replace(/^\[+/, '').replace(/\]+$/, '').trim();
         const dictValueType = baseType.includes(':') ? baseType.split(':').pop()?.trim() : null;
         const checkType = dictValueType ?? baseType;

@@ -86,4 +86,8 @@ describe('Compilation Guarantee', () => {
   (hasSwift ? test : test.skip)('nextjs-pages-app compiles', async () => {
     await generateAndBuild('nextjs-pages-app');
   }, 120_000);
+
+  (hasSwift ? test : test.skip)('probe-subset compiles (Supabase + SSE + Stripe + Markdown)', async () => {
+    await generateAndBuild('probe-subset');
+  }, 120_000);
 });

@@ -450,7 +450,7 @@ export const SemanticAppModelSchema = z.object({
     })
     .default({
       extractedAt: new Date().toISOString(),
-      morphkitVersion: '0.1.0',
+      morphkitVersion: '0.2.0',
     }),
 });
 

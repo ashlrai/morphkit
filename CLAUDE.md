@@ -35,7 +35,7 @@ morphkit/
 │   │   ├── prompts/          # Intent extraction, component mapping, code gen
 │   │   └── index.ts
 │   ├── mcp/                  # Model Context Protocol server
-│   │   └── server.ts         # 6 MCP tools for Claude Code integration
+│   │   └── server.ts         # 9 MCP tools for Claude Code integration
 │   └── verify.ts             # Project verification & completion tracking
 ├── templates/                # Swift/SwiftUI code templates
 ├── test/
@@ -98,6 +98,7 @@ CLI → Analyzer (ts-morph) → Builder (→ SemanticAppModel) → Adapter (→ 
 bun test                    # Run all tests
 bun run typecheck           # TypeScript strict checking
 bun run src/index.ts analyze ./app          # Analyze a Next.js app
+bun run src/index.ts plan ./app             # Generate iOS conversion plan (free)
 bun run src/index.ts generate ./app -o ./ios # Generate SwiftUI project
 bun run src/index.ts preview ./app          # Preview without writing files
 bun run src/index.ts verify ./ios           # Check completion status of generated project
@@ -105,6 +106,7 @@ bun run src/index.ts complete ./ios         # Auto-complete all TODOs using Clau
 bun run src/index.ts setup                  # Register MCP server in Claude Code
 bun run src/index.ts sync ./app ./ios       # Re-sync after web app changes
 bun run src/index.ts watch ./app            # Watch mode — re-generate on changes
+bun run src/index.ts doctor                 # Diagnose configuration
 ```
 
 ### Authentication & Monetization
@@ -141,6 +143,26 @@ bun run src/index.ts watch ./app            # Watch mode — re-generate on chan
 - File system watcher for iterative development workflow
 - Monitors source TypeScript/React files for changes and re-runs generation
 - Invoked via CLI with `--watch` flag on the `generate` command
+
+### Backend Detection (`src/analyzer/repo-scanner.ts`)
+- `detectBackendServices()` scans package.json for known services
+- Detected: Supabase (auth, database, storage, realtime), Stripe, Firebase, Clerk, OpenAI, Anthropic
+- For Supabase: scans source files to detect which features are actually used
+- Results populate `backendIntegrations` on the SemanticAppModel
+- Generators use this to produce platform-specific code (SupabaseManager.swift, PaymentManager.swift, SSEClient.swift)
+
+### Mobile Scope Planner (`src/planner.ts`)
+- `generatePlan(model)` scores each screen as essential/recommended/optional/skip
+- Estimates complexity (low/medium/high) based on data requirements, SSE streaming, payments
+- Produces a markdown plan document with detected stack, screen scoring, and next steps
+- CLI: `morphkit plan <path>` (always free — no API key required)
+
+### AI Completion Engine (`src/complete.ts`)
+- `completeProject(path, options)` iteratively resolves MORPHKIT-TODOs using Claude API
+- Builds structured context: view file + APIClient + models + reference implementation + CLAUDE.md
+- Validates completed code with `swiftc --parse` before writing
+- Early exits after 3 consecutive non-progress iterations
+- CLI: `morphkit complete <path>` (requires ANTHROPIC_API_KEY)
 
 ### Linting
 - ESLint with `@typescript-eslint/recommended` — config in `.eslintrc.json`

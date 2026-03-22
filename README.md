@@ -442,6 +442,46 @@ Watch a web app directory and re-generate on changes.
 bunx morphkit watch ./my-nextjs-app --output ./ios-app
 ```
 
+### `morphkit plan <path>`
+
+Analyze a web app and generate a comprehensive iOS conversion plan. Always free — no API key required.
+
+```bash
+npx morphkit-cli plan ./my-webapp
+npx morphkit-cli plan ./my-webapp --output plan.md
+```
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <file>` | Write the plan to a file instead of stdout |
+
+### `morphkit complete <project-path>`
+
+Auto-complete all MORPHKIT-TODOs in a generated iOS project using the Claude API.
+
+```bash
+npx morphkit-cli complete ./ios-app
+npx morphkit-cli complete ./ios-app --model claude-sonnet-4-6 --max-iterations 30
+npx morphkit-cli complete ./ios-app --dry-run
+```
+
+| Option | Description |
+|--------|-------------|
+| `--model <model>` | Claude model to use (default: `claude-sonnet-4-6`) |
+| `--max-iterations <n>` | Maximum completion iterations (default: `30`) |
+| `--dry-run` | Preview changes without writing files |
+| `-v, --verbose` | Show detailed completion output |
+
+### `morphkit doctor`
+
+Diagnose Morphkit configuration and environment.
+
+```bash
+npx morphkit-cli doctor
+```
+
+Checks: Bun runtime, Swift toolchain, API keys, config file, MCP server registration.
+
 ---
 
 ## Configuration

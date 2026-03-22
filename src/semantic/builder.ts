@@ -2085,7 +2085,7 @@ export async function buildSemanticModel(
     metadata: {
       sourceFramework: mapFramework(scan.framework),
       extractedAt: new Date().toISOString(),
-      morphkitVersion: '0.1.0',
+      morphkitVersion: '0.2.0',
       analyzedFiles: scan.allFiles.map((f) => f.relativePath),
       warnings,
     },

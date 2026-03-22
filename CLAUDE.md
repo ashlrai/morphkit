@@ -1,13 +1,13 @@
 # Morphkit
 
-Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps.
+Semantic AI compiler + completion engine that converts TypeScript/React web apps to native SwiftUI iOS apps. Auto-detects backend services (Supabase, Stripe, SSE streaming) and generates the right iOS SDK integrations.
 
 ## Project Structure
 
 ```
 morphkit/
 ├── src/
-│   ├── index.ts              # CLI entry point (analyze, generate, preview commands)
+│   ├── index.ts              # CLI entry point (10 commands: analyze, generate, plan, complete, verify, etc.)
 │   ├── analyzer/             # Stage 1: Web app analysis (ts-morph AST parsing)
 │   │   ├── repo-scanner.ts   # File discovery, framework detection
 │   │   ├── ast-parser.ts     # TypeScript AST parsing, type/component extraction

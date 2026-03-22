@@ -15,20 +15,22 @@ Morphkit is a semantic AI agent that understands your TypeScript/React web app's
 ## Quick Start
 
 ```bash
-# Install dependencies
-bun install
+# 1. See what Morphkit will build (always free)
+npx morphkit-cli plan ./my-webapp
 
-# Analyze your web app and see the semantic model
-bunx morphkit analyze ./my-nextjs-app
+# 2. Generate a full SwiftUI Xcode project
+npx morphkit-cli generate ./my-webapp -o ./ios-app
 
-# Generate a full SwiftUI Xcode project
-bunx morphkit generate ./my-nextjs-app --output ./ios-app
+# 3. Auto-complete all TODOs with AI (uses your Claude API key)
+npx morphkit-cli complete ./ios-app
 
-# Open in Xcode
-open ./ios-app/MyNextjsApp/Package.swift
+# 4. Build and run
+cd ios-app && swift build
+open Package.swift  # Opens in Xcode
 ```
 
-That's it. Three commands from web app to Xcode project.
+Morphkit auto-detects your backend stack (Supabase, Stripe, SSE streaming, etc.)
+and generates the right iOS SDK integrations. No configuration needed.
 
 ---
 

@@ -880,7 +880,7 @@ program
       process.exit(1);
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.ANTHROPIC_API_KEY && !options.dryRun) {
       console.error(chalk.red('Error: ANTHROPIC_API_KEY environment variable is required'));
       console.error(chalk.dim('Set it with: export ANTHROPIC_API_KEY=sk-ant-...'));
       process.exit(1);

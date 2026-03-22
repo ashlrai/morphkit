@@ -194,11 +194,11 @@ export async function completeProject(
     const verbose = options.verbose ?? false;
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && !dryRun) {
         throw new Error('ANTHROPIC_API_KEY environment variable is required for morphkit complete');
     }
 
-    const client = new Anthropic({ apiKey });
+    const client = apiKey ? new Anthropic({ apiKey }) : null;
     const filesCompleted: string[] = [];
     let todosResolved = 0;
     let consecutiveNoProgress = 0;
@@ -250,6 +250,20 @@ export async function completeProject(
 
         // Build context
         const context = buildScreenContext(projectPath, firstTodo);
+
+        // In dry-run without API key, report what would be done then exit
+        if (!client) {
+            // Report all unique files with TODOs
+            for (const [file, fileTodos] of todosByFile) {
+                const rel = relative(projectPath, file);
+                if (verbose) {
+                    console.log(`  Would complete ${rel} (${fileTodos.length} TODOs)`);
+                }
+                todosResolved += fileTodos.length;
+                filesCompleted.push(rel);
+            }
+            break; // Don't loop — just report once
+        }
 
         // Call Claude API
         const response = await client.messages.create({

@@ -249,7 +249,7 @@ function buildSystemPrompt(projectPath: string, allFiles: string[]): string {
     if (refFile) {
         try {
             const refContent = readFileSync(refFile, 'utf-8');
-            const loadDataMatch = refContent.match(/private func loadData\(\)[\s\S]*?\n    \}/);
+            const loadDataMatch = refContent.match(/private func loadData\(\)[\s\S]*?\n {4}\}/);
             if (loadDataMatch) {
                 parts.push(`\n\nThis project uses this exact data loading pattern:\n\`\`\`swift\n${loadDataMatch[0]}\n\`\`\``);
             }

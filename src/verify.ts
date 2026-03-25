@@ -518,14 +518,29 @@ export function getDetailedTodos(projectPath: string): DetailedTodo[] {
         }
     }
 
-    // Sort by priority: wire-api-fetch > wire-api-action > complete-model > implement-auth
+    // Sort by dependency order: infrastructure first, then consumers
+    // Auth/model must be resolved before views that depend on them
     const priorityOrder: Record<string, number> = {
-        'wire-api-fetch': 0,
-        'wire-api-action': 1,
-        'complete-model': 2,
-        'implement-auth': 3,
+        'implement-auth': 0,
+        'complete-model': 1,
+        'wire-api-action': 2,
+        'wire-api-fetch': 3,
     };
-    todos.sort((a, b) => (priorityOrder[a.category] ?? 99) - (priorityOrder[b.category] ?? 99));
+
+    // Secondary sort: infrastructure files before view files
+    const fileTypePriority = (path: string): number => {
+        if (path.includes('Networking/') || path.includes('networking/')) return 0;
+        if (path.includes('State/') || path.includes('state/')) return 1;
+        if (path.includes('Models/') || path.includes('models/')) return 2;
+        if (path.includes('Views/') || path.includes('views/')) return 3;
+        return 4;
+    };
+
+    todos.sort((a, b) => {
+        const catDiff = (priorityOrder[a.category] ?? 99) - (priorityOrder[b.category] ?? 99);
+        if (catDiff !== 0) return catDiff;
+        return fileTypePriority(a.relativePath) - fileTypePriority(b.relativePath);
+    });
 
     return todos;
 }

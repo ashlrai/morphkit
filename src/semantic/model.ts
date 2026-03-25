@@ -423,6 +423,8 @@ export const SemanticAppModelSchema = z.object({
   stateManagement: z.array(StatePatternSchema).default([]),
   apiEndpoints: z.array(ApiEndpointSchema).default([]),
   auth: AuthPatternSchema.nullable().default(null),
+  /** API base URL detected from env files or config (e.g., https://api.myapp.com) */
+  apiBaseURL: z.string().optional(),
   /** Detected backend service integrations (Supabase, Stripe, etc.) */
   backendIntegrations: z.array(z.object({
     kind: z.enum(['supabase', 'stripe', 'firebase', 'clerk', 'openai', 'anthropic', 'markdown', 'other']),

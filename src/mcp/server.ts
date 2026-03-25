@@ -887,11 +887,9 @@ server.tool(
             lines.push('```');
             lines.push('');
             if (apiContent) {
-                lines.push('## APIClient Methods (relevant)');
+                lines.push('## APIClient (full implementation)');
                 lines.push('```swift');
-                // Only include func signatures, not the full implementation
-                const funcLines = apiContent.split('\n').filter(l => l.trim().startsWith('func ') || l.trim().startsWith('// MARK'));
-                lines.push(funcLines.join('\n'));
+                lines.push(apiContent);
                 lines.push('```');
                 lines.push('');
             }
@@ -1053,6 +1051,99 @@ function findSwiftFilesInDir(dir: string): string[] {
     } catch { /* skip */ }
     return results;
 }
+
+// ---------------------------------------------------------------------------
+// Feature Context Tool — cross-file context for multi-file features
+// ---------------------------------------------------------------------------
+
+server.tool(
+    'morphkit_feature_context',
+    'Returns all files related to a feature (auth, billing, research, etc.) for cross-file understanding. Groups views, models, managers, and API methods that work together.',
+    {
+        project_path: z.string().describe('Path to the generated iOS project'),
+        feature: z.string().describe('Feature name: auth, billing, research, settings, team, etc.'),
+    },
+    async ({ project_path, feature }) => {
+        const projectDir = resolve(project_path);
+        if (!existsSync(projectDir)) {
+            return { content: [{ type: 'text' as const, text: `Error: Directory not found: ${projectDir}` }] };
+        }
+
+        try {
+            const allSwiftFiles = findSwiftFilesInDir(projectDir);
+            const featureLower = feature.toLowerCase();
+            const lines: string[] = [];
+            lines.push(`# Feature Context: ${feature}`);
+            lines.push('');
+
+            // Find files matching the feature name
+            const matchingFiles = allSwiftFiles.filter(f => {
+                const name = basename(f).toLowerCase();
+                const content = readFileSync(f, 'utf-8');
+                return name.includes(featureLower) ||
+                    content.toLowerCase().includes(`// mark: - ${featureLower}`) ||
+                    (featureLower === 'auth' && (name.includes('auth') || name.includes('login') || name.includes('register') || name.includes('supabase'))) ||
+                    (featureLower === 'billing' && (name.includes('billing') || name.includes('payment') || name.includes('checkout') || name.includes('stripe'))) ||
+                    (featureLower === 'research' && (name.includes('research') || name.includes('dashboard') || name.includes('sse')));
+            });
+
+            // Also find APIClient methods related to this feature
+            const apiClientFile = allSwiftFiles.find(f => f.endsWith('APIClient.swift'));
+
+            if (matchingFiles.length === 0) {
+                return { content: [{ type: 'text' as const, text: `No files found for feature: ${feature}` }] };
+            }
+
+            // Group by directory
+            const byDir = new Map<string, string[]>();
+            for (const f of matchingFiles) {
+                const rel = f.replace(projectDir + '/', '');
+                const dir = rel.split('/').slice(0, -1).join('/') || 'root';
+                const existing = byDir.get(dir) ?? [];
+                existing.push(f);
+                byDir.set(dir, existing);
+            }
+
+            for (const [dir, files] of byDir) {
+                lines.push(`## ${dir}/`);
+                for (const f of files) {
+                    const content = readFileSync(f, 'utf-8');
+                    lines.push(`### ${basename(f)}`);
+                    lines.push('```swift');
+                    lines.push(content);
+                    lines.push('```');
+                    lines.push('');
+                }
+            }
+
+            // Include relevant APIClient methods
+            if (apiClientFile) {
+                const apiContent = readFileSync(apiClientFile, 'utf-8');
+                lines.push('## APIClient (full)');
+                lines.push('```swift');
+                lines.push(apiContent);
+                lines.push('```');
+            }
+
+            // Get TODOs for this feature
+            const todos = getDetailedTodos(projectDir).filter(t =>
+                matchingFiles.some(f => f === t.file)
+            );
+            if (todos.length > 0) {
+                lines.push('');
+                lines.push(`## Remaining TODOs (${todos.length})`);
+                for (const todo of todos) {
+                    lines.push(`- ${todo.relativePath}:${todo.line} [${todo.category}] ${todo.hint || todo.context.split('\n')[0]}`);
+                }
+            }
+
+            return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            return { content: [{ type: 'text' as const, text: `Feature context failed: ${msg}` }] };
+        }
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Start server

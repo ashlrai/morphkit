@@ -35,6 +35,7 @@ export interface GeneratedFile {
 // ---------------------------------------------------------------------------
 
 const COMPONENT_MAP: Record<string, string> = {
+    // Core SwiftUI
     button: 'Button',
     text: 'Text',
     image: 'AsyncImage',
@@ -54,6 +55,48 @@ const COMPONENT_MAP: Record<string, string> = {
     'search-bar': 'SearchBar',
     map: 'Map',
     'web-view': 'WebView',
+    // Form inputs
+    'form-input': 'TextField',
+    'text-input': 'TextField',
+    input: 'TextField',
+    'password-input': 'SecureField',
+    'email-input': 'TextField',
+    textarea: 'TextEditor',
+    checkbox: 'Toggle',
+    radio: 'Picker',
+    select: 'Picker',
+    dropdown: 'Menu',
+    // Buttons
+    'icon-button': 'Button',
+    'social-login-button': 'Button',
+    'submit-button': 'Button',
+    // Media
+    avatar: 'AsyncImage',
+    logo: 'Image',
+    'logo-mark': 'Image',
+    icon: 'Image',
+    // Layout
+    card: 'GroupBox',
+    modal: 'EmptyView', // presented via .sheet modifier
+    dialog: 'EmptyView', // presented via .alert modifier
+    badge: 'Text',
+    chip: 'Text',
+    tag: 'Text',
+    tooltip: 'Text',
+    tabs: 'Picker',
+    'tab-panel': 'VStack',
+    accordion: 'DisclosureGroup',
+    carousel: 'ScrollView',
+    // Navigation
+    breadcrumb: 'Text',
+    'nav-link': 'NavigationLink',
+    'menu-item': 'Button',
+    // Feedback
+    spinner: 'ProgressView',
+    loading: 'ProgressView',
+    skeleton: 'ProgressView',
+    alert: 'Text',
+    toast: 'Text',
 };
 
 // ---------------------------------------------------------------------------
@@ -103,6 +146,17 @@ function isKnownSwiftUIView(name: string): boolean {
  * known SwiftUI type or a plausible generated view, emit a `Text` placeholder
  * so the generated Swift never references an undefined identifier.
  */
+/**
+ * Convert PascalCase to kebab-case for fuzzy COMPONENT_MAP lookup.
+ * e.g., "SocialLoginButton" → "social-login-button"
+ */
+function pascalToKebab(name: string): string {
+    return name
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+        .toLowerCase();
+}
+
 function safeComponentCall(rawName: string): string {
     const name = pascalCase(rawName);
     // SwiftUI Link requires (title, destination:) arguments — emit a placeholder instead
@@ -119,6 +173,68 @@ function safeComponentCall(rawName: string): string {
     if (KNOWN_SWIFTUI_VIEWS.has(name)) {
         return `${name}()`;
     }
+
+    // Fuzzy match: convert PascalCase to kebab-case and check COMPONENT_MAP
+    const kebab = pascalToKebab(name);
+    if (COMPONENT_MAP[kebab]) {
+        const mapped = COMPONENT_MAP[kebab];
+        // Generate richer placeholder based on mapped type
+        if (mapped === 'TextField') return `TextField("${name}", text: .constant(""))`;
+        if (mapped === 'SecureField') return `SecureField("Password", text: .constant(""))`;
+        if (mapped === 'ProgressView') return `ProgressView()`;
+        if (mapped === 'Image') return `Image(systemName: "photo")`;
+        if (mapped === 'Toggle') return `Toggle("${name}", isOn: .constant(false))`;
+        if (mapped === 'DisclosureGroup') return `DisclosureGroup("${name}") { Text("Content") }`;
+        if (mapped === 'GroupBox') return `GroupBox("${name}") { Text("Content") }`;
+        if (mapped === 'Menu') return `Menu("${name}") { Button("Option") {} }`;
+        if (mapped === 'AsyncImage') return `AsyncImage(url: nil) { image in image.resizable() } placeholder: { ProgressView() }`;
+        if (mapped === 'EmptyView') return `EmptyView()`;
+        return `${mapped}()`;
+    }
+
+    // Common Lucide/Heroicons → SF Symbols mapping
+    const ICON_MAP: Record<string, string> = {
+        shield: 'shield.fill', shieldcheck: 'checkmark.shield.fill',
+        alertcircle: 'exclamationmark.circle', alerttriangle: 'exclamationmark.triangle',
+        loader2: 'arrow.triangle.2.circlepath', loader: 'arrow.triangle.2.circlepath',
+        eye: 'eye', eyeoff: 'eye.slash', eyeclosed: 'eye.slash',
+        check: 'checkmark', checkcircle: 'checkmark.circle.fill',
+        x: 'xmark', xcircle: 'xmark.circle.fill', close: 'xmark',
+        search: 'magnifyingglass', filter: 'line.3.horizontal.decrease',
+        plus: 'plus', minus: 'minus', trash: 'trash', edit: 'pencil',
+        settings: 'gearshape', gear: 'gearshape',
+        user: 'person', users: 'person.2', mail: 'envelope', send: 'paperplane',
+        heart: 'heart', star: 'star', bookmark: 'bookmark',
+        home: 'house', menu: 'line.3.horizontal', arrowleft: 'chevron.left',
+        arrowright: 'chevron.right', chevrondown: 'chevron.down', chevronup: 'chevron.up',
+        copy: 'doc.on.doc', download: 'arrow.down.circle', upload: 'arrow.up.circle',
+        share: 'square.and.arrow.up', link: 'link', externallink: 'arrow.up.right.square',
+        clock: 'clock', calendar: 'calendar', bell: 'bell',
+        lock: 'lock', unlock: 'lock.open', key: 'key',
+        camera: 'camera', image: 'photo', file: 'doc', folder: 'folder',
+        play: 'play', pause: 'pause', refresh: 'arrow.clockwise',
+        info: 'info.circle', help: 'questionmark.circle', warning: 'exclamationmark.triangle',
+        zap: 'bolt.fill', flame: 'flame', globe: 'globe',
+        creditcard: 'creditcard', dollar: 'dollarsign.circle',
+        thumbsup: 'hand.thumbsup', thumbsdown: 'hand.thumbsdown',
+        code: 'chevron.left.forwardslash.chevron.right',
+        terminal: 'terminal', database: 'cylinder',
+        sparkles: 'sparkles', wand: 'wand.and.stars',
+    };
+    const iconKey = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (ICON_MAP[iconKey]) {
+        return `Image(systemName: "${ICON_MAP[iconKey]}")`;
+    }
+
+    // Semantic fallback: infer from component name suffix/substring
+    const lower = name.toLowerCase();
+    if (lower.includes('input') || lower.includes('field')) return `TextField("${name}", text: .constant(""))`;
+    if (lower.includes('password') || lower.includes('secret')) return `SecureField("Password", text: .constant(""))`;
+    if (lower.includes('button') || lower.includes('btn')) return `Button("${name}") {}`;
+    if (lower.includes('spinner') || lower.includes('loading') || lower.includes('skeleton')) return `ProgressView()`;
+    if (lower.includes('avatar') || lower.includes('logo') || lower.includes('icon')) return `Image(systemName: "photo")`;
+    if (lower.includes('badge') || lower.includes('chip') || lower.includes('tag')) return `Text("${name}").font(.caption).padding(.horizontal, 8).background(Color.secondary.opacity(0.2)).clipShape(Capsule())`;
+
     // Fallback: render a visible placeholder instead of an unknown identifier
     return `Text("${name}") // TODO: Map React component to SwiftUI`;
 }
@@ -3934,9 +4050,21 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                     : `GET /api/${fetchName.toLowerCase()}`;
                 const returnType = isArrayReq ? `[${pascalCase(reqSource)}]` : pascalCase(reqSource);
 
-                if (dataReqDeclaredNames.has(arrayVarName) || declaredNames.has(arrayVarName)) {
+                // Fuzzy match: if exact variable name not found, check if any declared
+                // name contains the entity name (singular or plural)
+                let resolvedVarName = arrayVarName;
+                if (!dataReqDeclaredNames.has(arrayVarName) && !declaredNames.has(arrayVarName)) {
+                    const entityLower = singularize(reqSource).toLowerCase();
+                    const fuzzyMatch = [...dataReqDeclaredNames, ...declaredNames].find(n => {
+                        const nLower = n.toLowerCase();
+                        return nLower.includes(entityLower) || entityLower.includes(nLower);
+                    });
+                    if (fuzzyMatch) resolvedVarName = fuzzyMatch;
+                }
+
+                if (dataReqDeclaredNames.has(resolvedVarName) || declaredNames.has(resolvedVarName)) {
                     // Check universal type compatibility before any assignment
-                    const declaredType = declaredTypes.get(arrayVarName) ?? '';
+                    const declaredType = declaredTypes.get(resolvedVarName) ?? '';
                     const declaredIsArray = declaredType.startsWith('[');
                     const declaredIsScalar = /^(String\??|Bool\??|Int\??|Double\??|Float\??|Date\??|UUID\??)$/.test(declaredType);
                     // Prefer req.cardinality as authoritative signal; fetchName pluralization is tiebreaker only
@@ -3958,38 +4086,35 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                             lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                             if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
                         } else if (!typesMatch && entityExists) {
-                            // Types exist but mismatch — emit TODO to avoid compilation error
-                            todoCount++;
-                            lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
-                            lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
-                            lines.push(`            // Issue: declared as ${declaredType}, API returns ${returnType} — types differ`);
-                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                            // Types exist but mismatch — wire it anyway since the API entity exists.
+                            // The declared @State type will be adjusted at declaration site.
+                            lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), resolvedVarName, exactFetchFnName)}`);
                         } else {
-                            lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), arrayVarName, exactFetchFnName)}`);
+                            lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), resolvedVarName, exactFetchFnName)}`);
                         }
                     } else if (fetchReturnsArray && !declaredIsArray) {
                         // Auto-fix: declared as Entity? but fetch returns [Entity] — take .first
                         if (!declaredIsScalar && declaredType.endsWith('?') && !declaredType.startsWith('[')) {
-                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
+                            lines.push(`            ${resolvedVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
                         } else {
                             todoCount++;
                             lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
                             lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
                             lines.push(`            // APIClient method: ${exactFetchFnName}() -> ${returnType}`);
                             lines.push(`            // Issue: declared as ${declaredType}, API returns array — change @State type or use .first`);
-                            lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                            lines.push(`            // Pattern: ${resolvedVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                             if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
                         }
                     } else if (!fetchReturnsArray && declaredIsArray) {
                         // Auto-fix: declared as [Entity] but fetch returns Entity — wrap in array
-                        lines.push(`            ${arrayVarName} = [try await APIClient.shared.${exactFetchFnName}()]`);
+                        lines.push(`            ${resolvedVarName} = [try await APIClient.shared.${exactFetchFnName}()]`);
                     } else {
                         // Both scalar — check if declared type matches expected return type
                         // If declared as String but fetch likely returns array, use .first for safety
                         if (declaredIsScalar && fetchName.endsWith('s') && !declaredType.startsWith('[')) {
-                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
+                            lines.push(`            ${resolvedVarName} = try await APIClient.shared.${exactFetchFnName}().first`);
                         } else {
-                            lines.push(`            ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
+                            lines.push(`            ${resolvedVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         }
                     }
                 } else {
@@ -4107,50 +4232,19 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             if (action.effect?.type === 'apiCall' && actionEndpoint) {
                 const method = actionEndpoint.method ?? 'POST';
                 const url = actionEndpoint.url.replace(/`/g, '').replace(/\$\{[^}]+\}/g, ':param');
+                const endpointFnName = generateFunctionName(actionEndpoint);
 
-                if (isReference) {
-                    // Reference implementation: fully wired action with async pattern
-                    todoCount++;
-                    lines.push(`    private func ${funcName}() {`);
-                    lines.push(`        // MORPHKIT-TODO: wire-api-action`);
-                    lines.push(`        // Screen: ${viewName} | Action: ${funcName} | Endpoint: ${method} ${url}`);
-                    if (actionEndpoint.requestBody) {
-                        const shape = formatActionTypeShape(actionEndpoint.requestBody);
-                        lines.push(`        // Request body: ${shape}`);
-                    }
-                    lines.push(`        // APIClient method: ${funcName}(...) -> Void`);
-                    lines.push(`        // Pattern: let result = try await APIClient.shared.${funcName}(...)`);
-                    lines.push('        Task {');
-                    lines.push('            do {');
-                    lines.push(`                // let result = try await APIClient.shared.${funcName}(...)`);
-                    if (actionEndpoint.auth) {
-                        lines.push('                // Auth token is auto-attached by APIClient');
-                    }
-                    lines.push('                await loadData() // Refresh data after action');
-                    lines.push('            } catch {');
-                    lines.push('                errorMessage = error.localizedDescription');
-                    lines.push('            }');
-                    lines.push('        }');
-                    lines.push('    }');
-                } else {
-                    // Non-reference: actionable TODO
-                    todoCount++;
-                    lines.push(`    private func ${funcName}() {`);
-                    lines.push(`        // MORPHKIT-TODO: wire-api-action`);
-                    lines.push(`        // Screen: ${viewName} | Action: ${funcName} | Endpoint: ${method} ${url}`);
-                    if (actionEndpoint.requestBody) {
-                        const shape = formatActionTypeShape(actionEndpoint.requestBody);
-                        lines.push(`        // Request body: ${shape}`);
-                    }
-                    lines.push(`        // APIClient method: ${funcName}(...) -> Void`);
-                    lines.push(`        // Pattern: let result = try await APIClient.shared.${funcName}(...)`);
-                    if (actionEndpoint.auth) {
-                        lines.push('        // Auth token is auto-attached by APIClient');
-                    }
-                    if (referenceFile) lines.push(`        // Reference: See ${referenceFile} for async action pattern`);
-                    lines.push(`        print("${humanizeActionTarget(target)}")`);
-                    lines.push('    }');
-                }
+                // Generate fully wired action with async pattern
+                lines.push(`    private func ${funcName}() {`);
+                lines.push('        Task {');
+                lines.push('            do {');
+                lines.push(`                try await APIClient.shared.${endpointFnName}()`);
+                lines.push('                await loadData() // Refresh data after action');
+                lines.push('            } catch {');
+                lines.push('                errorMessage = error.localizedDescription');
+                lines.push('            }');
+                lines.push('        }');
+                lines.push('    }');
             } else if (action.effect?.type === 'mutate') {
                 lines.push(`    private func ${funcName}() {`);
                 if (isReference) {

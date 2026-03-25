@@ -54,6 +54,64 @@ function findSwiftFiles(dir: string): string[] {
     return results;
 }
 
+/**
+ * Find files related to the same feature as the TODO file.
+ * Groups by: import references, naming convention, TODO category.
+ */
+function findRelatedFiles(projectPath: string, todo: DetailedTodo, allFiles: string[]): string[] {
+    const related: string[] = [];
+    const todoContent = readFileSync(todo.file, 'utf-8');
+
+    // Find types/managers referenced in this file
+    const typeRefs = new Set<string>();
+    const refPatterns = [
+        /(\w+Manager)\.shared/g,
+        /(\w+Store)\(\)/g,
+        /(\w+ViewModel)\(\)/g,
+        /import\s+(\w+)/g,
+    ];
+    for (const pattern of refPatterns) {
+        let match;
+        while ((match = pattern.exec(todoContent)) !== null) {
+            typeRefs.add(match[1]);
+        }
+    }
+
+    // Find files that define these types
+    for (const f of allFiles) {
+        if (f === todo.file) continue;
+        const name = basename(f, '.swift');
+        if (typeRefs.has(name)) {
+            related.push(f);
+        }
+    }
+
+    // Find files with same prefix (e.g., BillingView + BillingStore)
+    const todoName = basename(todo.file, '.swift').replace(/View$|Screen$/, '');
+    for (const f of allFiles) {
+        if (f === todo.file || related.includes(f)) continue;
+        const name = basename(f, '.swift');
+        if (name.startsWith(todoName) && name !== todoName) {
+            related.push(f);
+        }
+    }
+
+    // Find other files with TODOs in the same category
+    if (todo.category === 'implement-auth') {
+        for (const f of allFiles) {
+            if (f === todo.file || related.includes(f)) continue;
+            try {
+                const content = readFileSync(f, 'utf-8');
+                if (content.includes('AuthManager') || content.includes('SupabaseManager')) {
+                    related.push(f);
+                }
+            } catch { /* skip */ }
+        }
+    }
+
+    return related;
+}
+
 function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
     const allFiles = findSwiftFiles(projectPath);
 
@@ -81,16 +139,22 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
         }
     }
 
+    // Find related files for multi-file feature context
+    const relatedFiles = findRelatedFiles(projectPath, todo, allFiles);
+    const relatedContents = relatedFiles.map(f => {
+        try {
+            return `// === ${basename(f)} ===\n${readFileSync(f, 'utf-8')}`;
+        } catch { return ''; }
+    }).filter(c => c.length > 0);
+
     // Find CLAUDE.md — check project root and one level up (bounded to project parent)
     const resolvedProject = resolve(projectPath);
     const projectParent = resolve(projectPath, '..');
     const claudeCandidates = [
         join(resolvedProject, 'CLAUDE.md'),
         join(projectParent, 'CLAUDE.md'),
-        // Check inside app subdirectories (e.g., projectPath/AppName/CLAUDE.md)
         ...new Set(allFiles.map(f => join(dirname(dirname(f)), 'CLAUDE.md'))),
     ].filter(p => {
-        // Bound paths: must be within projectPath or its immediate parent
         const resolved = resolve(p);
         return resolved.startsWith(resolvedProject) || resolved.startsWith(projectParent);
     });
@@ -100,13 +164,30 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
     const parts: string[] = [];
     if (claudeContent) {
         parts.push('# Project Architecture (from CLAUDE.md)\n');
-        // Include first 200 lines for context (API contracts, patterns)
-        parts.push(claudeContent.split('\n').slice(0, 200).join('\n'));
+        // Extract key sections: completion order, API contracts, patterns
+        const claudeLines = claudeContent.split('\n');
+        const keyLines: string[] = [];
+        let inKeySection = false;
+        for (const line of claudeLines) {
+            if (line.startsWith('## ') || line.startsWith('### ')) {
+                inKeySection = /completion|api|pattern|model|screen|network/i.test(line);
+            }
+            if (inKeySection || keyLines.length < 50) {
+                keyLines.push(line);
+            }
+            if (keyLines.length >= 300) break;
+        }
+        parts.push(keyLines.join('\n'));
         parts.push('\n');
     }
     if (refContent) {
         parts.push('# Reference Implementation\nStudy this file as the canonical pattern:\n```swift\n');
         parts.push(refContent);
+        parts.push('\n```\n');
+    }
+    if (relatedContents.length > 0) {
+        parts.push('# Related Files (same feature)\n```swift\n');
+        parts.push(relatedContents.join('\n\n'));
         parts.push('\n```\n');
     }
     if (modelContents) {
@@ -115,7 +196,7 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
         parts.push('\n```\n');
     }
     if (apiContent) {
-        parts.push('# APIClient\n```swift\n');
+        parts.push('# APIClient (full implementation)\n```swift\n');
         parts.push(apiContent);
         parts.push('\n```\n');
     }
@@ -131,7 +212,7 @@ function buildScreenContext(projectPath: string, todo: DetailedTodo): string {
 // System Prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are an expert iOS/SwiftUI developer completing a Morphkit-generated iOS project.
+const BASE_SYSTEM_PROMPT = `You are an expert iOS/SwiftUI developer completing a Morphkit-generated iOS project.
 
 Your task: resolve all MORPHKIT-TODO markers in the given Swift file by writing the actual implementation code.
 
@@ -151,6 +232,61 @@ Rules:
 
 Output format: Return the entire Swift file with all TODOs resolved. Nothing else.`;
 
+/**
+ * Build a project-specific system prompt by extracting concrete patterns
+ * from the reference implementation and APIClient.
+ */
+function buildSystemPrompt(projectPath: string, allFiles: string[]): string {
+    const parts: string[] = [BASE_SYSTEM_PROMPT];
+
+    // Extract loadData() pattern from reference implementation
+    const refFile = allFiles.find(f => {
+        try {
+            const content = readFileSync(f, 'utf-8');
+            return content.includes('REFERENCE IMPLEMENTATION') || content.includes('REFERENCE IMPL');
+        } catch { return false; }
+    });
+    if (refFile) {
+        try {
+            const refContent = readFileSync(refFile, 'utf-8');
+            const loadDataMatch = refContent.match(/private func loadData\(\)[\s\S]*?\n    \}/);
+            if (loadDataMatch) {
+                parts.push(`\n\nThis project uses this exact data loading pattern:\n\`\`\`swift\n${loadDataMatch[0]}\n\`\`\``);
+            }
+        } catch { /* skip */ }
+    }
+
+    // Extract full APIClient method signatures with URLs
+    const apiClientFile = allFiles.find(f => f.endsWith('APIClient.swift'));
+    if (apiClientFile) {
+        try {
+            const apiContent = readFileSync(apiClientFile, 'utf-8');
+            const methodLines = apiContent.split('\n').filter(l =>
+                l.trim().startsWith('func ') || l.trim().startsWith('// MARK')
+            );
+            if (methodLines.length > 0) {
+                parts.push(`\n\nAvailable APIClient methods (use these exact names):\n\`\`\`swift\n${methodLines.join('\n')}\n\`\`\``);
+            }
+        } catch { /* skip */ }
+    }
+
+    // Extract SupabaseManager methods if present
+    const supabaseFile = allFiles.find(f => f.endsWith('SupabaseManager.swift'));
+    if (supabaseFile) {
+        try {
+            const supaContent = readFileSync(supabaseFile, 'utf-8');
+            const methodLines = supaContent.split('\n').filter(l =>
+                l.trim().startsWith('func ') || l.trim().startsWith('static func')
+            );
+            if (methodLines.length > 0) {
+                parts.push(`\n\nAvailable SupabaseManager methods:\n\`\`\`swift\n${methodLines.join('\n')}\n\`\`\``);
+            }
+        } catch { /* skip */ }
+    }
+
+    return parts.join('');
+}
+
 // ---------------------------------------------------------------------------
 // Completion Engine
 // ---------------------------------------------------------------------------
@@ -168,19 +304,22 @@ function extractSwiftCode(response: string): string {
     return response.trim();
 }
 
-function validateSwiftSyntax(code: string, filePath: string): boolean {
+function validateSwiftSyntax(code: string, filePath: string): { valid: boolean; error?: string } {
     try {
         // Write to temp file for validation
         const tmpPath = filePath + '.morphkit-tmp';
         writeFileSync(tmpPath, code, 'utf-8');
         try {
             execFileSync('swiftc', ['-parse', tmpPath], { stdio: 'pipe', timeout: 15_000 });
-            return true;
+            return { valid: true };
+        } catch (err: any) {
+            const errorOutput = err.stderr?.toString() ?? err.stdout?.toString() ?? 'Unknown syntax error';
+            return { valid: false, error: errorOutput };
         } finally {
             try { unlinkSync(tmpPath); } catch { /* ignore */ }
         }
     } catch {
-        return false;
+        return { valid: true }; // Can't validate, assume ok
     }
 }
 
@@ -222,7 +361,7 @@ export async function completeProject(
             };
         }
 
-        // Group TODOs by file and pick the file with the most TODOs
+        // Group TODOs by file
         const todosByFile = new Map<string, DetailedTodo[]>();
         for (const todo of todos) {
             const existing = todosByFile.get(todo.file) ?? [];
@@ -230,15 +369,11 @@ export async function completeProject(
             todosByFile.set(todo.file, existing);
         }
 
-        // Pick file with most TODOs (batch completion is more efficient)
-        let bestFile = '';
-        let bestCount = 0;
-        for (const [file, fileTodos] of todosByFile) {
-            if (fileTodos.length > bestCount) {
-                bestFile = file;
-                bestCount = fileTodos.length;
-            }
-        }
+        // Dependency-aware file selection: infrastructure before views
+        // TODOs are already sorted by priority from getDetailedTodos(),
+        // so pick the file of the highest-priority TODO
+        const bestFile = todos[0].file;
+        const bestCount = todosByFile.get(bestFile)?.length ?? 1;
 
         const fileTodos = todosByFile.get(bestFile)!;
         const firstTodo = fileTodos[0];
@@ -248,8 +383,10 @@ export async function completeProject(
             console.log(`[${iteration + 1}/${maxIterations}] Completing ${relPath} (${bestCount} TODOs)`);
         }
 
-        // Build context
+        // Build context and project-specific system prompt
+        const allSwiftFiles = findSwiftFiles(projectPath);
         const context = buildScreenContext(projectPath, firstTodo);
+        const systemPrompt = buildSystemPrompt(projectPath, allSwiftFiles);
 
         // In dry-run without API key, report what would be done then exit
         if (!client) {
@@ -269,7 +406,7 @@ export async function completeProject(
         const response = await client.messages.create({
             model,
             max_tokens: 8192,
-            system: SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: [{
                 role: 'user',
                 content: `Complete this Swift file by resolving all MORPHKIT-TODO markers.\n\n${context}`,
@@ -294,10 +431,39 @@ export async function completeProject(
         }
 
         // Validate syntax before writing
+        let finalCode = completedCode;
         let syntaxValid = true;
         try {
             execSync('which swiftc', { stdio: 'pipe' });
-            syntaxValid = validateSwiftSyntax(completedCode, bestFile);
+            const result = validateSwiftSyntax(completedCode, bestFile);
+            syntaxValid = result.valid;
+
+            // Retry once with error feedback if syntax validation fails
+            if (!result.valid && result.error && client) {
+                if (verbose) console.log(`  Syntax error, retrying with error feedback...`);
+                const retryResponse = await client.messages.create({
+                    model,
+                    max_tokens: 8192,
+                    system: systemPrompt,
+                    messages: [{
+                        role: 'user',
+                        content: `Your previous completion had a syntax error:\n\n${result.error}\n\nFix the error and return the corrected complete file.\n\n${context}`,
+                    }],
+                });
+                const retryText = retryResponse.content
+                    .filter(block => block.type === 'text')
+                    .map(block => (block as { type: 'text'; text: string }).text)
+                    .join('');
+                const retryCode = extractSwiftCode(retryText);
+                if (retryCode && retryCode.length >= 50) {
+                    const retryResult = validateSwiftSyntax(retryCode, bestFile);
+                    if (retryResult.valid) {
+                        finalCode = retryCode;
+                        syntaxValid = true;
+                        if (verbose) console.log(`  Retry succeeded`);
+                    }
+                }
+            }
         } catch {
             // swiftc not available, skip validation
         }
@@ -314,7 +480,7 @@ export async function completeProject(
 
         // Count TODOs in new code vs old
         const oldTodoCount = (readFileSync(bestFile, 'utf-8').match(/MORPHKIT-TODO/g) || []).length;
-        const newTodoCount = (completedCode.match(/MORPHKIT-TODO/g) || []).length;
+        const newTodoCount = (finalCode.match(/MORPHKIT-TODO/g) || []).length;
 
         if (newTodoCount >= oldTodoCount) {
             if (verbose) console.log(`  Skipping — no TODOs resolved (${oldTodoCount} → ${newTodoCount})`);
@@ -331,7 +497,7 @@ export async function completeProject(
         }
 
         if (!dryRun) {
-            writeFileSync(bestFile, completedCode, 'utf-8');
+            writeFileSync(bestFile, finalCode, 'utf-8');
         }
 
         const resolved = oldTodoCount - newTodoCount;

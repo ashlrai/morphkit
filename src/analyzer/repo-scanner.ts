@@ -61,6 +61,10 @@ export interface RepoScanResult {
   backendServices: DetectedService[];
   /** Whether react-markdown or similar is used */
   hasMarkdownRendering: boolean;
+  /** Detected API base URL from environment files */
+  apiBaseURL?: string;
+  /** Detected env vars for service configuration (e.g., SUPABASE_URL, SUPABASE_ANON_KEY) */
+  detectedEnvVars: Record<string, string>;
 }
 
 export interface DetectedService {
@@ -241,6 +245,93 @@ function detectBackendServices(packageJson: Record<string, unknown>, sourceFiles
 }
 
 // ---------------------------------------------------------------------------
+// Environment Variable Detection
+// ---------------------------------------------------------------------------
+
+/** Known API base URL env var names across frameworks */
+const API_URL_VARS = [
+  'NEXT_PUBLIC_API_URL',
+  'NEXT_PUBLIC_BASE_URL',
+  'NEXT_PUBLIC_BACKEND_URL',
+  'VITE_API_URL',
+  'VITE_BASE_URL',
+  'REACT_APP_API_URL',
+  'REACT_APP_BASE_URL',
+  'API_BASE_URL',
+  'API_URL',
+];
+
+/** Known service config env var patterns */
+const SERVICE_ENV_PATTERNS = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'STRIPE_PUBLIC_KEY',
+  'STRIPE_SECRET_KEY',
+  'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
+  'FIREBASE_API_KEY',
+  'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+];
+
+/**
+ * Scan .env files for API base URLs and service configuration.
+ * Only reads values from .env.example and .env.local (non-secret patterns).
+ */
+function detectEnvVars(repoPath: string): { apiBaseURL?: string; envVars: Record<string, string> } {
+  const envFiles = [
+    '.env',
+    '.env.local',
+    '.env.example',
+    '.env.production',
+    '.env.development',
+  ];
+
+  const envVars: Record<string, string> = {};
+  let apiBaseURL: string | undefined;
+
+  for (const envFile of envFiles) {
+    const envPath = path.join(repoPath, envFile);
+    try {
+      if (!fs.existsSync(envPath)) continue;
+      const content = fs.readFileSync(envPath, 'utf-8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx === -1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        const value = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+        if (!value || value.includes('your-') || value.includes('xxx') || value === '') continue;
+
+        // Check for API base URL
+        if (!apiBaseURL && API_URL_VARS.includes(key) && value.startsWith('http')) {
+          apiBaseURL = value;
+        }
+
+        // Check for service config vars
+        if (SERVICE_ENV_PATTERNS.includes(key)) {
+          envVars[key] = value;
+        }
+      }
+    } catch { /* skip unreadable env files */ }
+  }
+
+  // For Next.js apps with only /api/ routes and no external API URL,
+  // detect same-origin API pattern
+  if (!apiBaseURL) {
+    const apiRouteDir = path.join(repoPath, 'app', 'api');
+    const pagesApiDir = path.join(repoPath, 'pages', 'api');
+    if (fs.existsSync(apiRouteDir) || fs.existsSync(pagesApiDir)) {
+      // Same-origin API — base URL is the deployment URL
+      apiBaseURL = undefined; // Will be set from deployment config
+    }
+  }
+
+  return { apiBaseURL, envVars };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -384,6 +475,9 @@ export async function scanRepo(repoPath: string): Promise<RepoScanResult> {
     // ignore
   }
 
+  // Detect env vars for API base URL and service config
+  const { apiBaseURL, envVars: detectedEnvVars } = detectEnvVars(resolvedRoot);
+
   console.log(
     `[morphkit] Categorized: ${pages.length} pages, ${layouts.length} layouts, ` +
       `${components.length} components, ${apiRoutes.length} API routes, ` +
@@ -406,5 +500,7 @@ export async function scanRepo(repoPath: string): Promise<RepoScanResult> {
     uiLibraries,
     backendServices,
     hasMarkdownRendering,
+    apiBaseURL,
+    detectedEnvVars,
   };
 }

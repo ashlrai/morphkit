@@ -2031,13 +2031,27 @@ export async function buildSemanticModel(
   // 5. Detect authentication patterns
   const auth = detectAuthPattern(routes, apiEndpoints, components);
 
-  // 5b. Detect backend integrations from scan
-  const backendIntegrations = (scan.backendServices ?? []).map(svc => ({
-    kind: svc.kind as 'supabase' | 'stripe' | 'firebase' | 'clerk' | 'openai' | 'anthropic' | 'markdown' | 'other',
-    sdkPackage: svc.sdkPackage,
-    features: svc.features,
-    configEnvVars: [] as string[],
-  }));
+  // 5b. Detect backend integrations from scan + populate env vars
+  const detectedEnvVars = (scan as any).detectedEnvVars ?? {};
+  const backendIntegrations = (scan.backendServices ?? []).map(svc => {
+    // Attach discovered env vars to matching services
+    const envVars: string[] = [];
+    if (svc.kind === 'supabase') {
+      for (const key of Object.keys(detectedEnvVars)) {
+        if (key.includes('SUPABASE')) envVars.push(`${key}=${detectedEnvVars[key]}`);
+      }
+    } else if (svc.kind === 'stripe') {
+      for (const key of Object.keys(detectedEnvVars)) {
+        if (key.includes('STRIPE')) envVars.push(`${key}=${detectedEnvVars[key]}`);
+      }
+    }
+    return {
+      kind: svc.kind as 'supabase' | 'stripe' | 'firebase' | 'clerk' | 'openai' | 'anthropic' | 'markdown' | 'other',
+      sdkPackage: svc.sdkPackage,
+      features: svc.features,
+      configEnvVars: envVars,
+    };
+  });
   if (scan.hasMarkdownRendering) {
     backendIntegrations.push({ kind: 'markdown', sdkPackage: 'react-markdown', features: ['rendering'], configEnvVars: [] });
   }
@@ -2078,6 +2092,7 @@ export async function buildSemanticModel(
     stateManagement,
     apiEndpoints: apiEndpointModels,
     auth,
+    apiBaseURL: (scan as any).apiBaseURL ?? undefined,
     backendIntegrations,
     hasMarkdownRendering: scan.hasMarkdownRendering ?? false,
     theme,

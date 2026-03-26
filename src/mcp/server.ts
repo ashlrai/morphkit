@@ -1076,18 +1076,24 @@ server.tool(
             lines.push(`# Feature Context: ${feature}`);
             lines.push('');
 
-            // Find files matching the feature name
+            // Find files matching the feature name (by filename first, then content)
+            const featureNameAliases: Record<string, string[]> = {
+                auth: ['auth', 'login', 'register', 'supabase'],
+                billing: ['billing', 'payment', 'checkout', 'stripe'],
+                research: ['research', 'dashboard', 'sse'],
+            };
+            const namePatterns = featureNameAliases[featureLower] ?? [featureLower];
+
             const matchingFiles = allSwiftFiles.filter(f => {
                 const name = basename(f).toLowerCase();
-                const content = readFileSync(f, 'utf-8');
-                return name.includes(featureLower) ||
-                    content.toLowerCase().includes(`// mark: - ${featureLower}`) ||
-                    (featureLower === 'auth' && (name.includes('auth') || name.includes('login') || name.includes('register') || name.includes('supabase'))) ||
-                    (featureLower === 'billing' && (name.includes('billing') || name.includes('payment') || name.includes('checkout') || name.includes('stripe'))) ||
-                    (featureLower === 'research' && (name.includes('research') || name.includes('dashboard') || name.includes('sse')));
+                if (namePatterns.some(p => name.includes(p))) return true;
+                // Only read file content if filename didn't match
+                try {
+                    const content = readFileSync(f, 'utf-8');
+                    return content.toLowerCase().includes(`// mark: - ${featureLower}`);
+                } catch { return false; }
             });
 
-            // Also find APIClient methods related to this feature
             const apiClientFile = allSwiftFiles.find(f => f.endsWith('APIClient.swift'));
 
             if (matchingFiles.length === 0) {

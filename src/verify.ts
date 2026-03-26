@@ -196,18 +196,10 @@ export function verifyProject(projectPath: string): VerifyResult {
         const hasMorphkitTodoCountLine = content.includes('MORPHKIT-TODO-COUNT:');
         const fileMorphkitTodos = morphkitTodoCountsByFile.get(viewFile) ?? 0;
 
-        if (hasMorphkitTodoCountLine) {
-            // Parse the count from the comment: // MORPHKIT-TODO-COUNT: 3
-            const countMatch = content.match(/MORPHKIT-TODO-COUNT:\s*(\d+)/);
-            const declaredCount = countMatch ? parseInt(countMatch[1], 10) : 0;
-            if (declaredCount === 0) {
-                screensComplete++;
-            }
-        } else {
-            // No MORPHKIT-TODO-COUNT line: complete if no MORPHKIT-TODO lines exist
-            if (fileMorphkitTodos === 0) {
-                screensComplete++;
-            }
+        // Use actual remaining TODO count — the static MORPHKIT-TODO-COUNT header
+        // may be stale after AI completion resolves TODOs
+        if (fileMorphkitTodos === 0) {
+            screensComplete++;
         }
     }
 

@@ -317,17 +317,6 @@ function detectEnvVars(repoPath: string): { apiBaseURL?: string; envVars: Record
     } catch { /* skip unreadable env files */ }
   }
 
-  // For Next.js apps with only /api/ routes and no external API URL,
-  // detect same-origin API pattern
-  if (!apiBaseURL) {
-    const apiRouteDir = path.join(repoPath, 'app', 'api');
-    const pagesApiDir = path.join(repoPath, 'pages', 'api');
-    if (fs.existsSync(apiRouteDir) || fs.existsSync(pagesApiDir)) {
-      // Same-origin API — base URL is the deployment URL
-      apiBaseURL = undefined; // Will be set from deployment config
-    }
-  }
-
   return { apiBaseURL, envVars };
 }
 

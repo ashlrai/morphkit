@@ -60,7 +60,15 @@ function findSwiftFiles(dir: string): string[] {
  */
 function findRelatedFiles(projectPath: string, todo: DetailedTodo, allFiles: string[]): string[] {
     const related: string[] = [];
+    const seen = new Set<string>([todo.file]);
     const todoContent = readFileSync(todo.file, 'utf-8');
+
+    function addRelated(f: string): void {
+        if (!seen.has(f)) {
+            seen.add(f);
+            related.push(f);
+        }
+    }
 
     // Find types/managers referenced in this file
     const typeRefs = new Set<string>();
@@ -79,31 +87,28 @@ function findRelatedFiles(projectPath: string, todo: DetailedTodo, allFiles: str
 
     // Find files that define these types
     for (const f of allFiles) {
-        if (f === todo.file) continue;
-        const name = basename(f, '.swift');
-        if (typeRefs.has(name)) {
-            related.push(f);
+        if (typeRefs.has(basename(f, '.swift'))) {
+            addRelated(f);
         }
     }
 
     // Find files with same prefix (e.g., BillingView + BillingStore)
     const todoName = basename(todo.file, '.swift').replace(/View$|Screen$/, '');
     for (const f of allFiles) {
-        if (f === todo.file || related.includes(f)) continue;
         const name = basename(f, '.swift');
         if (name.startsWith(todoName) && name !== todoName) {
-            related.push(f);
+            addRelated(f);
         }
     }
 
     // Find other files with TODOs in the same category
     if (todo.category === 'implement-auth') {
         for (const f of allFiles) {
-            if (f === todo.file || related.includes(f)) continue;
+            if (seen.has(f)) continue;
             try {
                 const content = readFileSync(f, 'utf-8');
                 if (content.includes('AuthManager') || content.includes('SupabaseManager')) {
-                    related.push(f);
+                    addRelated(f);
                 }
             } catch { /* skip */ }
         }
@@ -291,15 +296,17 @@ function buildSystemPrompt(projectPath: string, allFiles: string[]): string {
 // Completion Engine
 // ---------------------------------------------------------------------------
 
+function extractResponseText(response: Anthropic.Message): string {
+    return response.content
+        .filter(block => block.type === 'text')
+        .map(block => (block as { type: 'text'; text: string }).text)
+        .join('');
+}
+
 function extractSwiftCode(response: string): string {
     // If response is wrapped in markdown code block, extract it
     const codeBlockMatch = response.match(/```swift\n([\s\S]*?)```/);
     if (codeBlockMatch) return codeBlockMatch[1].trim();
-
-    // If it starts with //, it's already raw Swift
-    if (response.trimStart().startsWith('//') || response.trimStart().startsWith('import ')) {
-        return response.trim();
-    }
 
     return response.trim();
 }
@@ -413,12 +420,7 @@ export async function completeProject(
             }],
         });
 
-        const responseText = response.content
-            .filter(block => block.type === 'text')
-            .map(block => (block as { type: 'text'; text: string }).text)
-            .join('');
-
-        const completedCode = extractSwiftCode(responseText);
+        const completedCode = extractSwiftCode(extractResponseText(response));
 
         if (!completedCode || completedCode.length < 50) {
             if (verbose) console.log(`  Skipping — response too short`);
@@ -450,11 +452,7 @@ export async function completeProject(
                         content: `Your previous completion had a syntax error:\n\n${result.error}\n\nFix the error and return the corrected complete file.\n\n${context}`,
                     }],
                 });
-                const retryText = retryResponse.content
-                    .filter(block => block.type === 'text')
-                    .map(block => (block as { type: 'text'; text: string }).text)
-                    .join('');
-                const retryCode = extractSwiftCode(retryText);
+                const retryCode = extractSwiftCode(extractResponseText(retryResponse));
                 if (retryCode && retryCode.length >= 50) {
                     const retryResult = validateSwiftSyntax(retryCode, bestFile);
                     if (retryResult.valid) {
@@ -484,20 +482,21 @@ export async function completeProject(
 
         if (newTodoCount >= oldTodoCount) {
             if (verbose) console.log(`  Skipping — no TODOs resolved (${oldTodoCount} → ${newTodoCount})`);
-            // In dryRun mode, files are never written so TODOs never decrease on disk.
-            // Don't count this as non-progress — report what would have happened.
-            if (!dryRun) {
-                consecutiveNoProgress++;
-                if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
-                    if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
-                    break;
-                }
+            consecutiveNoProgress++;
+            if (consecutiveNoProgress >= MAX_NO_PROGRESS) {
+                if (verbose) console.log(`  Stopping — no progress for ${MAX_NO_PROGRESS} consecutive iterations`);
+                break;
             }
             continue;
         }
 
         if (!dryRun) {
-            writeFileSync(bestFile, finalCode, 'utf-8');
+            // Update the static MORPHKIT-TODO-COUNT header to match actual remaining count
+            const updatedCode = finalCode.replace(
+                /\/\/ MORPHKIT-TODO-COUNT:\s*\d+/,
+                `// MORPHKIT-TODO-COUNT: ${newTodoCount}`
+            );
+            writeFileSync(bestFile, updatedCode, 'utf-8');
         }
 
         const resolved = oldTodoCount - newTodoCount;

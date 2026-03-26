@@ -2032,7 +2032,7 @@ export async function buildSemanticModel(
   const auth = detectAuthPattern(routes, apiEndpoints, components);
 
   // 5b. Detect backend integrations from scan + populate env vars
-  const detectedEnvVars = (scan as any).detectedEnvVars ?? {};
+  const detectedEnvVars = scan.detectedEnvVars ?? {};
   const backendIntegrations = (scan.backendServices ?? []).map(svc => {
     // Attach discovered env vars to matching services
     const envVars: string[] = [];
@@ -2092,7 +2092,7 @@ export async function buildSemanticModel(
     stateManagement,
     apiEndpoints: apiEndpointModels,
     auth,
-    apiBaseURL: (scan as any).apiBaseURL ?? undefined,
+    apiBaseURL: scan.apiBaseURL,
     backendIntegrations,
     hasMarkdownRendering: scan.hasMarkdownRendering ?? false,
     theme,

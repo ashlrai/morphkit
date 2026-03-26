@@ -655,9 +655,16 @@ function generateAPIClient(model: SemanticAppModel): string {
     lines.push('    private func requestVoid(');
     lines.push('        path: String,');
     lines.push('        method: String = "DELETE",');
-    lines.push('        body: (any Encodable)? = nil');
+    lines.push('        body: (any Encodable)? = nil,');
+    lines.push('        queryItems: [URLQueryItem]? = nil');
     lines.push('    ) async throws {');
-    lines.push('        let url = APIConfiguration.versionedBaseURL.appendingPathComponent(path)');
+    lines.push('        var url = APIConfiguration.versionedBaseURL.appendingPathComponent(path)');
+    lines.push('');
+    lines.push('        if let queryItems, !queryItems.isEmpty {');
+    lines.push('            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!');
+    lines.push('            components.queryItems = queryItems');
+    lines.push('            url = components.url!');
+    lines.push('        }');
     lines.push('');
     lines.push('        var urlRequest = URLRequest(url: url)');
     lines.push('        urlRequest.httpMethod = method');
@@ -1108,6 +1115,7 @@ function generateEndpointMethod(endpoint: ApiEndpoint, entities: Entity[] = []):
             `path: "${swiftPath}"`,
             `method: "${method}"`,
             hasBody ? 'body: body' : null,
+            isListEndpoint ? 'queryItems: queryItems.isEmpty ? nil : queryItems' : null,
         ].filter(Boolean);
 
         lines.push(`        try await requestVoid(${requestArgs.join(', ')})`);

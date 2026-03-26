@@ -15,6 +15,7 @@ import type {
     StatePattern,
     ComponentRef,
     Field,
+    ApiEndpoint,
 } from '../semantic/model';
 
 import type { AIProvider } from '../ai/provider';
@@ -189,6 +190,10 @@ function safeComponentCall(rawName: string): string {
         if (mapped === 'Menu') return `Menu("${name}") { Button("Option") {} }`;
         if (mapped === 'AsyncImage') return `AsyncImage(url: nil) { image in image.resizable() } placeholder: { ProgressView() }`;
         if (mapped === 'EmptyView') return `EmptyView()`;
+        if (mapped === 'Text') return `Text("${name}")`;
+        if (mapped === 'Button') return `Button("${name}") {}`;
+        if (mapped === 'NavigationLink') return `NavigationLink("${name}") {}`;
+        if (mapped === 'Picker') return `Picker("${name}", selection: .constant("")) { Text("Option") }`;
         return `${mapped}()`;
     }
 
@@ -800,6 +805,33 @@ function cleanSourceName(raw: string): string {
     // Strip any remaining URL characters
     source = source.replace(/[/\\?&#=]/g, '');
     return source;
+}
+
+/**
+ * Find SSE endpoints that match a screen's data requirements.
+ * A match occurs when the data requirement source (cleaned) appears in the endpoint URL.
+ */
+function getSSEEndpointsForScreen(screen: Screen, model: SemanticAppModel): ApiEndpoint[] {
+    const sseEndpoints = (model.apiEndpoints ?? []).filter(ep => ep.streaming?.type === 'sse');
+    if (sseEndpoints.length === 0) return [];
+
+    const dataReqs = screen.dataRequirements ?? [];
+    if (dataReqs.length === 0) return [];
+
+    const matched: ApiEndpoint[] = [];
+    for (const ep of sseEndpoints) {
+        const epUrl = (ep.url ?? '').toLowerCase();
+        for (const req of dataReqs) {
+            const rawSource = req.source ?? (req as any).entity;
+            if (!rawSource) continue;
+            const source = cleanSourceName(rawSource).toLowerCase();
+            if (epUrl.includes(source) || source.includes(cleanSourceName(epUrl).toLowerCase())) {
+                matched.push(ep);
+                break; // avoid duplicate pushes for the same endpoint
+            }
+        }
+    }
+    return matched;
 }
 
 function deriveEntityName(screen: Screen, model?: SemanticAppModel): string | null {
@@ -3597,6 +3629,24 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
     }
 
+    // SSE streaming state for screens with SSE endpoint data requirements
+    const sseEndpointsForScreen = getSSEEndpointsForScreen(screen, model);
+    if (sseEndpointsForScreen.length > 0) {
+        if (!declaredNames.has('streamEvents')) {
+            lines.push('    @State private var streamEvents: [StreamEvent] = []');
+            declaredNames.add('streamEvents');
+        }
+        if (!declaredNames.has('isStreaming')) {
+            lines.push('    @State private var isStreaming = false');
+            declaredNames.add('isStreaming');
+        }
+        // Ensure errorMessage is available for streaming error handling
+        if (!declaredNames.has('errorMessage')) {
+            lines.push('    @State private var errorMessage: String?');
+            declaredNames.add('errorMessage');
+        }
+    }
+
     // Search state for screens that likely need search
     const hasSearchBinding = (screen.stateBindings ?? []).some(
         (b) => b.toLowerCase().includes('search') || b.toLowerCase().includes('query'),
@@ -3972,6 +4022,7 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
         }
         lines.push('        defer { isLoading = false }');
         lines.push('');
+        const doBlockStartIdx = lines.length;
         lines.push('        do {');
 
         if (isDetailWithIdLoading) {
@@ -4086,9 +4137,12 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                             lines.push(`            // Pattern: ${arrayVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                             if (referenceFile) lines.push(`            // Reference: See ${referenceFile} loadData()`);
                         } else if (!typesMatch && entityExists) {
-                            // Types exist but mismatch — wire it anyway since the API entity exists.
-                            // The declared @State type will be adjusted at declaration site.
-                            lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), resolvedVarName, exactFetchFnName)}`);
+                            // Types exist but mismatch — emit TODO to avoid compile error
+                            todoCount++;
+                            lines.push(`            // MORPHKIT-TODO: wire-api-fetch`);
+                            lines.push(`            // Screen: ${viewName} | Entity: ${reqSource} | Endpoint: ${endpointInfo}`);
+                            lines.push(`            // Issue: declared as ${declaredType}, API returns ${returnType}`);
+                            lines.push(`            // Fix: change @State type to ${returnType} then: ${resolvedVarName} = try await APIClient.shared.${exactFetchFnName}()`);
                         } else {
                             lines.push(`            ${generateFetchCall(model, pascalCase(reqSource), resolvedVarName, exactFetchFnName)}`);
                         }
@@ -4152,11 +4206,11 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
                 if (matchingDashEp) {
                     const dashFetchFnName = generateFunctionName(matchingDashEp);
                     lines.push(`            ${generateFetchCall(model, dashEntityName, dashArrayVar, dashFetchFnName)}`);
+                    hasLoadDataBody = true;
                 } else {
                     lines.push(`            // Configure fetch${pascalCase(dashPluralName)}() in APIClient`);
                     lines.push(`            // ${dashArrayVar} = try await APIClient.shared.fetch${pascalCase(dashPluralName)}()`);
                 }
-                hasLoadDataBody = true;
             }
         }
 
@@ -4194,19 +4248,54 @@ function generateViewFile(screen: Screen, model: SemanticAppModel): GeneratedFil
             lines.push(`            try? DataManager.shared.save${cacheEntityName}s(${cacheArrayVar})`);
         }
 
-        if (isReference) {
-            // Reference implementations: robust error handling with retry guidance
-            lines.push('        } catch let error as URLError where error.code == .notConnectedToInternet {');
-            lines.push('            errorMessage = "No internet connection. Pull to refresh to try again."');
-            lines.push('        } catch {');
-            lines.push('            errorMessage = error.localizedDescription');
-            lines.push('        }');
+        // Check if the do block contains any real async calls
+        const doBlockContent = lines.slice(doBlockStartIdx + 1).join('\n');
+        const hasRealAsyncCall = doBlockContent.includes('try await') || doBlockContent.includes('try ');
+        if (hasRealAsyncCall) {
+            if (isReference) {
+                lines.push('        } catch let error as URLError where error.code == .notConnectedToInternet {');
+                lines.push('            errorMessage = "No internet connection. Pull to refresh to try again."');
+                lines.push('        } catch {');
+                lines.push('            errorMessage = error.localizedDescription');
+                lines.push('        }');
+            } else {
+                lines.push('        } catch {');
+                lines.push('            errorMessage = error.localizedDescription');
+                lines.push('        }');
+            }
         } else {
-            lines.push('        } catch {');
-            lines.push('            errorMessage = error.localizedDescription');
-            lines.push('        }');
+            // Remove the `do {` line since there's no throwing code
+            lines.splice(doBlockStartIdx, 1);
         }
         lines.push('    }');
+    }
+
+    // Generate startStreaming() method for screens with SSE endpoints
+    if (sseEndpointsForScreen.length > 0) {
+        lines.push('');
+        lines.push('    // MARK: - SSE Streaming');
+        for (const sseEp of sseEndpointsForScreen) {
+            const sseUrl = cleanURL(sseEp.url) ?? '/stream';
+            const sseMethod = (sseEp.method ?? 'GET').toUpperCase();
+            lines.push('');
+            lines.push('    private func startStreaming(query: String) async {');
+            lines.push('        isStreaming = true');
+            lines.push('        let client = SSEClient()');
+            lines.push(`        guard let url = URL(string: APIConfiguration.baseURL.absoluteString + "${sseUrl}") else { return }`);
+            if (sseMethod === 'POST') {
+                lines.push('        let body = try? JSONEncoder().encode(["query": query])');
+            }
+            lines.push('        do {');
+            lines.push(`            for try await event in client.stream(url: url, method: "${sseMethod}"${sseMethod === 'POST' ? ', body: body' : ''}) {`);
+            lines.push('                streamEvents.append(event)');
+            lines.push('            }');
+            lines.push('        } catch {');
+            lines.push('            errorMessage = error.localizedDescription');
+            lines.push('        }');
+            lines.push('        isStreaming = false');
+            lines.push('    }');
+            break; // Only generate one startStreaming method per screen
+        }
     }
 
     // Generate action stubs for meaningful actions — with endpoint-specific TODOs

@@ -192,12 +192,7 @@ export function verifyProject(projectPath: string): VerifyResult {
     let screensComplete = 0;
 
     for (const viewFile of viewFiles) {
-        const content = safeReadFile(viewFile);
-        const hasMorphkitTodoCountLine = content.includes('MORPHKIT-TODO-COUNT:');
         const fileMorphkitTodos = morphkitTodoCountsByFile.get(viewFile) ?? 0;
-
-        // Use actual remaining TODO count — the static MORPHKIT-TODO-COUNT header
-        // may be stale after AI completion resolves TODOs
         if (fileMorphkitTodos === 0) {
             screensComplete++;
         }

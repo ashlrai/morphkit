@@ -395,8 +395,8 @@ export async function completeProject(
         const context = buildScreenContext(projectPath, firstTodo);
         const systemPrompt = buildSystemPrompt(projectPath, allSwiftFiles);
 
-        // In dry-run without API key, report what would be done then exit
-        if (!client) {
+        // In dry-run mode or without API key, report what would be done then exit
+        if (!client || dryRun) {
             // Report all unique files with TODOs
             for (const [file, fileTodos] of todosByFile) {
                 const rel = relative(projectPath, file);

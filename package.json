@@ -1,6 +1,6 @@
 {
   "name": "morphkit-cli",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Semantic AI agent that converts TypeScript/React web apps to native SwiftUI iOS apps",
   "type": "module",
   "main": "./dist/index.js",

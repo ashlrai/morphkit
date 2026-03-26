@@ -354,10 +354,10 @@ export async function completeProject(
     for (let iteration = 0; iteration < maxIterations; iteration++) {
         actualIterations = iteration + 1;
         // Check current state
-        const result = verifyProject(projectPath);
         const todos = getDetailedTodos(projectPath);
 
         if (todos.length === 0) {
+            const result = verifyProject(projectPath);
             return {
                 success: true,
                 iterations: iteration,
@@ -374,6 +374,19 @@ export async function completeProject(
             const existing = todosByFile.get(todo.file) ?? [];
             existing.push(todo);
             todosByFile.set(todo.file, existing);
+        }
+
+        // In dry-run mode or without API key, report what would be done then exit
+        if (!client || dryRun) {
+            for (const [file, fileTodos] of todosByFile) {
+                const rel = relative(projectPath, file);
+                if (verbose) {
+                    console.log(`  Would complete ${rel} (${fileTodos.length} TODOs)`);
+                }
+                todosResolved += fileTodos.length;
+                filesCompleted.push(rel);
+            }
+            break;
         }
 
         // Dependency-aware file selection: infrastructure before views
@@ -394,20 +407,6 @@ export async function completeProject(
         const allSwiftFiles = findSwiftFiles(projectPath);
         const context = buildScreenContext(projectPath, firstTodo);
         const systemPrompt = buildSystemPrompt(projectPath, allSwiftFiles);
-
-        // In dry-run mode or without API key, report what would be done then exit
-        if (!client || dryRun) {
-            // Report all unique files with TODOs
-            for (const [file, fileTodos] of todosByFile) {
-                const rel = relative(projectPath, file);
-                if (verbose) {
-                    console.log(`  Would complete ${rel} (${fileTodos.length} TODOs)`);
-                }
-                todosResolved += fileTodos.length;
-                filesCompleted.push(rel);
-            }
-            break; // Don't loop — just report once
-        }
 
         // Call Claude API
         const response = await client.messages.create({

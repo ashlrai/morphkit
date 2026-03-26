@@ -506,6 +506,24 @@ export async function completeProject(
         if (verbose) {
             console.log(`  Resolved ${resolved} TODOs (${newTodoCount} remaining in file)`);
         }
+
+        // Periodic cross-file validation: run swift build every 5 completions
+        if (filesCompleted.length % 5 === 0 && filesCompleted.length > 0) {
+            try {
+                execSync('which swift', { stdio: 'pipe' });
+                const pkgPath = join(projectPath, 'Package.swift');
+                if (existsSync(pkgPath)) {
+                    try {
+                        execSync('swift build 2>&1', { cwd: projectPath, stdio: 'pipe', timeout: 120_000 });
+                        if (verbose) console.log(`  Cross-file validation: PASS`);
+                    } catch (err: any) {
+                        const output = err.stdout?.toString() ?? err.stderr?.toString() ?? '';
+                        const errorCount = (output.match(/error:/g) || []).length;
+                        if (verbose) console.log(`  Cross-file validation: ${errorCount} errors — AI may need to fix these`);
+                    }
+                }
+            } catch { /* swift not available */ }
+        }
     }
 
     // Final verification

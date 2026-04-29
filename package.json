@@ -35,7 +35,7 @@
     "prepublishOnly": "bun build src/index.ts --outdir dist --target node --minify"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.4.0",
     "commander": "^13.0.0",

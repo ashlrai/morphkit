@@ -9,3 +9,6 @@ test/analyzer/__fixtures__/mock-nextjs-app/
 .env
 .env.local
 site/_env.js
+.claude/
+ios-app/
+video/out/

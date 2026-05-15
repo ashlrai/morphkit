@@ -29,7 +29,7 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL = 'grok-4-1-fast-reasoning';
+const DEFAULT_MODEL = 'grok-4.3';
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const TIMEOUT_MS = 30_000;

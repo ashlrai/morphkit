@@ -96,7 +96,7 @@ export interface StateContext {
 export interface GrokClientConfig {
   /** xAI API key. Defaults to `process.env.XAI_API_KEY`. */
   apiKey?: string;
-  /** Model to use. Defaults to `grok-4-1-fast-reasoning`. */
+  /** Model to use. Defaults to `grok-4.3`. */
   model?: string;
   /** Maximum retries on transient failures. Defaults to 3. */
   maxRetries?: number;
@@ -114,7 +114,7 @@ export interface TokenUsage {
 // Internals
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL = "grok-4-1-fast-reasoning";
+const DEFAULT_MODEL = "grok-4.3";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 

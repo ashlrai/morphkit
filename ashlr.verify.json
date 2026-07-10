@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "mode": "replace-detected",
+  "commands": [
+    {
+      "id": "typecheck",
+      "kind": "typecheck",
+      "cmd": ["npm", "run", "typecheck"],
+      "cwd": ".",
+      "timeoutMs": 180000,
+      "required": true,
+      "profiles": ["quick", "merge"]
+    },
+    {
+      "id": "build",
+      "kind": "build",
+      "cmd": ["npm", "run", "build"],
+      "cwd": ".",
+      "timeoutMs": 180000,
+      "required": true,
+      "profiles": ["merge"]
+    },
+    {
+      "id": "test",
+      "kind": "test",
+      "cmd": ["npm", "run", "test"],
+      "cwd": ".",
+      "timeoutMs": 300000,
+      "required": true,
+      "profiles": ["merge"]
+    }
+  ]
+}

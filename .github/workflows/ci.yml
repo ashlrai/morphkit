@@ -8,7 +8,12 @@ on:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    # macos-latest, not ubuntu-latest: test/e2e/compilation.test.ts actually
+    # `swift build`s the generated apps against SwiftUI, which only exists on
+    # Apple platforms. Linux ships a swift(1) binary with no SwiftUI, so the
+    # existing `hasSwift` test gate doesn't skip there and 7 "Compilation
+    # Guarantee" tests fail — not a code regression, a wrong-OS runner.
+    runs-on: macos-latest
 
     steps:
       - name: Checkout

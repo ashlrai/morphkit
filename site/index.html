@@ -1401,7 +1401,7 @@
         "@type": "HowToStep",
         "position": 1,
         "name": "Point Morphkit at your codebase",
-        "text": "Run npx morphkit generate with the path to your React or Next.js project. Morphkit scans your TypeScript codebase, extracting components, routes, state management, and API calls using deep AST analysis."
+        "text": "Run npx morphkit-cli generate with the path to your React or Next.js project. Morphkit scans your TypeScript codebase, extracting components, routes, state management, and API calls using deep AST analysis."
       },
       {
         "@type": "HowToStep",
@@ -1655,7 +1655,7 @@
         <span style="width:36px"></span>
       </div>
       <div class="terminal-body">
-        <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-cmd">npx morphkit generate</span> <span class="term-path">./probe-web</span> <span class="term-flag">--output</span> <span class="term-path">./probe-ios</span></div>
+        <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-cmd">npx morphkit-cli generate</span> <span class="term-path">./probe-web</span> <span class="term-flag">--output</span> <span class="term-path">./probe-ios</span></div>
         <div class="terminal-line"><span class="term-info"></span></div>
         <div class="terminal-line"><span class="term-info">  Analyzing tryprobe.io codebase...</span></div>
         <div class="terminal-line"><span class="term-success">  &#10003; Found 24 components, 6 routes, 8 API endpoints</span></div>
@@ -2031,13 +2031,13 @@
       <div class="install-content">
         <div class="install-block active" id="tab-npx" role="tabpanel" aria-labelledby="tab-btn-npx">
           <div class="install-cmd">
-            <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
+            <code><span class="term-prompt">$</span> npx morphkit-cli generate ./my-nextjs-app --output ./ios-app</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
         </div>
         <div class="install-block" id="tab-bun" role="tabpanel" aria-labelledby="tab-btn-bun">
           <div class="install-cmd">
-            <code><span class="term-prompt">$</span> bun install -g morphkit</code>
+            <code><span class="term-prompt">$</span> bun install -g morphkit-cli</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
           <div class="install-cmd">
@@ -2047,7 +2047,7 @@
         </div>
         <div class="install-block" id="tab-claude" role="tabpanel" aria-labelledby="tab-btn-claude">
           <div class="install-cmd">
-            <code><span class="term-prompt">$</span> npx morphkit generate ./my-nextjs-app --output ./ios-app</code>
+            <code><span class="term-prompt">$</span> npx morphkit-cli generate ./my-nextjs-app --output ./ios-app</code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
           <div class="install-cmd">
@@ -2055,7 +2055,7 @@
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
           <div class="install-cmd">
-            <code><span class="term-prompt">$</span> npx morphkit setup <span style="color: var(--text-muted)"># Registers MCP server in Claude Code</span></code>
+            <code><span class="term-prompt">$</span> npx morphkit-cli setup <span style="color: var(--text-muted)"># Registers MCP server in Claude Code</span></code>
             <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy command to clipboard">Copy</button>
           </div>
           <div class="install-cmd">

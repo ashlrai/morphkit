@@ -782,7 +782,7 @@
       <p>React Native provides access to native APIs through bridge modules. Many common APIs have community-maintained packages (<code>react-native-camera</code>, <code>react-native-maps</code>), but coverage is never complete. When you need access to a new or niche iOS framework, you must write a native module in Swift or Objective-C and bridge it yourself &mdash; which requires the same iOS expertise Morphkit helps you avoid.</p>
 
       <h3>The Developer Experience</h3>
-      <p>Morphkit is designed for teams who already have a React web app and want to extend to iOS without building a separate mobile engineering practice. The workflow is simple: run <code>npx morphkit generate ./your-app</code> and get an Xcode project. Your web team keeps working in React. When the web app changes, regenerate the iOS project.</p>
+      <p>Morphkit is designed for teams who already have a React web app and want to extend to iOS without building a separate mobile engineering practice. The workflow is simple: run <code>npx morphkit-cli generate ./your-app</code> and get an Xcode project. Your web team keeps working in React. When the web app changes, regenerate the iOS project.</p>
       <p>React Native requires your team to learn a new framework, debug platform-specific issues, manage native dependencies with CocoaPods or autolinking, and maintain a separate codebase. It is a powerful tool, but it demands investment in mobile-specific expertise.</p>
 
       <h3>Long-Term Maintenance</h3>

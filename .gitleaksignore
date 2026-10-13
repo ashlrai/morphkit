@@ -1,0 +1,8 @@
+# Supabase anon (public, client-side) keys that were embedded in the static
+# site in early history and have since been removed from the files. The
+# payloads' role claim is "anon", not "service_role". Rotate them in Supabase
+# anyway if you prefer; history rewriting is not needed for anon keys.
+f90bbc88bfc4909ac45826427dfe8fa58d778bcb:site/dashboard.html:jwt:153
+f90bbc88bfc4909ac45826427dfe8fa58d778bcb:site/dashboard.html:supabase-service-key:153
+d63b7644ce1a687325724521ee721753988144a7:site/index.html:jwt:2038
+d63b7644ce1a687325724521ee721753988144a7:site/index.html:supabase-service-key:2038

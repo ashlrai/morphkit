@@ -52,7 +52,7 @@
 
     <text x="20" y="72" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13">
       <tspan fill="#5DDBA3">$</tspan>
-      <tspan fill="#F4F4F5"> npx morphkit generate </tspan>
+      <tspan fill="#F4F4F5"> npx morphkit-cli generate </tspan>
       <tspan fill="#3ECF8E">./app</tspan>
     </text>
     <text x="20" y="112" font-family="JetBrains Mono, SF Mono, Fira Code, monospace" font-size="13" fill="#72727E">  Analyzing TypeScript codebase...</text>

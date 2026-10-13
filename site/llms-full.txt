@@ -234,7 +234,7 @@ npx morphkit-cli plan ./my-saas-app
 
 # Step 2: Generate the iOS project
 npx morphkit-cli generate ./my-saas-app -o ./ios-app -n MySaas
-# Output: 45 Swift files generated, zero build errors
+# Output: 45 Swift files generated
 
 # Step 3: Auto-complete remaining TODOs
 ANTHROPIC_API_KEY=sk-ant-... npx morphkit-cli complete ./ios-app --verbose

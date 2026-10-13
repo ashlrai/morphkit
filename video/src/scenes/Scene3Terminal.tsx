@@ -8,7 +8,7 @@ import {
 } from "remotion";
 import { theme } from "../theme";
 
-const COMMAND = "$ npx morphkit generate ./probe-web --output ./probe-ios";
+const COMMAND = "$ npx morphkit-cli generate ./probe-web --output ./probe-ios";
 
 const statusItems = [
   { text: "Analyzing...", delay: 35 },

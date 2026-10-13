@@ -8,7 +8,7 @@ Morphkit is a semantic AI agent that understands your TypeScript/React web app's
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/ashlrai/morphkit/actions/workflows/ci.yml/badge.svg)](https://github.com/ashlrai/morphkit/actions)
 
-**[morphkit.dev](https://morphkit.dev)** &nbsp;|&nbsp; **[Docs](https://morphkit.dev/docs)** &nbsp;|&nbsp; **[GitHub](https://github.com/ashlrai/morphkit)** &nbsp;|&nbsp; **[Issues](https://github.com/ashlrai/morphkit/issues)**
+**[morphkit.dev](https://morphkit.dev)** &nbsp;|&nbsp; **[Docs](https://morphkit.dev/tutorial)** &nbsp;|&nbsp; **[GitHub](https://github.com/ashlrai/morphkit)** &nbsp;|&nbsp; **[Issues](https://github.com/ashlrai/morphkit/issues)**
 
 ---
 

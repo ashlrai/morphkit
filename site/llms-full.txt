@@ -221,6 +221,18 @@ Parameters:
 
 Returns: Parsed errors with file, line, message, and surrounding code context.
 
+### Tool: morphkit_feature_context
+
+Available when running the server from the source checkout. This tool is absent from the published `morphkit-cli@0.2.4`.
+
+Find related Swift views, models, managers, and API methods for a feature in a generated iOS project.
+
+Parameters:
+  - project_path: string (required) — Path to the generated iOS project
+  - feature: string (required) — Feature name (e.g., "auth" or "billing")
+
+Returns: Matching Swift files grouped by directory, with relevant API client context when available.
+
 ---
 
 ## Example Workflows

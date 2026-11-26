@@ -35,7 +35,7 @@ morphkit/
 │   │   ├── prompts/          # Intent extraction, component mapping, code gen
 │   │   └── index.ts
 │   ├── mcp/                  # Model Context Protocol server
-│   │   └── server.ts         # 9 MCP tools for Claude Code integration
+│   │   └── server.ts         # MCP tools for Claude Code integration
 │   └── verify.ts             # Project verification & completion tracking
 ├── templates/                # Swift/SwiftUI code templates
 ├── test/
@@ -171,7 +171,7 @@ bun run src/index.ts doctor                 # Diagnose configuration
 
 ### MCP Server (`src/mcp/server.ts`)
 
-9 tools exposed via the Model Context Protocol for Claude Code integration:
+Tools exposed via the Model Context Protocol for Claude Code integration:
 
 | Tool | Description |
 |------|-------------|
@@ -184,6 +184,7 @@ bun run src/index.ts doctor                 # Diagnose configuration
 | `morphkit_completion_status` | Machine-readable JSON with exact TODO locations, line numbers, hints for automated loops |
 | `morphkit_complete_screen` | Full context for completing a single screen (view, APIClient, models, reference impl) |
 | `morphkit_fix_build_error` | Parse Swift build errors and return structured context with surrounding code |
+| `morphkit_feature_context` (source checkout) | Use `project_path` and `feature` to find related Swift files and API methods for a feature such as auth or billing |
 
 Register with `morphkit setup` — writes to `.claude/settings.json`.
 

@@ -1382,7 +1382,7 @@
       "name": "AshlrAI",
       "url": "https://ashlr.ai"
     },
-    "featureList": "MCP server with 6 tools, morphkit verify completion tracking, Claude Code integration with slash commands, Multi-provider AI (Claude, OpenAI, Grok), CLAUDE.md implementation guide generation, Structured MORPHKIT-TODO system"
+    "featureList": "MCP server for analysis, generation and completion, morphkit verify completion tracking, Claude Code integration with slash commands, Multi-provider AI (Claude, OpenAI, Grok), CLAUDE.md implementation guide generation, Structured MORPHKIT-TODO system"
   }
   </script>
   <script type="application/ld+json">
@@ -1490,7 +1490,7 @@
         "name": "What is the MCP server?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The MCP (Model Context Protocol) server exposes 9 tools that Claude Code can call directly: morphkit_analyze, morphkit_generate, morphkit_plan, morphkit_screen_context, morphkit_verify, morphkit_next_task, morphkit_completion_status, morphkit_complete_screen, and morphkit_fix_build_error. Run morphkit setup to register the server. Claude Code can then analyze, generate, and complete iOS apps automatically."
+          "text": "The MCP (Model Context Protocol) server gives Claude Code tools to analyze a web app, generate an iOS project, and look up context for completing a screen. Run morphkit setup to register it. See the full MCP reference at https://morphkit.dev/llms-full.txt."
         }
       }
     ]
@@ -1947,7 +1947,7 @@
       <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem;">
         <div style="font-size: 2rem; margin-bottom: 1rem;">🤖</div>
         <h3 style="color: white; font-size: 1.2rem; margin-bottom: 0.5rem;">AI-Native Developer</h3>
-        <p style="color: #9CA3AF; font-size: 0.95rem; line-height: 1.6;">Use Claude Code with Morphkit's 9 MCP tools. Generate the scaffold, then <code>/complete-all</code> to have AI wire every screen. The fastest path to iOS.</p>
+        <p style="color: #9CA3AF; font-size: 0.95rem; line-height: 1.6;">Use Claude Code with Morphkit's MCP tools. Generate the scaffold, then <code>/complete-all</code> to have AI wire every screen. The fastest path to iOS.</p>
       </div>
       <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem;">
         <div style="font-size: 2rem; margin-bottom: 1rem;">🏢</div>
@@ -2123,7 +2123,7 @@
       <div class="faq-item reveal">
         <button class="faq-q" aria-expanded="false" aria-controls="faq-a-8">What is the MCP server?</button>
         <div class="faq-a" id="faq-a-8" role="region">
-          <div class="faq-a-inner">The MCP (Model Context Protocol) server exposes 6 tools that Claude Code can call directly: <code>morphkit_analyze</code>, <code>morphkit_generate</code>, <code>morphkit_plan</code>, <code>morphkit_screen_context</code>, <code>morphkit_verify</code>, and <code>morphkit_next_task</code>. Run <code>morphkit setup</code> to register the server. Claude Code then has structured access to your project&rsquo;s semantic model, completion status, and implementation context without you needing to copy-paste anything.</div>
+          <div class="faq-a-inner">The MCP (Model Context Protocol) server gives Claude Code tools to analyze a web app, generate an iOS project, and look up context for completing a screen. Run <code>morphkit setup</code> to register it. See the <a href="/llms-full.txt">full MCP reference</a>.</div>
         </div>
       </div>
     </div>

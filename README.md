@@ -71,6 +71,7 @@ cd ios-app
 | `morphkit_completion_status` | Machine-readable JSON with exact TODO locations for automated loops |
 | `morphkit_complete_screen` | Full context for completing a single screen (view, API, models, reference) |
 | `morphkit_fix_build_error` | Parse Swift build errors and return structured context for fixes |
+| `morphkit_feature_context` (source checkout) | Find related views, models, managers, and API methods for a named feature in a generated project |
 
 ### Plan Command
 

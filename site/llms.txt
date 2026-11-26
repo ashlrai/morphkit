@@ -62,7 +62,7 @@ Morphkit scans package.json and source files to detect:
 - **react-markdown** → adds MarkdownUI Swift package dependency
 - **Tailwind CSS** → extracts colors + applies SwiftUI style modifiers
 
-## MCP Server (9 tools)
+## MCP Server (9 tools in morphkit-cli 0.2.4)
 
 Register: `morphkit setup` or `npx morphkit-cli setup`
 
@@ -77,6 +77,8 @@ Register: `morphkit setup` or `npx morphkit-cli setup`
 | `morphkit_completion_status` | Machine-readable TODO locations for automated loops |
 | `morphkit_complete_screen` | Full context for completing a single screen |
 | `morphkit_fix_build_error` | Parse Swift build errors with surrounding code context |
+
+The source checkout also registers `morphkit_feature_context` to find related Swift files and API methods for a feature.
 
 ## Generated Output
 
